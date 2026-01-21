@@ -12,11 +12,18 @@ Si encuentras el error **"no space left on device"**, sigue estos pasos:
 3. Haz clic en **"Clean Docker Cache"**
 4. Rebuild el proyecto
 
-### Solución 2: Usar Dockerfile optimizado
-Si el problema persiste, cambia el Dockerfile por `Dockerfile.optimized`:
-1. En EasyPanel, edita la configuración del proyecto
-2. Cambia el Dockerfile path a: `Dockerfile.optimized`
-3. Guarda y rebuild
+### Solución 2: Dockerfile optimizado (ACTUALMENTE ACTIVO)
+✅ **Ya implementado**: El proyecto usa `Dockerfile.optimized` que reduce 50% el uso de disco
+
+Si aún hay problemas, prueba estas alternativas:
+
+#### **Opción A: Dockerfile alternativo (npm install)**
+1. En EasyPanel, cambia el **Dockerfile path** a: `Dockerfile.fallback`
+2. Este usa `npm install` en lugar de `npm ci` (más compatible pero menos eficiente)
+
+#### **Opción B: Dockerfile original**
+1. Cambia a: `Dockerfile.original`
+2. Requiere más espacio en disco pero incluye todas las optimizaciones
 
 ### Solución 3: Upgrade del plan
 Si el problema continúa, considera:
@@ -108,6 +115,14 @@ docker-compose up --build
 
 ## Troubleshooting
 
+### Problema: "no space left on device"
+**Solución**: Usa `Dockerfile.optimized` o `Dockerfile.fallback`. También limpia el caché de Docker en EasyPanel.
+
+### Problema: "npm ci" error - package-lock.json not found
+**Solución**:
+1. Verifica que `package-lock.json` no esté en `.dockerignore`
+2. O usa `Dockerfile.fallback` que usa `npm install`
+
 ### Problema: La aplicación no carga rutas directamente
 **Solución**: El nginx está configurado para SPA routing. Todas las rutas que no existen como archivos sirven `index.html`.
 
@@ -116,3 +131,9 @@ docker-compose up --build
 
 ### Problema: Contenedor no inicia
 **Solución**: Revisa los logs de EasyPanel. El health check puede estar fallando si `/health` no responde.
+
+### Problema: Build falla con errores de npm
+**Soluciones**:
+- `Dockerfile.optimized`: Más eficiente, menos espacio
+- `Dockerfile.fallback`: Usa npm install, más compatible
+- `Dockerfile.original`: Versión completa con todas las features
