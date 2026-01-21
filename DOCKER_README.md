@@ -129,11 +129,32 @@ docker-compose up --build
 ### Problema: Assets no se cargan
 **Solución**: Verifica que los archivos estén en la carpeta `public/` o que se copien correctamente en el build.
 
-### Problema: Contenedor no inicia
-**Solución**: Revisa los logs de EasyPanel. El health check puede estar fallando si `/health` no responde.
+### Problema: Contenedor no inicia o aparece unhealthy
+**Solución**: El Dockerfile incluye endpoint `/health` para EasyPanel. Si aún falla, revisa:
+- Que EasyPanel esté configurado para healthcheck en `/health`
+- Los logs de runtime de EasyPanel (no build logs)
+- Que el puerto 80 esté expuesto correctamente
 
 ### Problema: Build falla con errores de npm
 **Soluciones**:
-- `Dockerfile.optimized`: Más eficiente, menos espacio
+- `Dockerfile`: Optimizado actual (recomendado)
 - `Dockerfile.fallback`: Usa npm install, más compatible
 - `Dockerfile.original`: Versión completa con todas las features
+
+## Verificación del Estado en EasyPanel
+
+Después del build exitoso, verifica en EasyPanel:
+
+### ✅ Estados Normales:
+- **Running + Healthy**: Todo funciona correctamente
+- **Starting**: El contenedor está iniciándose (espera 30s)
+
+### ⚠️ Estados Problemáticos:
+- **Running + Unhealthy**: Build OK, pero healthcheck falla → Verifica `/health` endpoint
+- **Restarting**: Error en runtime → Revisa logs de contenedor
+- **Stopped**: Error crítico → Revisa configuración de puerto/dominio
+
+### 🔍 Logs a Revisar:
+1. **Build logs**: Para errores de compilación (ya solucionado)
+2. **Runtime logs**: Para errores de nginx/healthcheck
+3. **Health check logs**: Específicos del endpoint `/health`
