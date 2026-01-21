@@ -4,15 +4,16 @@ FROM node:18-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Install dependencies first (for better caching)
+# Clean npm cache and install dependencies
+RUN npm cache clean --force
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --prefer-offline --no-audit
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build && npm cache clean --force && rm -rf /tmp/*
 
 # Production stage (static with Nginx)
 FROM nginx:1.27-alpine AS runner

@@ -60,6 +60,11 @@ Dockerfile*
 # README and docs (not needed in container)
 README.md
 *.md
+DOCKER_README.md
+
+# Lock files (already copied via package*.json)
+package-lock.json
+bun.lockb
 
 # Test files
 **/*.test.*
