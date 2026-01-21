@@ -21,10 +21,8 @@ FROM nginx:1.27-alpine AS runner
 RUN apk add --no-cache wget
 
 # Copy built application to nginx html directory
+# Note: Vite automatically includes public/ assets in dist/ during build
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy public assets (robots.txt, favicon, etc.)
-COPY --from=builder /app/public /usr/share/nginx/html/
 
 # Copy custom nginx configuration for SPA routing
 COPY <<EOF /etc/nginx/conf.d/default.conf
