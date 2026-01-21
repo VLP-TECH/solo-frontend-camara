@@ -2,6 +2,38 @@
 
 Este proyecto está configurado para desplegarse en EasyPanel usando Docker.
 
+## ⚠️ Problema de Espacio en Disco
+
+Si encuentras el error **"no space left on device"**, sigue estos pasos:
+
+### Solución 1: Limpiar caché en EasyPanel
+1. Ve al panel de EasyPanel
+2. Ve a **Settings > Storage**
+3. Haz clic en **"Clean Docker Cache"**
+4. Rebuild el proyecto
+
+### Solución 2: Usar Dockerfile optimizado
+Si el problema persiste, cambia el Dockerfile por `Dockerfile.optimized`:
+1. En EasyPanel, edita la configuración del proyecto
+2. Cambia el Dockerfile path a: `Dockerfile.optimized`
+3. Guarda y rebuild
+
+### Solución 3: Upgrade del plan
+Si el problema continúa, considera:
+- Upgrade a un plan con más almacenamiento
+- O contactar soporte de EasyPanel
+
+### Solución 4: Build local y push
+Como alternativa extrema:
+```bash
+# Build localmente
+docker build -f Dockerfile.optimized -t myapp:latest .
+
+# Push a registry y configura en EasyPanel
+docker tag myapp:latest registry.example.com/myapp:latest
+docker push registry.example.com/myapp:latest
+```
+
 ## Archivos de Configuración
 
 ### Dockerfile
