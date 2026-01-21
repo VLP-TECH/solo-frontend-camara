@@ -62,8 +62,7 @@ README.md
 *.md
 DOCKER_README.md
 
-# Lock files (already copied via package*.json)
-package-lock.json
+# Keep lock files for npm ci
 bun.lockb
 
 # Test files
