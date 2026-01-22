@@ -100,7 +100,7 @@ const Surveys = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !roles.isAdmin },
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
   ];
 
   return (

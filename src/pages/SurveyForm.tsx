@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { 
   LayoutDashboard,
   Layers,
@@ -44,6 +45,7 @@ const SurveyForm = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { roles } = usePermissions();
+  const { isAdmin } = useUserProfile();
   const navigate = useNavigate();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -133,7 +135,7 @@ const SurveyForm = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !roles.isAdmin },
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
   ];
 
   if (loading) {
