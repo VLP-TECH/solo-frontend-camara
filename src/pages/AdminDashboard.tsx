@@ -203,6 +203,8 @@ const AdminDashboard = () => {
         role: 'user'
       });
       fetchProfiles();
+      // Navegar de vuelta a admin-usuarios después de crear el usuario
+      navigate('/admin-usuarios');
     } catch (error: any) {
       toast({
         title: "Error",
