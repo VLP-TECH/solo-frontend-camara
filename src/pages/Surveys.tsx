@@ -87,7 +87,7 @@ const Surveys = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    ...(roles.isAdmin ? [{ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" }] : []),
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !roles.isAdmin },
   ];
 
   return (
@@ -109,13 +109,21 @@ const Surveys = () => {
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.active;
+              const isDisabled = item.disabled;
               return (
                 <button
                   key={item.label}
-                  onClick={() => item.href && navigate(item.href)}
+                  onClick={() => {
+                    if (!isDisabled && item.href) {
+                      navigate(item.href);
+                    }
+                  }}
+                  disabled={isDisabled}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors relative ${
                     isActive
                       ? "bg-[#0a5a73] text-white"
+                      : isDisabled
+                      ? "text-blue-300 opacity-50 cursor-not-allowed"
                       : "text-blue-100 hover:bg-[#0a5a73]/50"
                   }`}
                   style={isActive ? {

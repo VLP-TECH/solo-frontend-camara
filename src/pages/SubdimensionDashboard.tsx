@@ -151,7 +151,7 @@ const SubdimensionDashboard = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    ...(roles.isAdmin ? [{ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" }] : []),
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !roles.isAdmin },
   ];
 
   if (!subdimensionNombre) {
@@ -186,11 +186,21 @@ const SubdimensionDashboard = () => {
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const isDisabled = item.disabled;
               return (
                 <button
                   key={item.label}
-                  onClick={() => item.href && navigate(item.href)}
-                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors text-blue-100 hover:bg-[#0a5a73]/50"
+                  onClick={() => {
+                    if (!isDisabled && item.href) {
+                      navigate(item.href);
+                    }
+                  }}
+                  disabled={isDisabled}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    isDisabled
+                      ? "text-blue-300 opacity-50 cursor-not-allowed"
+                      : "text-blue-100 hover:bg-[#0a5a73]/50"
+                  }`}
                 >
                   <Icon className="h-5 w-5" />
                   <span className="text-sm font-medium">{item.label}</span>
