@@ -11,7 +11,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const { profile, loading: profileLoading, isActive } = useUserProfile();
   const navigate = useNavigate();
 
@@ -52,8 +52,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
             </p>
             <Button
               variant="outline"
-              onClick={() => navigate('/dashboard')}
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await signOut();
+                  navigate('/', { replace: true });
+                } catch (error) {
+                  console.error('Error al cerrar sesión:', error);
+                  navigate('/', { replace: true });
+                }
+              }}
               className="w-full"
+              type="button"
             >
               <Home className="h-4 w-4 mr-2" />
               Volver al inicio
