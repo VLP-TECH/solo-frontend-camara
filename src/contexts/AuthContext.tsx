@@ -64,17 +64,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Update profile with razon_social and cif after user creation
     // Ensure active is set to false for new users (admin must activate them)
     if (!error && data.user) {
+      // Build update object conditionally to avoid errors if columns don't exist
+      const updateData: any = {
+        active: false, // New users are inactive by default
+      };
+      
+      if (razonSocial) {
+        updateData.razon_social = razonSocial;
+      }
+      
+      // Only include cif if it's provided and the column exists
+      if (cif) {
+        updateData.cif = cif;
+      }
+      
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
-          razon_social: razonSocial || null,
-          cif: cif || null,
-          active: false, // New users are inactive by default
-        })
+        .update(updateData)
         .eq('user_id', data.user.id);
       
       if (profileError) {
-        console.error('Error updating profile:', profileError);
+        // Log error but don't fail user creation if it's just a schema issue
+        if (profileError.message?.includes('cif')) {
+          console.warn('CIF column may not exist in profiles table:', profileError.message);
+          // Try update without cif
+          const { error: retryError } = await supabase
+            .from('profiles')
+            .update({
+              razon_social: razonSocial || null,
+              active: false,
+            })
+            .eq('user_id', data.user.id);
+          if (retryError) {
+            console.error('Error updating profile:', retryError);
+          }
+        } else {
+          console.error('Error updating profile:', profileError);
+        }
       }
     }
 

@@ -180,13 +180,40 @@ const AdminDashboard = () => {
       if (error) throw error;
 
       if (data.user) {
-        const { error: profileError } = await supabase.from('profiles').update({
-          razon_social: newUser.razonSocial,
-          cif: newUser.cif,
+        // Build update object conditionally to avoid errors if columns don't exist
+        const updateData: any = {
+          razon_social: newUser.razonSocial || null,
           role: newUser.role,
           active: true
-        }).eq('user_id', data.user.id);
-        if (profileError) throw profileError;
+        };
+        
+        // Only include cif if it's provided
+        if (newUser.cif) {
+          updateData.cif = newUser.cif;
+        }
+        
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update(updateData)
+          .eq('user_id', data.user.id);
+        
+        if (profileError) {
+          // If error is about cif column, retry without it
+          if (profileError.message?.includes('cif')) {
+            console.warn('CIF column may not exist, updating without CIF:', profileError.message);
+            const { error: retryError } = await supabase
+              .from('profiles')
+              .update({
+                razon_social: newUser.razonSocial || null,
+                role: newUser.role,
+                active: true
+              })
+              .eq('user_id', data.user.id);
+            if (retryError) throw retryError;
+          } else {
+            throw profileError;
+          }
+        }
       }
       toast({
         title: "Éxito",
