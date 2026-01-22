@@ -157,11 +157,41 @@ const AdminDashboard = () => {
     }
   };
 
+  const validatePassword = (password: string): string | null => {
+    if (password.length < 8) {
+      return "La contraseña debe tener al menos 8 caracteres";
+    }
+    if (!/[0-9]/.test(password)) {
+      return "La contraseña debe contener al menos un número";
+    }
+    if (!/[a-z]/.test(password)) {
+      return "La contraseña debe contener al menos una letra minúscula";
+    }
+    if (!/[A-Z]/.test(password)) {
+      return "La contraseña debe contener al menos una letra mayúscula";
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      return "La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{}|;:'\",.<>/? etc.)";
+    }
+    return null;
+  };
+
   const createUser = async () => {
     if (!newUser.email || !newUser.password || !newUser.firstName) {
       toast({
         title: "Error",
         description: "Por favor completa todos los campos obligatorios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validar contraseña
+    const passwordError = validatePassword(newUser.password);
+    if (passwordError) {
+      toast({
+        title: "Contraseña inválida",
+        description: passwordError,
         variant: "destructive"
       });
       return;
@@ -406,6 +436,9 @@ const AdminDashboard = () => {
                           value={newUser.password} 
                           onChange={e => setNewUser({...newUser, password: e.target.value})} 
                         />
+                        <p className="text-xs text-gray-500">
+                          La contraseña debe tener mínimo 8 caracteres, incluyendo: mayúscula, minúscula, número y carácter especial
+                        </p>
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="razonSocial">Razón Social</Label>

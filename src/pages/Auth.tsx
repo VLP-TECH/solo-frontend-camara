@@ -45,6 +45,9 @@ const Auth = () => {
     if (!/[A-Z]/.test(password)) {
       return "La contraseña debe contener al menos una letra mayúscula";
     }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      return "La contraseña debe contener al menos un carácter especial (!@#$%^&*()_+-=[]{}|;:'\",.<>/? etc.)";
+    }
     return null;
   };
 
