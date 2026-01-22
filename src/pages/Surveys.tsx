@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { 
   LayoutDashboard,
   Layers,
@@ -35,7 +36,19 @@ const Surveys = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { permissions, roles } = usePermissions();
+  const { isAdmin, profile } = useUserProfile();
   const navigate = useNavigate();
+
+  // Debug: verificar valores de admin
+  const canCreateSurvey = isAdmin || roles.isAdmin || permissions.canUploadDataSources;
+  console.log('Surveys page - Admin check:', {
+    isAdmin,
+    rolesIsAdmin: roles.isAdmin,
+    canUploadDataSources: permissions.canUploadDataSources,
+    canCreateSurvey,
+    profileRole: profile?.role,
+    user: !!user
+  });
 
   useEffect(() => {
     fetchSurveys();
@@ -166,7 +179,7 @@ const Surveys = () => {
                     Participa en las encuestas del ecosistema digital valenciano
                   </p>
                 </div>
-                {(permissions.canUploadDataSources || roles.isAdmin) && (
+                {(canCreateSurvey && user) && (
                   <Button
                     onClick={() => navigate("/encuestas/crear")}
                     size="lg"
