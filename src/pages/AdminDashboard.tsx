@@ -86,7 +86,7 @@ const AdminDashboard = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true },
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false },
   ];
 
   useEffect(() => {
@@ -270,9 +270,9 @@ const AdminDashboard = () => {
         cif: '',
         role: 'user'
       });
-      fetchProfiles();
-      // Navegar de vuelta a admin-usuarios después de crear el usuario
-      navigate('/admin-usuarios');
+      await fetchProfiles();
+      // No navegar, ya estamos en admin-usuarios
+      // El fetchProfiles actualizará la lista automáticamente
     } catch (error: any) {
       toast({
         title: "Error",
@@ -323,13 +323,21 @@ const AdminDashboard = () => {
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.active;
+              const isDisabled = item.disabled ?? false;
               return (
                 <button
                   key={item.label}
-                  onClick={() => item.href && navigate(item.href)}
+                  onClick={() => {
+                    if (!isDisabled && item.href) {
+                      navigate(item.href);
+                    }
+                  }}
+                  disabled={isDisabled}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors relative ${
                     isActive
                       ? "bg-[#0a5a73] text-white"
+                      : isDisabled
+                      ? "text-blue-300 opacity-50 cursor-not-allowed"
                       : "text-blue-100 hover:bg-[#0a5a73]/50"
                   }`}
                   style={isActive ? {
