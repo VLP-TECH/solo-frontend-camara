@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -127,7 +127,7 @@ const KPIsDashboard = () => {
     return Math.min(100, Math.max(0, (valor / 100) * 100));
   };
 
-  const menuItems = [
+  const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
     { icon: LineChart, label: "Todos los Indicadores", href: "/kpis", active: true },
@@ -137,7 +137,7 @@ const KPIsDashboard = () => {
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ];
+  ], [isAdmin, roles.isAdmin]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

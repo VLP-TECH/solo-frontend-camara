@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -43,7 +43,7 @@ const Metodologia = () => {
     navigate('/');
   };
 
-  const menuItems = [
+  const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
     { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
@@ -53,7 +53,7 @@ const Metodologia = () => {
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ];
+  ], [isAdmin, roles.isAdmin]);
 
   const dimensiones = [
     "Transformación Digital Empresarial",

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -77,7 +77,8 @@ const AdminDashboard = () => {
     navigate('/');
   };
 
-  const menuItems = [
+  // Memoizar menuItems para evitar recálculos innecesarios que puedan deshabilitar el botón
+  const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
     { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
@@ -87,7 +88,7 @@ const AdminDashboard = () => {
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false },
-  ];
+  ], []); // Sin dependencias ya que siempre debe estar habilitado en esta página
 
   useEffect(() => {
     if (!loading) {

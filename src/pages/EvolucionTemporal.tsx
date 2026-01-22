@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -82,7 +82,7 @@ const EvolucionTemporal = () => {
     { year: 2024, "Comunitat Valenciana": 14.2, "Media España": 12.8, "Media UE": 24.5 },
   ];
 
-  const menuItems = [
+  const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
     { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
@@ -92,7 +92,7 @@ const EvolucionTemporal = () => {
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ];
+  ], [isAdmin, roles.isAdmin]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
