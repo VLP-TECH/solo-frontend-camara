@@ -5,7 +5,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { 
   Select,
   SelectContent,
@@ -319,10 +318,6 @@ const Dimensiones = () => {
                       <p className="text-sm text-gray-600 mb-4 min-h-[40px]">
                         {dimension.descripcion}
                       </p>
-                      
-                      <div className="mb-4">
-                        <Progress value={Math.round(dimension.score || 0)} className="h-2" />
-                      </div>
                       
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs text-gray-500">
