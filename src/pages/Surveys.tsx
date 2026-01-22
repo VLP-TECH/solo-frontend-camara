@@ -166,7 +166,7 @@ const Surveys = () => {
                     Participa en las encuestas del ecosistema digital valenciano
                   </p>
                 </div>
-                {permissions.canUploadDataSources && (
+                {(permissions.canUploadDataSources || roles.isAdmin) && (
                   <Button
                     onClick={() => navigate("/encuestas/crear")}
                     size="lg"
