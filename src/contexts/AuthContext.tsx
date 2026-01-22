@@ -64,16 +64,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Update profile with razon_social and cif after user creation
     // Ensure active is set to false for new users (admin must activate them)
     if (!error && data.user) {
-      // Build update object conditionally to avoid errors if columns don't exist
+      // Build update object with only essential fields first
+      // Optional fields will be added conditionally and errors handled gracefully
       const updateData: any = {
         active: false, // New users are inactive by default
       };
       
+      // Try to include optional fields if provided (may not exist in DB)
       if (razonSocial) {
         updateData.razon_social = razonSocial;
       }
-      
-      // Only include cif if it's provided and the column exists
       if (cif) {
         updateData.cif = cif;
       }
@@ -85,18 +85,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (profileError) {
         // Log error but don't fail user creation if it's just a schema issue
-        if (profileError.message?.includes('cif')) {
-          console.warn('CIF column may not exist in profiles table:', profileError.message);
-          // Try update without cif
+        const errorMsg = profileError.message || '';
+        
+        if (errorMsg.includes('cif') || errorMsg.includes('razon_social')) {
+          console.warn('Some columns may not exist in profiles table:', errorMsg);
+          // Try update with only basic fields
           const { error: retryError } = await supabase
             .from('profiles')
             .update({
-              razon_social: razonSocial || null,
               active: false,
             })
             .eq('user_id', data.user.id);
           if (retryError) {
-            console.error('Error updating profile:', retryError);
+            // If even basic update fails, just log it but don't fail user creation
+            console.warn('Could not update profile, but user was created:', retryError.message);
           }
         } else {
           console.error('Error updating profile:', profileError);

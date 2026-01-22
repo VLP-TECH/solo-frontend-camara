@@ -180,14 +180,17 @@ const AdminDashboard = () => {
       if (error) throw error;
 
       if (data.user) {
-        // Build update object conditionally to avoid errors if columns don't exist
+        // Build update object with only essential fields first
+        // We'll try to add optional fields, but handle errors gracefully
         const updateData: any = {
-          razon_social: newUser.razonSocial || null,
           role: newUser.role,
           active: true
         };
         
-        // Only include cif if it's provided
+        // Try to include optional fields if provided (may not exist in DB)
+        if (newUser.razonSocial) {
+          updateData.razon_social = newUser.razonSocial;
+        }
         if (newUser.cif) {
           updateData.cif = newUser.cif;
         }
@@ -198,19 +201,27 @@ const AdminDashboard = () => {
           .eq('user_id', data.user.id);
         
         if (profileError) {
-          // If error is about cif column, retry without it
-          if (profileError.message?.includes('cif')) {
-            console.warn('CIF column may not exist, updating without CIF:', profileError.message);
+          // If error is about missing columns (cif or razon_social), retry with only basic fields
+          const errorMsg = profileError.message || '';
+          if (errorMsg.includes('cif') || errorMsg.includes('razon_social')) {
+            console.warn('Some columns may not exist, updating with basic fields only:', errorMsg);
+            // Try update with only essential fields
+            const basicUpdate: any = {
+              role: newUser.role,
+              active: true
+            };
+            
             const { error: retryError } = await supabase
               .from('profiles')
-              .update({
-                razon_social: newUser.razonSocial || null,
-                role: newUser.role,
-                active: true
-              })
+              .update(basicUpdate)
               .eq('user_id', data.user.id);
-            if (retryError) throw retryError;
+            
+            if (retryError) {
+              // If even basic update fails, log but don't fail user creation
+              console.warn('Could not update all profile fields, but user was created:', retryError.message);
+            }
           } else {
+            // For other errors, still throw to show the error
             throw profileError;
           }
         }
