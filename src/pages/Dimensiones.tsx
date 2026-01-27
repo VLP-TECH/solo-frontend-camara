@@ -48,7 +48,7 @@ const Dimensiones = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
+  const { isAdmin, loading: profileLoading } = useUserProfile();
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
@@ -186,7 +186,8 @@ const Dimensiones = () => {
     setExpandedDimensions(newExpanded);
   };
 
-  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  // El botón siempre debe estar activo para admins
+  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
   const isUserAdmin = isAdmin || roles.isAdmin;
   const shouldDisable = profileLoading ? false : !isUserAdmin;
   

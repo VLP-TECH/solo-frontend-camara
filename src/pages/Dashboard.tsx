@@ -52,7 +52,7 @@ const Dashboard = () => {
     profileRole: profile?.role,
     profileLoading,
     user: !!user,
-    disabled: !(isAdmin || roles.isAdmin)
+    shouldDisable: profileLoading ? false : !(isAdmin || roles.isAdmin)
   });
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
@@ -74,7 +74,8 @@ const Dashboard = () => {
     { dimension: "Sostenibilidad Digital", cv: 66, ue: 62, topUE: 87 },
   ];
 
-  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  // El botón siempre debe estar activo para admins
+  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
   const isUserAdmin = isAdmin || roles.isAdmin;
   const shouldDisable = profileLoading ? false : !isUserAdmin;
   

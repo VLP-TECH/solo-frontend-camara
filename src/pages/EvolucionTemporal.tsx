@@ -82,7 +82,8 @@ const EvolucionTemporal = () => {
     { year: 2024, "Comunitat Valenciana": 14.2, "Media España": 12.8, "Media UE": 24.5 },
   ];
 
-  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  // El botón siempre debe estar activo para admins
+  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
   const isUserAdmin = isAdmin || roles.isAdmin;
   const shouldDisable = profileLoading ? false : !isUserAdmin;
   

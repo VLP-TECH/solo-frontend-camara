@@ -73,7 +73,8 @@ const ComparacionTerritorial = () => {
     return "Bajo";
   };
 
-  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  // El botón siempre debe estar activo para admins
+  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
   const isUserAdmin = isAdmin || roles.isAdmin;
   const shouldDisable = profileLoading ? false : !isUserAdmin;
   
