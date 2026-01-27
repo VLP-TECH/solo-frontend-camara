@@ -131,8 +131,11 @@ const Dashboard = () => {
               return (
                 <button
                   key={item.label}
-                  onClick={() => {
-                    if (!isDisabled && item.href) {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (item.href) {
+                      console.log('Navigating to:', item.href);
                       navigate(item.href);
                     }
                   }}

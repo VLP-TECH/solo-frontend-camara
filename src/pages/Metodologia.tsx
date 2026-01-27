@@ -60,24 +60,9 @@ const Metodologia = () => {
     profile: profile
   });
 
-  // El botón siempre debe estar activo para admins
-  // Verificar directamente el rol del perfil para evitar problemas de timing
-  // Solo deshabilitar si el perfil está cargado Y definitivamente NO es admin
-  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
-  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
-  
-  // Solo deshabilitar si:
-  // 1. El usuario está autenticado Y
-  // 2. El perfil ya se cargó (no está loading) Y
-  // 3. Definitivamente NO es admin
-  const shouldDisable = user && !profileLoading && !isUserAdmin;
-  
-  // #region agent log
-  const debugShouldDisable = {hasUser:!!user,profileLoading,profileRole:profile?.role,profileRoleIsAdmin,isAdmin,rolesIsAdmin:roles.isAdmin,isUserAdmin,shouldDisable};
-  console.log('🔍 [DEBUG] shouldDisable calculation:', debugShouldDisable);
-  try { localStorage.setItem('debug_shouldDisable', JSON.stringify({...debugShouldDisable, timestamp: Date.now()})); } catch(e) {}
-  fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:62',message:'shouldDisable calculation',data:debugShouldDisable,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
+  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
+  // La protección real está en la ruta /admin-usuarios que verifica permisos
+  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
   const menuItems = useMemo(() => {
     // #region agent log
@@ -144,8 +129,11 @@ const Metodologia = () => {
               return (
                 <button
                   key={item.label}
-                  onClick={() => {
-                    if (!isDisabled && item.href) {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (item.href) {
+                      console.log('Navigating to:', item.href);
                       navigate(item.href);
                     }
                   }}
