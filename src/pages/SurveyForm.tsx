@@ -45,7 +45,7 @@ const SurveyForm = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin } = useUserProfile();
+  const { isAdmin, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -126,6 +126,10 @@ const SurveyForm = () => {
     }
   };
 
+  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  const isUserAdmin = isAdmin || roles.isAdmin;
+  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
@@ -135,8 +139,8 @@ const SurveyForm = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ], [isAdmin, roles.isAdmin]);
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
+  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
 
   if (loading) {
     return (

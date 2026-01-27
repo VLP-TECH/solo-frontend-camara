@@ -36,7 +36,7 @@ const Surveys = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { permissions, roles } = usePermissions();
-  const { isAdmin, profile } = useUserProfile();
+  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
 
   // Debug: verificar valores de admin
@@ -91,6 +91,10 @@ const Surveys = () => {
     navigate(`/encuestas/${surveyId}`);
   };
 
+  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  const isUserAdmin = isAdmin || roles.isAdmin;
+  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
@@ -100,8 +104,8 @@ const Surveys = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ], [isAdmin, roles.isAdmin]);
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
+  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

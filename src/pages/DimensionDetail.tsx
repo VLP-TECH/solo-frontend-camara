@@ -94,7 +94,7 @@ const DimensionDetail = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin } = useUserProfile();
+  const { isAdmin, loading: profileLoading } = useUserProfile();
   const [searchParams] = useSearchParams();
   const dimensionNombre = searchParams.get("dimension") || "";
   
@@ -214,6 +214,10 @@ const DimensionDetail = () => {
 
   const totalIndicadores = indicadores?.length || 0;
 
+  // Solo deshabilitar si definitivamente NO es admin (no durante loading)
+  const isUserAdmin = isAdmin || roles.isAdmin;
+  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
     { icon: Layers, label: "Dimensiones", href: "/dimensiones", active: true },
@@ -223,8 +227,8 @@ const DimensionDetail = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: !(isAdmin || roles.isAdmin) },
-  ], [isAdmin, roles.isAdmin]);
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
+  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
 
   if (!dimensionNombre) {
     return (
