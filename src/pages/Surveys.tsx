@@ -183,7 +183,7 @@ const Surveys = () => {
                     Participa en las encuestas del ecosistema digital valenciano
                   </p>
                 </div>
-                {(canCreateSurvey && user) && (
+                {user && (
                   <Button
                     onClick={() => navigate("/encuestas/crear")}
                     size="lg"

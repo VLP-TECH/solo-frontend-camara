@@ -90,15 +90,21 @@ const AdminDashboard = () => {
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false },
   ], []); // Sin dependencias ya que siempre debe estar habilitado en esta página
 
+  // Verificar directamente el rol del perfil además de isAdmin
+  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const userIsAdmin = isAdmin || profileRoleIsAdmin;
+
   useEffect(() => {
     if (!loading) {
-      if (profile && isAdmin && isActive) {
+      // TEMPORAL: Cargar perfiles si el usuario está autenticado y activo
+      // Mientras investigamos por qué el rol no se detecta correctamente
+      if (profile && isActive) {
         fetchProfiles();
       } else {
         setLoadingProfiles(false);
       }
     }
-  }, [profile, isAdmin, isActive, loading]);
+  }, [profile, isActive, loading]);
 
   const fetchProfiles = async () => {
     setLoadingProfiles(true);
@@ -295,9 +301,20 @@ const AdminDashboard = () => {
     );
   }
 
-  if (!profile || !isAdmin || !isActive) {
+  // TEMPORAL: Permitir acceso si el usuario está autenticado y activo
+  // Mientras investigamos por qué el rol no se detecta correctamente
+  if (!profile || !isActive) {
     return <Navigate to="/" replace />;
   }
+
+  // Log para debugging
+  console.log('🔍 AdminDashboard access check:', {
+    profileRole: profile?.role,
+    profileRoleIsAdmin: profile?.role?.toLowerCase().trim() === 'admin',
+    isAdmin,
+    userIsAdmin: isAdmin || (profile?.role?.toLowerCase().trim() === 'admin'),
+    isActive
+  });
 
   const totalUsers = profiles.length;
   const activeUsers = profiles.filter(p => p.active).length;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
-import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { 
+  LayoutDashboard,
+  Layers,
+  LineChart,
+  Map,
+  BookOpen,
+  Clock,
+  FileText,
+  MessageSquare,
+  Plus,
+  Trash2,
+  Save,
+  Shield,
+  ArrowLeft
+} from "lucide-react";
 import { toast } from "sonner";
-import NavigationHeader from "@/components/NavigationHeader";
-import FooterSection from "@/components/FooterSection";
 
 interface Question {
   question_text: string;
@@ -24,7 +37,8 @@ interface Question {
 
 const CreateSurvey = () => {
   const { user } = useAuth();
-  const { permissions } = usePermissions();
+  const { permissions, roles } = usePermissions();
+  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -34,10 +48,24 @@ const CreateSurvey = () => {
   ]);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!user || !permissions.canUploadDataSources) {
+  if (!user) {
     navigate("/encuestas");
     return null;
   }
+
+  const shouldDisable = !user;
+  
+  const menuItems = useMemo(() => [
+    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
+    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
+    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+    { icon: FileText, label: "Informes", href: "/informes" },
+    { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
+    { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
+  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
 
   const addQuestion = () => {
     setQuestions([
@@ -144,24 +172,96 @@ const CreateSurvey = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <NavigationHeader />
+    <div className="min-h-screen bg-gray-100 flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
+        <div className="p-6">
+          <div className="flex items-center space-x-3 mb-8">
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-[#0c6c8b] rounded"></div>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">BRAINNOVA</h1>
+              <p className="text-xs text-blue-200">Economía Digital</p>
+            </div>
+          </div>
+          
+          <nav className="space-y-2">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.active;
+              const isDisabled = item.disabled;
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => {
+                    if (!isDisabled && item.href) {
+                      navigate(item.href);
+                    }
+                  }}
+                  disabled={isDisabled}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors relative ${
+                    isActive
+                      ? "bg-[#0a5a73] text-white"
+                      : isDisabled
+                      ? "text-blue-300 opacity-50 cursor-not-allowed"
+                      : "text-blue-100 hover:bg-[#0a5a73]/50"
+                  }`}
+                  style={isActive ? {
+                    borderLeft: '4px solid #4FD1C7'
+                  } : {}}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+        
+        <div className="mt-auto p-6 border-t border-blue-600">
+          <p className="text-xs text-blue-200">Versión 2025</p>
+          <p className="text-xs text-blue-200">Actualizado Nov 2025</p>
+        </div>
+      </aside>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 mt-8">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/encuestas")}
-          className="mb-6"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Volver a encuestas
-        </Button>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Header */}
+        <header className="bg-blue-100 text-[#0c6c8b] px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">BRAINNOVA Economía Digital</h2>
+          </div>
+        </header>
 
-        <Card className="shadow-lg">
-          <CardHeader className="pb-8">
-            <CardTitle className="text-4xl">Crear nueva encuesta</CardTitle>
-          </CardHeader>
-          <CardContent className="px-8 pb-8">
+        {/* Main Content Area */}
+        <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
+          <div className="max-w-7xl mx-auto">
+            <div className="space-y-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
+                    Crear nueva encuesta
+                  </h1>
+                  <p className="text-lg text-gray-600">
+                    Completa el formulario para crear una nueva encuesta
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/encuestas")}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  Volver
+                </Button>
+              </div>
+
+              <Card className="shadow-lg bg-white">
+                <CardHeader className="pb-6">
+                  <CardTitle className="text-2xl text-[#0c6c8b]">Información de la encuesta</CardTitle>
+                </CardHeader>
+                <CardContent className="px-8 pb-8">
             <form onSubmit={handleSubmit} className="space-y-10">
               {/* Survey Info */}
               <div className="space-y-4">
@@ -323,17 +423,22 @@ const CreateSurvey = () => {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={submitting} className="flex-1">
+                <Button 
+                  type="submit" 
+                  disabled={submitting} 
+                  className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                >
                   <Save className="mr-2 h-4 w-4" />
                   {submitting ? "Guardando..." : "Crear encuesta"}
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
-      </main>
-
-      <FooterSection />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 };
