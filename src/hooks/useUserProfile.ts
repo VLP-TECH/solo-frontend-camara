@@ -63,8 +63,19 @@ export const useUserProfile = () => {
     }
   };
 
-  const isAdmin = profile?.role === 'admin';
+  // Comparación robusta del rol admin (case-insensitive y trim)
+  const isAdmin = profile?.role?.toLowerCase().trim() === 'admin';
   const isActive = profile?.active || false;
+  
+  // Debug: log del rol para troubleshooting
+  if (profile) {
+    console.log('useUserProfile - Role check:', {
+      role: profile.role,
+      roleLowercase: profile.role?.toLowerCase().trim(),
+      isAdmin,
+      user_id: profile.user_id
+    });
+  }
 
   return {
     profile,

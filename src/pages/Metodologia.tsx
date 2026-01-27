@@ -33,7 +33,7 @@ const Metodologia = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, loading: profileLoading } = useUserProfile();
+  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
@@ -43,22 +43,43 @@ const Metodologia = () => {
     navigate('/');
   };
 
+  // Debug: verificar valores de admin
+  console.log('Metodologia - Admin check:', {
+    isAdmin,
+    rolesIsAdmin: roles.isAdmin,
+    profileRole: profile?.role,
+    profileLoading,
+    user: !!user,
+    profile: profile
+  });
+
   // El botón siempre debe estar activo para admins
   // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
+  // Si el usuario está autenticado pero el perfil aún no se ha cargado, mantener habilitado
   const isUserAdmin = isAdmin || roles.isAdmin;
-  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  const shouldDisable = (!user || profileLoading) ? false : !isUserAdmin;
   
-  const menuItems = useMemo(() => [
-    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-    { icon: FileText, label: "Informes", href: "/informes" },
-    { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-    { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
-  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
+  const menuItems = useMemo(() => {
+    console.log('Metodologia - menuItems calculation:', {
+      shouldDisable,
+      isAdmin,
+      rolesIsAdmin: roles.isAdmin,
+      profileLoading,
+      user: !!user
+    });
+    
+    return [
+      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
+      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
+      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+      { icon: FileText, label: "Informes", href: "/informes" },
+      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
+      { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
+      { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
+    ];
+  }, [isAdmin, roles.isAdmin, profileLoading, shouldDisable, user]);
 
   const dimensiones = [
     "Transformación Digital Empresarial",
