@@ -78,8 +78,23 @@ const Dashboard = () => {
   // Verificar directamente el rol del perfil para evitar problemas de timing
   const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
   const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
-  // Solo deshabilitar si el usuario está autenticado, el perfil está cargado Y definitivamente NO es admin
-  const shouldDisable = user && !profileLoading && !isUserAdmin;
+  
+  // Log detallado para debugging
+  console.log('🔍 [FINAL] Dashboard button state:', {
+    user: !!user,
+    profileLoading,
+    profileRole: profile?.role,
+    profileRoleIsAdmin,
+    isAdmin,
+    rolesIsAdmin: roles.isAdmin,
+    isUserAdmin,
+    shouldDisable: false // Temporalmente siempre habilitado si hay usuario
+  });
+  
+  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
+  // La protección real está en la ruta /admin-usuarios que verifica permisos
+  // Esto permite acceso mientras investigamos por qué el rol no se detecta correctamente
+  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard", active: true },

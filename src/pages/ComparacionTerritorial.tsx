@@ -73,12 +73,9 @@ const ComparacionTerritorial = () => {
     return "Bajo";
   };
 
-  // El botón siempre debe estar activo para admins
-  // Verificar directamente el rol del perfil para evitar problemas de timing
-  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
-  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
-  // Solo deshabilitar si el usuario está autenticado, el perfil está cargado Y definitivamente NO es admin
-  const shouldDisable = user && !profileLoading && !isUserAdmin;
+  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
+  // La protección real está en la ruta /admin-usuarios que verifica permisos
+  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
