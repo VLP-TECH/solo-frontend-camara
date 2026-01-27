@@ -188,7 +188,6 @@ const Dimensiones = () => {
 
   // El botón siempre debe estar activo para admins
   // Verificar directamente el rol del perfil para evitar problemas de timing
-  const { profile, loading: profileLoading } = useUserProfile();
   const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
   const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
   // Solo deshabilitar si el usuario está autenticado, el perfil está cargado Y definitivamente NO es admin
