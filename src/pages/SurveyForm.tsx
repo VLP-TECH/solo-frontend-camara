@@ -45,7 +45,7 @@ const SurveyForm = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, loading: profileLoading } = useUserProfile();
+  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -127,9 +127,11 @@ const SurveyForm = () => {
   };
 
   // El botón siempre debe estar activo para admins
-  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
-  const isUserAdmin = isAdmin || roles.isAdmin;
-  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  // Verificar directamente el rol del perfil para evitar problemas de timing
+  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
+  // Solo deshabilitar si el usuario está autenticado, el perfil está cargado Y definitivamente NO es admin
+  const shouldDisable = user && !profileLoading && !isUserAdmin;
   
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },

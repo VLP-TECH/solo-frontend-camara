@@ -75,9 +75,11 @@ const Dashboard = () => {
   ];
 
   // El botón siempre debe estar activo para admins
-  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
-  const isUserAdmin = isAdmin || roles.isAdmin;
-  const shouldDisable = profileLoading ? false : !isUserAdmin;
+  // Verificar directamente el rol del perfil para evitar problemas de timing
+  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
+  // Solo deshabilitar si el usuario está autenticado, el perfil está cargado Y definitivamente NO es admin
+  const shouldDisable = user && !profileLoading && !isUserAdmin;
   
   const menuItems = useMemo(() => [
     { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard", active: true },

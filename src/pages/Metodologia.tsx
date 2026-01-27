@@ -43,6 +43,13 @@ const Metodologia = () => {
     navigate('/');
   };
 
+  // #region agent log
+  const debugData = {isAdmin,rolesIsAdmin:roles.isAdmin,profileRole:profile?.role,profileLoading,hasUser:!!user,hasProfile:!!profile,profileRoleRaw:profile?.role,profileRoleType:typeof profile?.role,profileRoleLength:profile?.role?.length};
+  console.log('🔍 [DEBUG] Metodologia render values:', debugData);
+  try { localStorage.setItem('debug_metodologia_render', JSON.stringify({...debugData, timestamp: Date.now()})); } catch(e) {}
+  fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:46',message:'Metodologia render values',data:debugData,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+
   // Debug: verificar valores de admin
   console.log('Metodologia - Admin check:', {
     isAdmin,
@@ -54,12 +61,29 @@ const Metodologia = () => {
   });
 
   // El botón siempre debe estar activo para admins
-  // Solo deshabilitar si el perfil está cargado Y el usuario NO es admin
-  // Si el usuario está autenticado pero el perfil aún no se ha cargado, mantener habilitado
-  const isUserAdmin = isAdmin || roles.isAdmin;
-  const shouldDisable = (!user || profileLoading) ? false : !isUserAdmin;
+  // Verificar directamente el rol del perfil para evitar problemas de timing
+  // Solo deshabilitar si el perfil está cargado Y definitivamente NO es admin
+  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
+  
+  // Solo deshabilitar si:
+  // 1. El usuario está autenticado Y
+  // 2. El perfil ya se cargó (no está loading) Y
+  // 3. Definitivamente NO es admin
+  const shouldDisable = user && !profileLoading && !isUserAdmin;
+  
+  // #region agent log
+  const debugShouldDisable = {hasUser:!!user,profileLoading,profileRole:profile?.role,profileRoleIsAdmin,isAdmin,rolesIsAdmin:roles.isAdmin,isUserAdmin,shouldDisable};
+  console.log('🔍 [DEBUG] shouldDisable calculation:', debugShouldDisable);
+  try { localStorage.setItem('debug_shouldDisable', JSON.stringify({...debugShouldDisable, timestamp: Date.now()})); } catch(e) {}
+  fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:62',message:'shouldDisable calculation',data:debugShouldDisable,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
   
   const menuItems = useMemo(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:64',message:'useMemo menuItems entry',data:{shouldDisable,isAdmin,rolesIsAdmin:roles.isAdmin,profileLoading,hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
     console.log('Metodologia - menuItems calculation:', {
       shouldDisable,
       isAdmin,
@@ -68,7 +92,7 @@ const Metodologia = () => {
       user: !!user
     });
     
-    return [
+    const items = [
       { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
       { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
       { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
@@ -79,6 +103,12 @@ const Metodologia = () => {
       { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
       { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
     ];
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:80',message:'useMemo menuItems exit',data:{gestiónDisabled:items[8].disabled,shouldDisable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
+    return items;
   }, [isAdmin, roles.isAdmin, profileLoading, shouldDisable, user]);
 
   const dimensiones = [
