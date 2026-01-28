@@ -26,7 +26,8 @@ import {
   Eye,
   Upload,
   Loader2,
-  Plus
+  Plus,
+  AlertCircle
 } from "lucide-react";
 import { InformeContent } from "@/components/InformeBrainnova2025";
 import CreateInformeDialog from "@/components/CreateInformeDialog";
@@ -55,6 +56,7 @@ const Informes = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [pdfLoadError, setPdfLoadError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSignOut = async () => {
@@ -79,6 +81,7 @@ const Informes = () => {
   const handleInformeClick = (informe: Informe) => {
     setSelectedInforme(informe);
     setShowPreview(true);
+    setPdfLoadError(false);
   };
 
   const handleDownload = (pdfUrl?: string) => {
@@ -459,12 +462,49 @@ const Informes = () => {
                 
                 <TabsContent value="pdf" className="mt-4">
                   <div className="border rounded-lg bg-white relative">
-                    <iframe
-                      key={selectedInforme?.pdfUrl} // Key para forzar re-render cuando cambie la URL
-                      src={`${selectedInforme?.pdfUrl}?t=${Date.now()}#toolbar=1&navpanes=1&scrollbar=1`}
-                      className="w-full h-[70vh] border-0"
-                      title={selectedInforme?.title}
-                    />
+                    {pdfLoadError ? (
+                      <div className="flex flex-col items-center justify-center h-[70vh] p-8 text-center">
+                        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          Error al cargar el PDF
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                          No se pudo cargar el archivo PDF. Por favor, intenta descargarlo directamente.
+                        </p>
+                        <Button
+                          onClick={() => handleDownload(selectedInforme?.pdfUrl)}
+                          className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Descargar PDF
+                        </Button>
+                      </div>
+                    ) : (
+                      <iframe
+                        key={selectedInforme?.pdfUrl} // Key para forzar re-render cuando cambie la URL
+                        src={`${selectedInforme?.pdfUrl}?t=${Date.now()}#toolbar=1&navpanes=1&scrollbar=1`}
+                        className="w-full h-[70vh] border-0"
+                        title={selectedInforme?.title}
+                        onError={() => {
+                          console.error('Error loading PDF in iframe');
+                          setPdfLoadError(true);
+                        }}
+                        onLoad={(e) => {
+                          // Verificar si el iframe cargó correctamente
+                          try {
+                            const iframe = e.target as HTMLIFrameElement;
+                            // Si el iframe no puede acceder al contenido, podría ser un error CORS
+                            if (iframe.contentWindow === null) {
+                              setPdfLoadError(true);
+                            }
+                          } catch (err) {
+                            // Error al acceder al contenido del iframe (probablemente CORS)
+                            console.warn('Cannot access iframe content (CORS):', err);
+                            // No establecer error aquí, ya que algunos navegadores bloquean el acceso pero el PDF se carga
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
