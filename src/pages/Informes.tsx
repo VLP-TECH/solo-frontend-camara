@@ -1,17 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import { 
   LayoutDashboard,
   Layers,
@@ -21,15 +20,18 @@ import {
   Clock,
   FileText,
   MessageSquare,
+  Shield,
+  LogOut,
   Download,
   Eye,
-  Filter,
-  HelpCircle,
-  Shield,
-  LogOut
+  Upload,
+  Loader2,
+  Plus
 } from "lucide-react";
+import { InformeContent } from "@/components/InformeBrainnova2025";
+import CreateInformeDialog from "@/components/CreateInformeDialog";
 
-interface Report {
+interface Informe {
   id: string;
   title: string;
   description: string;
@@ -37,7 +39,7 @@ interface Report {
   pages: number;
   category: string;
   format: string;
-  icon: any;
+  pdfUrl?: string;
 }
 
 const Informes = () => {
@@ -45,124 +47,191 @@ const Informes = () => {
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
   const { isAdmin, loading: profileLoading } = useUserProfile();
-  const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
-  const [selectedAno, setSelectedAno] = useState("2024");
-  const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
-  
-  const [selectedAnoFilter, setSelectedAnoFilter] = useState("Todos los años");
-  const [selectedDimensionFilter, setSelectedDimensionFilter] = useState("Todas las dimensiones");
-  const [selectedFormatoFilter, setSelectedFormatoFilter] = useState("Todos los formatos");
-  const [selectedCategoriaFilter, setSelectedCategoriaFilter] = useState("Todas las categorías");
-
-  // Datos de ejemplo de informes
-  const reports: Report[] = [
-    {
-      id: "1",
-      title: "Informe Anual de Economía Digital 2024",
-      description: "Análisis completo del estado de la economía digital en la Comunitat Valenciana con comparativas nacionales e internacionales.",
-      date: "15 Nov 2024",
-      pages: 128,
-      category: "Informes anuales",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "2",
-      title: "Informe Provincial de Transformación Digital",
-      description: "Desglose territorial del Índice BRAINNOVA por provincias: Valencia, Alicante y Castellón. Incluye mapas y rankings.",
-      date: "08 Nov 2024",
-      pages: 84,
-      category: "Informes territoriales",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "3",
-      title: "Indicadores Sectoriales: Industria 4.0",
-      description: "Estudio detallado de la adopción tecnológica en el sector industrial valenciano. Big Data, IA y automatización.",
-      date: "02 Nov 2024",
-      pages: 56,
-      category: "Informes sectoriales",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "4",
-      title: "Informe de Infraestructuras Digitales",
-      description: "Análisis de cobertura 5G, fibra óptica, centros de datos y conectividad en toda la región. Evolución 2020-2024.",
-      date: "25 Oct 2024",
-      pages: 72,
-      category: "Informes temáticos",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "5",
-      title: "Informe de Capital Humano Digital",
-      description: "Análisis de competencias digitales, formación y empleo TIC en la Comunitat Valenciana.",
-      date: "18 Oct 2024",
-      pages: 64,
-      category: "Informes temáticos",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "6",
-      title: "Informe de Emprendimiento Digital",
-      description: "Ecosistema de startups, inversión en innovación y apoyo al emprendimiento tecnológico.",
-      date: "10 Oct 2024",
-      pages: 48,
-      category: "Informes temáticos",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "7",
-      title: "Informe Anual de Economía Digital 2023",
-      description: "Análisis completo del estado de la economía digital en la Comunitat Valenciana con comparativas nacionales e internacionales.",
-      date: "15 Nov 2023",
-      pages: 120,
-      category: "Informes anuales",
-      format: "PDF",
-      icon: FileText
-    },
-    {
-      id: "8",
-      title: "Datos Abiertos: Indicadores BRAINNOVA",
-      description: "Repositorio completo de datos en formato abierto para análisis y visualización.",
-      date: "01 Nov 2024",
-      pages: 0,
-      category: "Datos abiertos",
-      format: "CSV",
-      icon: FileText
-    }
-  ];
-
-  const filteredReports = reports.filter(report => {
-    const matchesAno = selectedAnoFilter === "Todos los años" || report.date.includes(selectedAnoFilter);
-    const matchesCategoria = selectedCategoriaFilter === "Todas las categorías" || report.category === selectedCategoriaFilter;
-    const matchesFormato = selectedFormatoFilter === "Todos los formatos" || report.format === selectedFormatoFilter;
-    return matchesAno && matchesCategoria && matchesFormato;
-  });
-
-  const categories = [
-    { name: "Informes anuales", count: reports.filter(r => r.category === "Informes anuales").length },
-    { name: "Informes temáticos", count: reports.filter(r => r.category === "Informes temáticos").length },
-    { name: "Informes sectoriales", count: reports.filter(r => r.category === "Informes sectoriales").length },
-    { name: "Informes territoriales", count: reports.filter(r => r.category === "Informes territoriales").length },
-    { name: "Datos abiertos", count: reports.filter(r => r.category === "Datos abiertos").length },
-  ];
-
-  const clearFilters = () => {
-    setSelectedAnoFilter("Todos los años");
-    setSelectedDimensionFilter("Todas las dimensiones");
-    setSelectedFormatoFilter("Todos los formatos");
-    setSelectedCategoriaFilter("Todas las categorías");
-  };
+  const { toast } = useToast();
+  const [selectedInforme, setSelectedInforme] = useState<Informe | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadingInformeId, setUploadingInformeId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  // Lista de informes disponibles (estado para poder actualizar después de subir)
+  const [informes, setInformes] = useState<Informe[]>([
+    {
+      id: "brainnova-2025",
+      title: "Informe BRAINNOVA 2025",
+      description: "Informe completo del Índice BRAINNOVA 2025 sobre el estado de la economía digital en la Comunitat Valenciana. Análisis exhaustivo de dimensiones, indicadores y comparativas territoriales.",
+      date: "Enero 2025",
+      pages: 14,
+      category: "Informes anuales",
+      format: "PDF + HTML",
+      pdfUrl: "/informes/InformeBrainnova_2025.pdf"
+    }
+  ]);
+
+  const handleInformeClick = (informe: Informe) => {
+    setSelectedInforme(informe);
+    setShowPreview(true);
+  };
+
+  const handleDownload = (pdfUrl?: string) => {
+    if (pdfUrl) {
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = pdfUrl.split('/').pop() || 'informe.pdf';
+      link.click();
+    }
+  };
+
+  const handleUploadClick = (informe: Informe, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedInforme(informe);
+    setShowUploadDialog(true);
+    setSelectedFile(null);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        toast({
+          title: "Error",
+          description: "Por favor selecciona un archivo PDF",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+        toast({
+          title: "Error",
+          description: "El archivo es demasiado grande. Máximo 50MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadPDF = async () => {
+    if (!selectedFile || !selectedInforme) {
+      toast({
+        title: "Error",
+        description: "Por favor selecciona un archivo PDF",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Generar nombre único para el archivo
+      const fileName = `${selectedInforme.id}-${Date.now()}.pdf`;
+      const filePath = `informes/${fileName}`;
+
+      let newPdfUrl = '';
+
+      // Intentar subir a Supabase Storage primero
+      try {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('informes')
+          .upload(filePath, selectedFile, {
+            cacheControl: '3600',
+            upsert: true // Permitir sobrescribir si existe
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        // Obtener URL pública del archivo
+        const { data: urlData } = supabase.storage
+          .from('informes')
+          .getPublicUrl(filePath);
+
+        newPdfUrl = urlData.publicUrl;
+      } catch (storageError: any) {
+        // Si falla Supabase Storage, usar FormData para subir al backend
+        console.warn('Error uploading to Supabase Storage, trying backend:', storageError);
+        
+        try {
+          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          formData.append('informe_id', selectedInforme.id);
+          formData.append('filename', fileName);
+
+          const response = await fetch(`${API_BASE_URL}/api/v1/admin/upload-informe-pdf`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error('Error al subir el PDF al servidor');
+          }
+
+          const data = await response.json();
+          newPdfUrl = data.url || `/informes/${fileName}`;
+        } catch (backendError: any) {
+          // Último fallback: usar URL local (requiere que el archivo se copie manualmente)
+          console.warn('Backend upload failed, using local path:', backendError);
+          newPdfUrl = `/informes/${fileName}`;
+          
+          toast({
+            title: "Advertencia",
+            description: "El PDF se ha configurado pero debe copiarse manualmente a public/informes/",
+            variant: "default",
+          });
+        }
+      }
+
+      // Actualizar el informe con la nueva URL (reemplaza completamente el PDF anterior)
+      const updatedInforme = { ...selectedInforme, pdfUrl: newPdfUrl };
+      
+      // Actualizar la lista de informes
+      setInformes(prev => prev.map(inf => 
+        inf.id === selectedInforme.id 
+          ? updatedInforme
+          : inf
+      ));
+
+      // Actualizar el informe seleccionado (esto actualizará el modal si está abierto)
+      setSelectedInforme(updatedInforme);
+
+      toast({
+        title: "Éxito",
+        description: "PDF subido correctamente. El nuevo PDF ha reemplazado al anterior.",
+      });
+
+      // Si el modal de visualización está abierto, mantenerlo abierto para que vea el nuevo PDF
+      // Si no está abierto, abrirlo automáticamente para mostrar el nuevo PDF
+      if (!showPreview) {
+        setShowPreview(true);
+      }
+
+      // Cerrar diálogo de upload y limpiar
+      setShowUploadDialog(false);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      console.error('Error uploading PDF:', error);
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo subir el PDF. Por favor, inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
@@ -263,217 +332,237 @@ const Informes = () => {
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
           <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Main Content */}
-              <div className="lg:col-span-3">
-                {/* Title Section */}
-                <div className="mb-6">
-                  <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
-                    Repositorio de Informes
-                  </h1>
-                  <p className="text-lg text-gray-600">
-                    Accede a los informes generados a partir del Sistema de Indicadores BRAINNOVA.
-                  </p>
-                </div>
-
-                {/* Search Filters */}
-                <Card className="p-4 mb-6 bg-white">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Filter className="h-5 w-5 text-gray-600" />
-                    <h3 className="font-semibold text-gray-900">Filtros de búsqueda</h3>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                    <Select value={selectedAnoFilter} onValueChange={setSelectedAnoFilter}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Todos los años">Todos los años</SelectItem>
-                        <SelectItem value="2024">2024</SelectItem>
-                        <SelectItem value="2023">2023</SelectItem>
-                        <SelectItem value="2022">2022</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={selectedDimensionFilter} onValueChange={setSelectedDimensionFilter}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Todas las dimensiones">Todas las dimensiones</SelectItem>
-                        <SelectItem value="Transformación Digital">Transformación Digital</SelectItem>
-                        <SelectItem value="Capital Humano">Capital Humano</SelectItem>
-                        <SelectItem value="Infraestructura">Infraestructura</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={selectedFormatoFilter} onValueChange={setSelectedFormatoFilter}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Todos los formatos">Todos los formatos</SelectItem>
-                        <SelectItem value="PDF">PDF</SelectItem>
-                        <SelectItem value="CSV">CSV</SelectItem>
-                        <SelectItem value="Excel">Excel</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={selectedCategoriaFilter} onValueChange={setSelectedCategoriaFilter}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Todas las categorías">Todas las categorías</SelectItem>
-                        <SelectItem value="Informes anuales">Informes anuales</SelectItem>
-                        <SelectItem value="Informes temáticos">Informes temáticos</SelectItem>
-                        <SelectItem value="Informes sectoriales">Informes sectoriales</SelectItem>
-                        <SelectItem value="Informes territoriales">Informes territoriales</SelectItem>
-                        <SelectItem value="Datos abiertos">Datos abiertos</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-600">
-                      {filteredReports.length} informes encontrados
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="text-[#0c6c8b] hover:text-[#0a5a73]"
-                    >
-                      Limpiar filtros
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* Reports Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {filteredReports.map((report) => {
-                    const Icon = report.icon;
-                    return (
-                      <Card key={report.id} className="bg-white hover:shadow-lg transition-shadow">
-                        <CardHeader>
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-blue-50 rounded-lg">
-                                <Icon className="h-6 w-6 text-[#0c6c8b]" />
-                              </div>
-                              <div>
-                                <span className="inline-block px-2 py-1 text-xs font-semibold bg-[#0c6c8b] text-white rounded">
-                                  {report.format}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <CardTitle className="text-lg mb-2">{report.title}</CardTitle>
-                          <CardDescription className="text-sm text-gray-600">
-                            {report.description}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between text-sm text-gray-600">
-                              <span>{report.date}</span>
-                              {report.pages > 0 && <span>{report.pages} págs</span>}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
-                                {report.category}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 pt-2">
-                              <Button
-                                className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                                size="sm"
-                              >
-                                <Download className="h-4 w-4 mr-2" />
-                                Descargar
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="px-3"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
+            {/* Title Section */}
+            <div className="mb-8 flex items-center justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-[#0c6c8b] mb-3">
+                  Repositorio de Informes
+                </h1>
+                <p className="text-lg text-gray-600">
+                  Accede a los informes generados a partir del Sistema de Indicadores BRAINNOVA.
+                </p>
               </div>
+              {isAdmin && (
+                <Button
+                  className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                  onClick={() => setShowCreateDialog(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Informe
+                </Button>
+              )}
+            </div>
 
-              {/* Right Sidebar */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* Categorías */}
-                <Card className="bg-white">
+            {/* Lista de Informes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {informes.map((informe) => (
+                <Card 
+                  key={informe.id} 
+                  className="bg-white hover:shadow-lg transition-all cursor-pointer border-2 hover:border-[#0c6c8b]"
+                  onClick={() => handleInformeClick(informe)}
+                >
                   <CardHeader>
-                    <CardTitle className="text-lg">Categorías</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {categories.map((category) => (
-                        <div
-                          key={category.name}
-                          className="flex items-center justify-between text-sm cursor-pointer hover:text-[#0c6c8b] transition-colors"
-                          onClick={() => setSelectedCategoriaFilter(category.name)}
-                        >
-                          <span>{category.name}</span>
-                          <span className="text-gray-500">{category.count}</span>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-blue-50 rounded-lg">
+                          <FileText className="h-6 w-6 text-[#0c6c8b]" />
                         </div>
-                      ))}
+                        <div>
+                          <span className="inline-block px-2 py-1 text-xs font-semibold bg-[#0c6c8b] text-white rounded">
+                            {informe.format}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-
-                {/* Estadísticas */}
-                <Card className="bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Estadísticas</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Total informes</span>
-                      <span className="text-sm font-semibold">{reports.length}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Último publicado</span>
-                      <span className="text-sm font-semibold">Nov 2024</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Ayuda */}
-                <Card className="bg-[#0c6c8b] text-white">
-                  <CardHeader>
-                    <div className="flex items-center space-x-2 mb-2">
-                      <HelpCircle className="h-5 w-5" />
-                      <CardTitle className="text-lg text-white">¿Necesitas ayuda?</CardTitle>
-                    </div>
+                    <CardTitle className="text-lg mb-2">{informe.title}</CardTitle>
+                    <CardDescription className="text-sm text-gray-600 line-clamp-3">
+                      {informe.description}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-blue-100 mb-4">
-                      Contacta con nuestro equipo para solicitudes especiales
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="w-full bg-white text-[#0c6c8b] hover:bg-gray-100"
-                      size="sm"
-                    >
-                      Contactar →
-                    </Button>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between text-sm text-gray-600">
+                        <span>{informe.date}</span>
+                        {informe.pages > 0 && <span>{informe.pages} págs</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                          {informe.category}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <Button
+                          className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInformeClick(informe);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Informe
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="px-3"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(informe.pdfUrl);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="px-3 border-green-500 text-green-700 hover:bg-green-50"
+                            onClick={(e) => handleUploadClick(informe, e)}
+                            title="Subir nuevo PDF (Admin)"
+                          >
+                            <Upload className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
-              </div>
+              ))}
             </div>
           </div>
         </main>
+
+        {/* Modal de Previsualización */}
+        <Dialog open={showPreview} onOpenChange={setShowPreview}>
+          <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+            <DialogHeader className="px-6 pt-6 border-b">
+              <DialogTitle className="text-2xl font-bold text-[#0c6c8b]">
+                {selectedInforme?.title}
+              </DialogTitle>
+              <p className="text-sm text-gray-500 mt-1">
+                {selectedInforme?.date} • {selectedInforme?.pages} páginas
+              </p>
+            </DialogHeader>
+            <div className="p-6">
+              <Tabs defaultValue="pdf" className="w-full" key={selectedInforme?.pdfUrl}>
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="html">Ver Online (HTML)</TabsTrigger>
+                  <TabsTrigger value="pdf">Ver PDF</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="html" className="mt-4">
+                  <div className="border rounded-lg bg-gray-50 max-h-[70vh] overflow-y-auto p-6">
+                    <InformeContent />
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="pdf" className="mt-4">
+                  <div className="border rounded-lg bg-white relative">
+                    <iframe
+                      key={selectedInforme?.pdfUrl} // Key para forzar re-render cuando cambie la URL
+                      src={`${selectedInforme?.pdfUrl}?t=${Date.now()}#toolbar=1&navpanes=1&scrollbar=1`}
+                      className="w-full h-[70vh] border-0"
+                      title={selectedInforme?.title}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+              
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                <Button
+                  className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                  onClick={() => handleDownload(selectedInforme?.pdfUrl)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPreview(false)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog para subir PDF (solo admin) */}
+        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Subir PDF del Informe</DialogTitle>
+              <DialogDescription>
+                Selecciona un archivo PDF para reemplazar el informe actual de "{selectedInforme?.title}".
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="pdf-upload">Archivo PDF</Label>
+                <Input
+                  id="pdf-upload"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  disabled={uploading}
+                />
+                {selectedFile && (
+                  <p className="text-sm text-gray-600">
+                    Archivo seleccionado: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 pt-4">
+                <Button
+                  className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                  onClick={handleUploadPDF}
+                  disabled={!selectedFile || uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Subiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Subir PDF
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowUploadDialog(false);
+                    setSelectedFile(null);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = '';
+                    }
+                  }}
+                  disabled={uploading}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog para crear nuevo informe */}
+        <CreateInformeDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          onSuccess={() => {
+            // Recargar la lista de informes
+            // Por ahora solo mostrar mensaje, luego se puede conectar con la BD
+            toast({
+              title: "Éxito",
+              description: "Informe creado correctamente. Recarga la página para verlo.",
+            });
+          }}
+        />
       </div>
     </div>
   );
