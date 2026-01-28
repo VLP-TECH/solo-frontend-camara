@@ -85,21 +85,31 @@ const Surveys = () => {
     navigate(`/encuestas/${surveyId}`);
   };
 
-  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
-  // La protección real está en la ruta /admin-usuarios que verifica permisos
-  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
-  
-  const menuItems = useMemo(() => [
-    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-    { icon: FileText, label: "Informes", href: "/informes" },
-    { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
-    { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
-  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
+  const menuItems = useMemo(() => {
+    const items: Array<{
+      icon: any;
+      label: string;
+      href: string;
+      active?: boolean;
+      disabled?: boolean;
+    }> = [
+      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
+      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
+      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+      { icon: FileText, label: "Informes", href: "/informes" },
+      { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
+      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    ];
+    
+    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
+    if (canCreateSurvey) {
+      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
+    }
+    
+    return items;
+  }, [canCreateSurvey]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

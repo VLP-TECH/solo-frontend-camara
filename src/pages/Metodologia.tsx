@@ -58,16 +58,19 @@ const Metodologia = () => {
   // La protección real está en la ruta /admin-usuarios que verifica permisos
   const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
+  // Verificar si el usuario es admin o superadmin
+  const role = profile?.role?.toLowerCase().trim();
+  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
+  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
+  
   const menuItems = useMemo(() => {
-    console.log('Metodologia - menuItems calculation:', {
-      shouldDisable,
-      isAdmin,
-      rolesIsAdmin: roles.isAdmin,
-      profileLoading,
-      user: !!user
-    });
-    
-    const items = [
+    const items: Array<{
+      icon: any;
+      label: string;
+      href: string;
+      active?: boolean;
+      disabled?: boolean;
+    }> = [
       { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
       { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
       { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
@@ -76,11 +79,15 @@ const Metodologia = () => {
       { icon: FileText, label: "Informes", href: "/informes" },
       { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
       { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
-      { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
     ];
     
+    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
+    if (userIsAdmin) {
+      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
+    }
+    
     return items;
-  }, [isAdmin, roles.isAdmin, profileLoading, shouldDisable, user]);
+  }, [userIsAdmin]);
 
   const dimensiones = [
     "Transformación Digital Empresarial",

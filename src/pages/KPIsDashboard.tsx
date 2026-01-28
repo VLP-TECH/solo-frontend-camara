@@ -127,21 +127,36 @@ const KPIsDashboard = () => {
     return Math.min(100, Math.max(0, (valor / 100) * 100));
   };
 
-  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
-  // La protección real está en la ruta /admin-usuarios que verifica permisos
-  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
+  // Verificar si el usuario es admin o superadmin
+  const role = profile?.role?.toLowerCase().trim();
+  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
+  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
   
-  const menuItems = useMemo(() => [
-    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis", active: true },
-    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-    { icon: FileText, label: "Informes", href: "/informes" },
-    { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-    { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
-  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
+  const menuItems = useMemo(() => {
+    const items: Array<{
+      icon: any;
+      label: string;
+      href: string;
+      active?: boolean;
+      disabled?: boolean;
+    }> = [
+      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
+      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis", active: true },
+      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+      { icon: FileText, label: "Informes", href: "/informes" },
+      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
+      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    ];
+    
+    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
+    if (userIsAdmin) {
+      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
+    }
+    
+    return items;
+  }, [userIsAdmin]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
