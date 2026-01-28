@@ -102,12 +102,11 @@ const AdminDashboard = () => {
       { icon: BookOpen, label: "Metodología", href: "/metodologia" },
     ];
     
-    // Solo mostrar "Carga de datos (CSV)" para admin y superadmin
+    // Solo mostrar "Carga de datos (CSV)" y "Gestión de Usuarios" para admin y superadmin
     if (userIsAdmin) {
       items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
+      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false });
     }
-    
-    items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false });
     
     return items;
   }, [userIsAdmin]); // Incluir userIsAdmin en dependencias

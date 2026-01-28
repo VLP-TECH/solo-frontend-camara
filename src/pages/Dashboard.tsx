@@ -44,17 +44,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
-  
-  // Debug: verificar valores de admin
-  console.log('Dashboard - Admin check:', {
-    isAdmin,
-    rolesIsAdmin: roles.isAdmin,
-    profileRole: profile?.role,
-    profileLoading,
-    user: !!user,
-    shouldDisable: profileLoading ? false : !(isAdmin || roles.isAdmin)
-  });
+  const { isAdmin, profile } = useUserProfile();
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
@@ -75,28 +65,10 @@ const Dashboard = () => {
     { dimension: "Sostenibilidad Digital", cv: 66, ue: 62, topUE: 87 },
   ];
 
-  // El botón siempre debe estar activo para admins y superadmins
-  // Verificar directamente el rol del perfil para evitar problemas de timing
+  // Verificar si el usuario es admin o superadmin
   const role = profile?.role?.toLowerCase().trim();
   const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
-  
-  // Log detallado para debugging
-  console.log('🔍 [FINAL] Dashboard button state:', {
-    user: !!user,
-    profileLoading,
-    profileRole: profile?.role,
-    profileRoleIsAdmin,
-    isAdmin,
-    rolesIsAdmin: roles.isAdmin,
-    isUserAdmin,
-    shouldDisable: false // Temporalmente siempre habilitado si hay usuario
-  });
-  
-  // TEMPORAL: Botón siempre habilitado si el usuario está autenticado
-  // La protección real está en la ruta /admin-usuarios que verifica permisos
-  // Esto permite acceso mientras investigamos por qué el rol no se detecta correctamente
-  const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
+  const isUserAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
   
   const menuItems = useMemo(() => {
     const items: Array<{
@@ -116,15 +88,14 @@ const Dashboard = () => {
       { icon: BookOpen, label: "Metodología", href: "/metodologia" },
     ];
     
-    // Solo mostrar "Carga de datos (CSV)" para admin y superadmin
+    // Solo mostrar "Carga de datos (CSV)" y "Gestión de Usuarios" para admin y superadmin
     if (isUserAdmin) {
       items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
+      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
     }
     
-    items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable });
-    
     return items;
-  }, [shouldDisable, isUserAdmin]);
+  }, [isUserAdmin]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -153,7 +124,6 @@ const Dashboard = () => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (item.href) {
-                      console.log('Navigating to:', item.href);
                       navigate(item.href);
                     }
                   }}
