@@ -27,7 +27,8 @@ import {
   BookOpen,
   Clock,
   FileText,
-  MessageSquare
+  MessageSquare,
+  Database
 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -87,11 +88,13 @@ const AdminDashboard = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    { icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false },
   ], []); // Sin dependencias ya que siempre debe estar habilitado en esta página
 
   // Verificar directamente el rol del perfil además de isAdmin
-  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const role = profile?.role?.toLowerCase().trim();
+  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
   const userIsAdmin = isAdmin || profileRoleIsAdmin;
 
   useEffect(() => {
@@ -319,7 +322,7 @@ const AdminDashboard = () => {
   const totalUsers = profiles.length;
   const activeUsers = profiles.filter(p => p.active).length;
   const pendingUsers = profiles.filter(p => !p.active).length;
-  const adminUsers = profiles.filter(p => p.role === 'admin').length;
+  const adminUsers = profiles.filter(p => p.role === 'admin' || p.role === 'superadmin').length;
   const editorUsers = profiles.filter(p => p.role === 'editor').length;
 
   return (
@@ -495,6 +498,7 @@ const AdminDashboard = () => {
                             <SelectItem value="user">Usuario</SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
                             <SelectItem value="admin">Administrador</SelectItem>
+                            <SelectItem value="superadmin">Super Administrador</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -604,15 +608,15 @@ const AdminDashboard = () => {
                         <TableCell>
                           <Badge 
                             variant={
-                              userProfile.role === 'admin' 
+                              (userProfile.role === 'admin' || userProfile.role === 'superadmin')
                                 ? 'default' 
                                 : userProfile.role === 'editor' 
                                   ? 'outline' 
                                   : 'secondary'
                             }
                           >
-                            {userProfile.role === 'admin' 
-                              ? 'Administrador' 
+                            {(userProfile.role === 'admin' || userProfile.role === 'superadmin')
+                              ? userProfile.role === 'superadmin' ? 'Super Admin' : 'Administrador'
                               : userProfile.role === 'editor' 
                                 ? 'Editor' 
                                 : 'Usuario'}
@@ -650,6 +654,7 @@ const AdminDashboard = () => {
                                   <SelectItem value="user">Usuario</SelectItem>
                                   <SelectItem value="editor">Editor</SelectItem>
                                   <SelectItem value="admin">Admin</SelectItem>
+                                  <SelectItem value="superadmin">Super Admin</SelectItem>
                                 </SelectContent>
                               </Select>
                             )}

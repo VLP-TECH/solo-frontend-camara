@@ -77,12 +77,13 @@ export const useUserProfile = () => {
     }
   };
 
-  // Comparación robusta del rol admin (case-insensitive y trim)
-  const isAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  // Comparación robusta del rol admin o superadmin (case-insensitive y trim)
+  const role = profile?.role?.toLowerCase().trim();
+  const isAdmin = role === 'admin' || role === 'superadmin';
   const isActive = profile?.active || false;
   
   // #region agent log
-  const debugIsAdmin = {hasProfile:!!profile,role:profile?.role,roleLowercase:profile?.role?.toLowerCase()?.trim(),isAdmin,comparisonResult:profile?.role?.toLowerCase()?.trim() === 'admin',roleAfterLowercase:profile?.role?.toLowerCase(),roleAfterTrim:profile?.role?.toLowerCase()?.trim()};
+  const debugIsAdmin = {hasProfile:!!profile,role:profile?.role,roleLowercase:role,isAdmin,comparisonResult:isAdmin,roleAfterLowercase:profile?.role?.toLowerCase(),roleAfterTrim:role};
   console.log('🔍 [DEBUG] isAdmin calculation:', debugIsAdmin);
   try { localStorage.setItem('debug_isAdmin_calc', JSON.stringify({...debugIsAdmin, timestamp: Date.now()})); } catch(e) {}
   fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserProfile.ts:67',message:'isAdmin calculation',data:debugIsAdmin,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});

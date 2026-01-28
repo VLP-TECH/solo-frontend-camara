@@ -28,7 +28,8 @@ import {
   ArrowUpRight,
   MessageSquare,
   LogOut,
-  Shield
+  Shield,
+  Database
 } from "lucide-react";
 import {
   RadarChart,
@@ -74,9 +75,10 @@ const Dashboard = () => {
     { dimension: "Sostenibilidad Digital", cv: 66, ue: 62, topUE: 87 },
   ];
 
-  // El botón siempre debe estar activo para admins
+  // El botón siempre debe estar activo para admins y superadmins
   // Verificar directamente el rol del perfil para evitar problemas de timing
-  const profileRoleIsAdmin = profile?.role?.toLowerCase().trim() === 'admin';
+  const role = profile?.role?.toLowerCase().trim();
+  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
   const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
   
   // Log detallado para debugging
@@ -105,8 +107,9 @@ const Dashboard = () => {
     { icon: FileText, label: "Informes", href: "/informes" },
     { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
     { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    { icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" },
     { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
-  ], [isAdmin, roles.isAdmin, profileLoading, shouldDisable]);
+  ], [shouldDisable]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

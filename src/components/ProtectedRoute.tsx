@@ -12,7 +12,7 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading, signOut } = useAuth();
-  const { profile, loading: profileLoading, isActive } = useUserProfile();
+  const { profile, loading: profileLoading, isActive, isAdmin } = useUserProfile();
   const navigate = useNavigate();
 
   // Mostrar loading mientras se verifica la autenticación
@@ -32,8 +32,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     return <Navigate to="/auth" replace />;
   }
 
-  // Si el usuario no está activo, mostrar mensaje de espera
-  if (profile && !isActive) {
+  // Si el usuario no está activo, mostrar mensaje de espera (excepto admins y superadmins)
+  if (profile && !isActive && !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">

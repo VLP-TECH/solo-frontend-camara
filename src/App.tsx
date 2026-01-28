@@ -21,6 +21,7 @@ import Tendencias from "./pages/Tendencias";
 import BrainnovaScore from "./pages/BrainnovaScore";
 import Metodologia from "./pages/Metodologia";
 import Informes from "./pages/Informes";
+import DataUpload from "./pages/DataUpload";
 import EvolucionTemporal from "./pages/EvolucionTemporal";
 import ComparacionTerritorial from "./pages/ComparacionTerritorial";
 import Dimensiones from "./pages/Dimensiones";
@@ -158,6 +159,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Informes />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/carga-datos" 
+                element={
+                  <ProtectedRoute>
+                    <DataUpload />
                   </ProtectedRoute>
                 } 
               />
