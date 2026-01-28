@@ -98,18 +98,33 @@ const Dashboard = () => {
   // Esto permite acceso mientras investigamos por qué el rol no se detecta correctamente
   const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
-  const menuItems = useMemo(() => [
-    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard", active: true },
-    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-    { icon: FileText, label: "Informes", href: "/informes" },
-    { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-    { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
-  ], [shouldDisable]);
+  const menuItems = useMemo(() => {
+    const items: Array<{
+      icon: any;
+      label: string;
+      href: string;
+      active?: boolean;
+      disabled?: boolean;
+    }> = [
+      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard", active: true },
+      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
+      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+      { icon: FileText, label: "Informes", href: "/informes" },
+      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
+      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    ];
+    
+    // Solo mostrar "Carga de datos (CSV)" para admin y superadmin
+    if (isUserAdmin) {
+      items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
+    }
+    
+    items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable });
+    
+    return items;
+  }, [shouldDisable, isUserAdmin]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

@@ -78,24 +78,39 @@ const AdminDashboard = () => {
     navigate('/');
   };
 
-  // Memoizar menuItems para evitar recálculos innecesarios que puedan deshabilitar el botón
-  const menuItems = useMemo(() => [
-    { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-    { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-    { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-    { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-    { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-    { icon: FileText, label: "Informes", href: "/informes" },
-    { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-    { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-    { icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" },
-    { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false },
-  ], []); // Sin dependencias ya que siempre debe estar habilitado en esta página
-
   // Verificar directamente el rol del perfil además de isAdmin
   const role = profile?.role?.toLowerCase().trim();
   const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
   const userIsAdmin = isAdmin || profileRoleIsAdmin;
+
+  // Memoizar menuItems para evitar recálculos innecesarios que puedan deshabilitar el botón
+  const menuItems = useMemo(() => {
+    const items: Array<{
+      icon: any;
+      label: string;
+      href: string;
+      active?: boolean;
+      disabled?: boolean;
+    }> = [
+      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
+      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
+      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
+      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
+      { icon: FileText, label: "Informes", href: "/informes" },
+      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
+      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+    ];
+    
+    // Solo mostrar "Carga de datos (CSV)" para admin y superadmin
+    if (userIsAdmin) {
+      items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
+    }
+    
+    items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false });
+    
+    return items;
+  }, [userIsAdmin]); // Incluir userIsAdmin en dependencias
 
   useEffect(() => {
     if (!loading) {
