@@ -43,12 +43,6 @@ const Metodologia = () => {
     navigate('/');
   };
 
-  // #region agent log
-  const debugData = {isAdmin,rolesIsAdmin:roles.isAdmin,profileRole:profile?.role,profileLoading,hasUser:!!user,hasProfile:!!profile,profileRoleRaw:profile?.role,profileRoleType:typeof profile?.role,profileRoleLength:profile?.role?.length};
-  console.log('🔍 [DEBUG] Metodologia render values:', debugData);
-  try { localStorage.setItem('debug_metodologia_render', JSON.stringify({...debugData, timestamp: Date.now()})); } catch(e) {}
-  fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:46',message:'Metodologia render values',data:debugData,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
 
   // Debug: verificar valores de admin
   console.log('Metodologia - Admin check:', {
@@ -65,10 +59,6 @@ const Metodologia = () => {
   const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
   const menuItems = useMemo(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:64',message:'useMemo menuItems entry',data:{shouldDisable,isAdmin,rolesIsAdmin:roles.isAdmin,profileLoading,hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-    
     console.log('Metodologia - menuItems calculation:', {
       shouldDisable,
       isAdmin,
@@ -88,10 +78,6 @@ const Metodologia = () => {
       { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
       { icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", disabled: shouldDisable },
     ];
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Metodologia.tsx:80',message:'useMemo menuItems exit',data:{gestiónDisabled:items[8].disabled,shouldDisable},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     
     return items;
   }, [isAdmin, roles.isAdmin, profileLoading, shouldDisable, user]);
