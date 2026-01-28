@@ -39,16 +39,10 @@ const Surveys = () => {
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
 
-  // Debug: verificar valores de admin
-  const canCreateSurvey = isAdmin || roles.isAdmin || permissions.canUploadDataSources;
-  console.log('Surveys page - Admin check:', {
-    isAdmin,
-    rolesIsAdmin: roles.isAdmin,
-    canUploadDataSources: permissions.canUploadDataSources,
-    canCreateSurvey,
-    profileRole: profile?.role,
-    user: !!user
-  });
+  // Solo admin y superadmin pueden crear encuestas
+  const role = profile?.role?.toLowerCase().trim();
+  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
+  const canCreateSurvey = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
 
   useEffect(() => {
     fetchSurveys();
@@ -183,7 +177,7 @@ const Surveys = () => {
                     Participa en las encuestas del ecosistema digital valenciano
                   </p>
                 </div>
-                {user && (
+                {canCreateSurvey && (
                   <Button
                     onClick={() => navigate("/encuestas/crear")}
                     size="lg"
