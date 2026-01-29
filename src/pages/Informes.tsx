@@ -47,7 +47,7 @@ const Informes = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, loading: profileLoading } = useUserProfile();
+  const { isAdmin, loading: profileLoading, profile } = useUserProfile();
   const { toast } = useToast();
   const [selectedInforme, setSelectedInforme] = useState<Informe | null>(null);
   const [showPreview, setShowPreview] = useState(false);

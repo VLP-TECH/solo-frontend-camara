@@ -3,6 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -19,7 +34,12 @@ import {
   Calendar,
   Users,
   Plus,
-  Shield
+  Shield,
+  LogOut,
+  Pencil,
+  BarChart3,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,13 +51,53 @@ interface Survey {
   active: boolean;
 }
 
+interface SurveyQuestion {
+  id: string;
+  question_text: string;
+  order_index: number;
+}
+
+interface SurveyResponse {
+  id: string;
+  user_id: string;
+  answers: Record<string, string>;
+  submitted_at: string;
+}
+
+interface ProfileInfo {
+  user_id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+}
+
+function escapeCSV(value: string): string {
+  if (value == null) return "";
+  const s = String(value);
+  if (s.includes(",") || s.includes("\n") || s.includes('"')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
 const Surveys = () => {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const [showResultsDialog, setShowResultsDialog] = useState(false);
+  const [resultsSurvey, setResultsSurvey] = useState<{ id: string; title: string } | null>(null);
+  const [resultsQuestions, setResultsQuestions] = useState<SurveyQuestion[]>([]);
+  const [resultsResponses, setResultsResponses] = useState<SurveyResponse[]>([]);
+  const [resultsProfiles, setResultsProfiles] = useState<Record<string, ProfileInfo>>({});
+  const [loadingResults, setLoadingResults] = useState(false);
+  const { user, signOut } = useAuth();
   const { permissions, roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   // Solo admin y superadmin pueden crear encuestas
   const role = profile?.role?.toLowerCase().trim();
@@ -83,6 +143,85 @@ const Surveys = () => {
       return;
     }
     navigate(`/encuestas/${surveyId}`);
+  };
+
+  const handleVerResultados = async (survey: Survey) => {
+    setResultsSurvey({ id: survey.id, title: survey.title });
+    setShowResultsDialog(true);
+    setLoadingResults(true);
+    setResultsQuestions([]);
+    setResultsResponses([]);
+    setResultsProfiles({});
+    try {
+      const [questionsRes, responsesRes] = await Promise.all([
+        supabase
+          .from("survey_questions")
+          .select("id, question_text, order_index")
+          .eq("survey_id", survey.id)
+          .order("order_index", { ascending: true }),
+        supabase
+          .from("survey_responses")
+          .select("id, user_id, answers, submitted_at")
+          .eq("survey_id", survey.id)
+          .order("submitted_at", { ascending: true }),
+      ]);
+      if (questionsRes.error) throw questionsRes.error;
+      if (responsesRes.error) throw responsesRes.error;
+      const questions = (questionsRes.data || []) as SurveyQuestion[];
+      const responses = (responsesRes.data || []) as SurveyResponse[];
+      setResultsQuestions(questions);
+      setResultsResponses(responses);
+      const userIds = [...new Set(responses.map((r) => r.user_id))];
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("user_id, email, first_name, last_name")
+          .in("user_id", userIds);
+        const map: Record<string, ProfileInfo> = {};
+        (profilesData || []).forEach((p: ProfileInfo) => {
+          map[p.user_id] = p;
+        });
+        setResultsProfiles(map);
+      }
+    } catch (err: any) {
+      console.error("Error loading results:", err);
+      toast.error("Error al cargar los resultados");
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
+  const buildCSVAndDownload = () => {
+    if (!resultsSurvey || resultsQuestions.length === 0) return;
+    const headers = [
+      "Fecha",
+      "Usuario",
+      "Email",
+      ...resultsQuestions.map((q) => escapeCSV(q.question_text)),
+    ];
+    const rows = resultsResponses.map((r) => {
+      const profile = resultsProfiles[r.user_id];
+      const userLabel = profile
+        ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email || r.user_id
+        : r.user_id;
+      const email = profile?.email ?? "";
+      const cells = [
+        new Date(r.submitted_at).toLocaleString("es-ES"),
+        userLabel,
+        email,
+        ...resultsQuestions.map((q) => r.answers[q.id] ?? ""),
+      ];
+      return cells.map(escapeCSV).join(",");
+    });
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `resultados-${resultsSurvey.title.replace(/[^a-z0-9]/gi, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV descargado");
   };
 
   const menuItems = useMemo(() => {
@@ -171,6 +310,19 @@ const Surveys = () => {
         <header className="bg-blue-100 text-[#0c6c8b] px-6 py-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">BRAINNOVA Economía Digital</h2>
+            <div className="flex items-center space-x-2">
+              {user && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="flex items-center space-x-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Salir</span>
+                </Button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -245,13 +397,45 @@ const Surveys = () => {
                             })}
                           </span>
                         </div>
-                        <Button
-                          onClick={() => handleStartSurvey(survey.id)}
-                          className="w-full bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                        >
-                          <Users className="mr-2 h-4 w-4" />
-                          Participar
-                        </Button>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            onClick={() => handleStartSurvey(survey.id)}
+                            className="w-full bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                          >
+                            <Users className="mr-2 h-4 w-4" />
+                            Participar
+                          </Button>
+                          {canCreateSurvey && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleVerResultados(survey);
+                                }}
+                                className="w-full border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                              >
+                                <BarChart3 className="mr-2 h-4 w-4" />
+                                Ver resultados
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  navigate(`/encuestas/editar/${survey.id}`);
+                                }}
+                                className="w-full border-[#0c6c8b] text-[#0c6c8b] hover:bg-[#0c6c8b]/10"
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar encuesta
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -261,6 +445,79 @@ const Surveys = () => {
           </div>
         </main>
       </div>
+
+      {/* Diálogo Ver resultados */}
+      <Dialog open={showResultsDialog} onOpenChange={setShowResultsDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-[#0c6c8b]">
+              Resultados: {resultsSurvey?.title}
+            </DialogTitle>
+            <DialogDescription>
+              Respuestas de la encuesta. Puedes descargar todo en CSV.
+            </DialogDescription>
+          </DialogHeader>
+          {loadingResults ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-10 w-10 animate-spin text-[#0c6c8b]" />
+            </div>
+          ) : resultsResponses.length === 0 ? (
+            <p className="text-gray-600 py-6 text-center">
+              Aún no hay respuestas para esta encuesta.
+            </p>
+          ) : (
+            <>
+              <div className="flex-1 overflow-auto border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                      <TableHead className="whitespace-nowrap">Usuario</TableHead>
+                      <TableHead className="whitespace-nowrap">Email</TableHead>
+                      {resultsQuestions.map((q) => (
+                        <TableHead key={q.id} className="max-w-[200px] truncate" title={q.question_text}>
+                          {q.question_text.length > 30 ? q.question_text.slice(0, 30) + "…" : q.question_text}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {resultsResponses.map((r) => {
+                      const profile = resultsProfiles[r.user_id];
+                      const userLabel = profile
+                        ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.email || r.user_id
+                        : r.user_id;
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="whitespace-nowrap text-sm">
+                            {new Date(r.submitted_at).toLocaleString("es-ES")}
+                          </TableCell>
+                          <TableCell className="text-sm">{userLabel}</TableCell>
+                          <TableCell className="text-sm">{profile?.email ?? "—"}</TableCell>
+                          {resultsQuestions.map((q) => (
+                            <TableCell key={q.id} className="max-w-[200px] truncate text-sm">
+                              {r.answers[q.id] ?? "—"}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex justify-end pt-4 border-t">
+                <Button
+                  onClick={buildCSVAndDownload}
+                  className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Descargar CSV
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

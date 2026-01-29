@@ -44,7 +44,8 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
-  const { isAdmin, profile } = useUserProfile();
+  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
+  
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
@@ -65,10 +66,11 @@ const Dashboard = () => {
     { dimension: "Sostenibilidad Digital", cv: 66, ue: 62, topUE: 87 },
   ];
 
-  // Verificar si el usuario es admin o superadmin
+  // El botón siempre debe estar activo para admins y superadmins
+  // Verificar directamente el rol del perfil para evitar problemas de timing
   const role = profile?.role?.toLowerCase().trim();
   const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const isUserAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
+  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
   
   const menuItems = useMemo(() => {
     const items: Array<{
@@ -124,6 +126,7 @@ const Dashboard = () => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (item.href) {
+                      console.log('Navigating to:', item.href);
                       navigate(item.href);
                     }
                   }}

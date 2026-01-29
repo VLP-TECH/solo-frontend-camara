@@ -109,7 +109,7 @@ const AdminDashboard = () => {
     }
     
     return items;
-  }, [userIsAdmin]); // Incluir userIsAdmin en dependencias
+  }, [userIsAdmin]);
 
   useEffect(() => {
     if (!loading) {

@@ -15,6 +15,7 @@ import AdminConfig from "./pages/AdminConfig";
 import Surveys from "./pages/Surveys";
 import SurveyForm from "./pages/SurveyForm";
 import CreateSurvey from "./pages/CreateSurvey";
+import EditSurvey from "./pages/EditSurvey";
 import OpenData from "./pages/OpenData";
 import KPIsDashboard from "./pages/KPIsDashboard";
 import Tendencias from "./pages/Tendencias";
@@ -103,6 +104,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <CreateSurvey />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/encuestas/editar/:id" 
+                element={
+                  <ProtectedRoute>
+                    <EditSurvey />
                   </ProtectedRoute>
                 } 
               />
