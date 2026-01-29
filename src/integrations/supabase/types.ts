@@ -148,6 +148,7 @@ export type Database = {
           id: string
           title: string
           updated_at: string
+          visible_to_users: boolean
         }
         Insert: {
           active?: boolean
@@ -157,6 +158,7 @@ export type Database = {
           id?: string
           title: string
           updated_at?: string
+          visible_to_users?: boolean
         }
         Update: {
           active?: boolean
@@ -166,6 +168,7 @@ export type Database = {
           id?: string
           title?: string
           updated_at?: string
+          visible_to_users?: boolean
         }
         Relationships: [
           {

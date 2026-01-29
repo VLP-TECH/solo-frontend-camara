@@ -43,6 +43,7 @@ const CreateSurvey = () => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
+  const [visibleToUsers, setVisibleToUsers] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([
     { question_text: "", question_type: "text", options: [], required: true }
   ]);
@@ -155,7 +156,8 @@ const CreateSurvey = () => {
           title,
           description: description || null,
           created_by: user.id,
-          active
+          active,
+          visible_to_users: visibleToUsers,
         })
         .select()
         .single();
@@ -311,6 +313,14 @@ const CreateSurvey = () => {
                     onCheckedChange={setActive}
                   />
                   <Label htmlFor="active">Encuesta activa</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="visible_to_users"
+                    checked={visibleToUsers}
+                    onCheckedChange={setVisibleToUsers}
+                  />
+                  <Label htmlFor="visible_to_users">Visible para usuarios (rol user y editor)</Label>
                 </div>
               </div>
 

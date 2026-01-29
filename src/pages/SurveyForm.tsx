@@ -30,6 +30,7 @@ interface Survey {
   id: string;
   title: string;
   description: string | null;
+  visible_to_users?: boolean;
 }
 
 interface Question {
@@ -76,7 +77,20 @@ const SurveyForm = () => {
       if (surveyResult.error) throw surveyResult.error;
       if (questionsResult.error) throw questionsResult.error;
 
-      setSurvey(surveyResult.data);
+      const surveyData = surveyResult.data;
+      if (surveyData?.visible_to_users === false && !profileLoading) {
+        const isAdminOrSuperadmin = isAdmin || roles.isAdmin || roles.isSuperAdmin
+          || profile?.role?.toLowerCase().trim() === "admin"
+          || profile?.role?.toLowerCase().trim() === "superadmin";
+        if (!isAdminOrSuperadmin) {
+          toast.error("Esta encuesta no está disponible");
+          navigate("/encuestas");
+          setLoading(false);
+          return;
+        }
+      }
+
+      setSurvey(surveyData);
       setQuestions(questionsResult.data || []);
     } catch (error) {
       console.error("Error fetching survey:", error);

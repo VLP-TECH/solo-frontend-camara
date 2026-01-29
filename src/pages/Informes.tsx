@@ -57,6 +57,7 @@ const Informes = () => {
   const [uploading, setUploading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [pdfLoadError, setPdfLoadError] = useState(false);
+  const [pdfCacheBuster, setPdfCacheBuster] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSignOut = async () => {
@@ -82,6 +83,7 @@ const Informes = () => {
     setSelectedInforme(informe);
     setShowPreview(true);
     setPdfLoadError(false);
+    setPdfCacheBuster(Date.now());
   };
 
   const handleDownload = (pdfUrl?: string) => {
@@ -207,6 +209,7 @@ const Informes = () => {
 
       // Actualizar el informe seleccionado (esto actualizará el modal si está abierto)
       setSelectedInforme(updatedInforme);
+      setPdfCacheBuster(Date.now());
 
       toast({
         title: "Éxito",
@@ -496,8 +499,8 @@ const Informes = () => {
                       </div>
                     ) : (
                       <iframe
-                        key={selectedInforme?.pdfUrl} // Key para forzar re-render cuando cambie la URL
-                        src={`${selectedInforme?.pdfUrl}?t=${Date.now()}#toolbar=1&navpanes=1&scrollbar=1`}
+                        key={`${selectedInforme?.pdfUrl}-${pdfCacheBuster}`}
+                        src={`${selectedInforme?.pdfUrl}?t=${pdfCacheBuster}#toolbar=1&navpanes=1&scrollbar=1`}
                         className="w-full h-[70vh] border-0"
                         title={selectedInforme?.title}
                         onError={() => {

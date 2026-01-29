@@ -45,6 +45,7 @@ const EditSurvey = () => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
+  const [visibleToUsers, setVisibleToUsers] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([
     { question_text: "", question_type: "text", options: [], required: true }
   ]);
@@ -94,6 +95,7 @@ const EditSurvey = () => {
       setTitle(survey.title);
       setDescription(survey.description || "");
       setActive(survey.active);
+      setVisibleToUsers(survey.visible_to_users !== false);
 
       const qList = questionsResult.data || [];
       if (qList.length === 0) {
@@ -209,7 +211,7 @@ const EditSurvey = () => {
     try {
       const { error: surveyError } = await supabase
         .from("surveys")
-        .update({ title, description: description || null, active })
+        .update({ title, description: description || null, active, visible_to_users: visibleToUsers })
         .eq("id", id);
 
       if (surveyError) throw surveyError;
@@ -353,6 +355,14 @@ const EditSurvey = () => {
                       <div className="flex items-center space-x-2">
                         <Switch id="active" checked={active} onCheckedChange={setActive} />
                         <Label htmlFor="active">Encuesta activa</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="visible_to_users"
+                          checked={visibleToUsers}
+                          onCheckedChange={setVisibleToUsers}
+                        />
+                        <Label htmlFor="visible_to_users">Visible para usuarios (rol user y editor)</Label>
                       </div>
                     </div>
 

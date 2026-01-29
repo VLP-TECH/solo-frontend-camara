@@ -49,6 +49,7 @@ interface Survey {
   description: string | null;
   created_at: string;
   active: boolean;
+  visible_to_users?: boolean;
 }
 
 interface SurveyQuestion {
@@ -127,7 +128,12 @@ const Surveys = () => {
         console.error("Error fetching surveys:", error);
         throw error;
       }
-      setSurveys(data || []);
+      let list = data || [];
+      // Usuarios y editores solo ven encuestas marcadas como visibles para ellos
+      if (!permissions.canUploadDataSources) {
+        list = list.filter((s) => s.visible_to_users !== false);
+      }
+      setSurveys(list);
     } catch (error: any) {
       console.error("Error fetching surveys:", error);
       toast.error(`Error al cargar las encuestas: ${error.message || 'Error desconocido'}`);
