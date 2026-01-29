@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -43,6 +43,19 @@ interface Informe {
   pdfUrl?: string;
 }
 
+const DEFAULT_INFORMES: Informe[] = [
+  {
+    id: "brainnova-2025",
+    title: "Informe BRAINNOVA 2025",
+    description: "Informe completo del Índice BRAINNOVA 2025 sobre el estado de la economía digital en la Comunitat Valenciana. Análisis exhaustivo de dimensiones, indicadores y comparativas territoriales.",
+    date: "Enero 2025",
+    pages: 14,
+    category: "Informes anuales",
+    format: "PDF + HTML",
+    pdfUrl: "/informes/InformeBrainnova_2025.pdf"
+  }
+];
+
 const Informes = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
@@ -58,26 +71,56 @@ const Informes = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [pdfCacheBuster, setPdfCacheBuster] = useState(0);
+  const [informesLoading, setInformesLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cargar informes desde Supabase (o usar lista por defecto)
+  useEffect(() => {
+    let cancelled = false;
+    const loadInformes = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('informes' as any)
+          .select('id, title, description, date, pages, category, format, pdf_url');
+
+        if (cancelled) return;
+        if (error) {
+          console.warn('No se pudieron cargar informes desde Supabase, usando lista por defecto:', error.message);
+          setInformes(DEFAULT_INFORMES);
+          return;
+        }
+        if (data && data.length > 0) {
+          const mapped: Informe[] = data.map((row: any) => ({
+            id: String(row.id ?? ''),
+            title: String(row.title ?? ''),
+            description: String(row.description ?? ''),
+            date: String(row.date ?? ''),
+            pages: Number(row.pages) || 0,
+            category: String(row.category ?? ''),
+            format: String(row.format ?? 'PDF'),
+            pdfUrl: row.pdf_url ? String(row.pdf_url) : undefined
+          }));
+          setInformes(mapped);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('Error cargando informes:', e);
+          setInformes(DEFAULT_INFORMES);
+        }
+      } finally {
+        if (!cancelled) setInformesLoading(false);
+      }
+    };
+    loadInformes();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
 
-  // Lista de informes disponibles (estado para poder actualizar después de subir)
-  const [informes, setInformes] = useState<Informe[]>([
-    {
-      id: "brainnova-2025",
-      title: "Informe BRAINNOVA 2025",
-      description: "Informe completo del Índice BRAINNOVA 2025 sobre el estado de la economía digital en la Comunitat Valenciana. Análisis exhaustivo de dimensiones, indicadores y comparativas territoriales.",
-      date: "Enero 2025",
-      pages: 14,
-      category: "Informes anuales",
-      format: "PDF + HTML",
-      pdfUrl: "/informes/InformeBrainnova_2025.pdf"
-    }
-  ]);
+  const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);
 
   const handleInformeClick = (informe: Informe) => {
     setSelectedInforme(informe);
@@ -153,6 +196,7 @@ const Informes = () => {
           });
 
         if (uploadError) {
+          console.error('Supabase Storage upload error:', uploadError);
           throw uploadError;
         }
 
@@ -197,6 +241,20 @@ const Informes = () => {
         }
       }
 
+      // Persistir pdf_url en Supabase (tabla informes) para que se guarde correctamente
+      try {
+        const { error: updateError } = await supabase
+          .from('informes' as any)
+          .update({ pdf_url: newPdfUrl })
+          .eq('id', selectedInforme.id);
+
+        if (updateError) {
+          console.warn('No se pudo actualizar pdf_url en Supabase (la tabla puede no tener la columna pdf_url):', updateError.message);
+        }
+      } catch (e) {
+        console.warn('Error actualizando informe en Supabase:', e);
+      }
+
       // Actualizar el informe con la nueva URL (reemplaza completamente el PDF anterior)
       const updatedInforme = { ...selectedInforme, pdfUrl: newPdfUrl };
       
@@ -230,9 +288,10 @@ const Informes = () => {
       }
     } catch (error: any) {
       console.error('Error uploading PDF:', error);
+      const msg = error?.message || "No se pudo subir el PDF. Por favor, inténtalo de nuevo.";
       toast({
-        title: "Error",
-        description: error.message || "No se pudo subir el PDF. Por favor, inténtalo de nuevo.",
+        title: "Error al subir PDF",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -466,7 +525,7 @@ const Informes = () => {
               </p>
             </DialogHeader>
             <div className="p-6">
-              <Tabs defaultValue="pdf" className="w-full" key={selectedInforme?.pdfUrl}>
+              <Tabs defaultValue="html" className="w-full" key={selectedInforme?.pdfUrl}>
                 <TabsList className="grid w-full grid-cols-2 mb-4">
                   <TabsTrigger value="html">Ver Online (HTML)</TabsTrigger>
                   <TabsTrigger value="pdf">Ver PDF</TabsTrigger>
