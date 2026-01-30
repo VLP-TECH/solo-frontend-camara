@@ -304,9 +304,12 @@ const DimensionDetail = () => {
           </nav>
         </div>
         
-        <div className="mt-auto p-6 border-t border-blue-600">
-          <p className="text-xs text-blue-200">Versión 2025</p>
-          <p className="text-xs text-blue-200">Actualizado Nov 2025</p>
+        <div className="mt-auto p-6">
+          <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
+            <img src="/camara-valencia-blanco.png" alt="Cámara Valencia" className="h-10 w-auto object-contain" />
+          </a>
+          <p className="text-xs text-blue-200">Versión 2026</p>
+          <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
         </div>
       </aside>
 

@@ -150,9 +150,12 @@ const Dashboard = () => {
           </nav>
         </div>
         
-        <div className="mt-auto p-6 border-t border-blue-600">
-          <p className="text-xs text-blue-200">Versión 2025</p>
-          <p className="text-xs text-blue-200">Actualizado Nov 2025</p>
+        <div className="mt-auto p-6">
+          <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
+            <img src="/camara-valencia-blanco.png" alt="Cámara Valencia" className="h-10 w-auto object-contain" />
+          </a>
+          <p className="text-xs text-blue-200">Versión 2026</p>
+          <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
         </div>
       </aside>
 
@@ -162,7 +165,7 @@ const Dashboard = () => {
         <header className="bg-[#0c6c8b] text-white px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold">BRAINNOVA Economía Digital</h2>
+              <h2 className="text-lg font-semibold">Plataforma de Economía Digital</h2>
             </div>
             
             <div className="flex items-center space-x-2">

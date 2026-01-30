@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { TrendingUp, Activity, Zap, ArrowRight } from "lucide-react";
 const HeroSection = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
+  const [logoError, setLogoError] = useState(false);
 
   const handleAccessDashboard = () => {
     // Si está cargando, redirigir a /auth de todas formas para forzar login
@@ -58,7 +60,7 @@ const HeroSection = () => {
               BRAINNOVA
             </h1>
             <p className="text-lg text-slate-300 font-light">
-              COMUNITAT VALENCIANA
+              Cámara Valencia
             </p>
           </div>
 
@@ -89,41 +91,75 @@ const HeroSection = () => {
             <Card className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300">
               <Zap className="h-10 w-10 text-gray-700 mx-auto mb-4" />
               <h3 className="text-4xl font-bold text-gray-900 mb-2">2025</h3>
-              <p className="text-gray-600 text-sm font-medium">Actualizado Nov 2025</p>
+              <p className="text-gray-600 text-sm font-medium">Actualizado Febrero 2026</p>
             </Card>
           </div>
 
           {/* Call to Action Button */}
-          <div className="flex flex-col items-center space-y-4 mt-12">
+          <div className="flex flex-col items-center mt-12 pt-4 pb-2">
             <Button 
               size="lg" 
-              className="bg-white hover:bg-gray-50 text-[#0c6c8b] text-lg px-8 py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-bold"
+              className="bg-white hover:bg-gray-50 text-[#0c6c8b] text-lg px-10 py-7 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-bold"
               onClick={handleAccessDashboard}
             >
               Acceder al Dashboard
               <ArrowRight className="h-5 w-5 text-[#0c6c8b]" />
             </Button>
-            <p className="text-slate-400 text-sm">
-              Explora datos, dimensiones e informes en profundidad
-            </p>
           </div>
 
-          {/* Additional Info */}
-          <div className="flex items-center justify-center gap-2 mt-16">
-            <div className="w-2 h-2 bg-[#3B82F6] rounded-full"></div>
-            <p className="text-slate-400 text-sm">
-              Sistema de Indicadores de Transformación Digital
-            </p>
+          {/* Footer: debajo del botón, enlaces legales */}
+          <div className="z-10 flex items-center justify-center w-full pl-4 pr-4 sm:pl-6 sm:pr-6 py-4 mt-8">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white">
+              <a
+                href="https://www.camaravalencia.com/aviso-legal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                Aviso legal
+              </a>
+              <a
+                href="https://www.camaravalencia.com/politica-de-privacidad"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                Política de privacidad
+              </a>
+              <a
+                href="https://www.camaravalencia.com/politica-de-cookies"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                Política de Cookies
+              </a>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Footer Copyright */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-        <p className="text-slate-500 text-xs text-center">
-          © 2025 BRAINNOVA · Comunitat Valenciana · Plataforma de Economía Digital
-        </p>
-      </div>
+      {/* Logo Cámara València: esquina inferior izquierda, .png; si falla la imagen se muestra texto */}
+      <a
+        href="https://www.camaravalencia.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute bottom-0 left-0 pl-4 pb-4 sm:pl-6 sm:pb-6 z-10 block min-h-[2.5rem]"
+      >
+        {!logoError ? (
+          <img
+            src="/camara-valencia-blanco.png"
+            alt="Cámara València"
+            className="h-10 sm:h-12 w-auto object-contain object-left"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <span className="text-white font-serif text-left block">
+            <span className="block text-lg sm:text-xl font-bold tracking-tight">Cámara</span>
+            <span className="block text-sm sm:text-base font-normal text-white/90">València</span>
+          </span>
+        )}
+      </a>
     </section>
   );
 };
