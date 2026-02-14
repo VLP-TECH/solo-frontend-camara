@@ -6,8 +6,7 @@ import { Menu, X, BarChart3, FileText, MessageSquare, Database, LogOut, Shield, 
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
-
-const LOGO_SRC = `${import.meta.env.BASE_URL}brainnova-logo.png`;
+import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
 
 const NavigationHeader = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -66,7 +65,7 @@ const NavigationHeader = () => {
                 <span className="text-xl font-bold text-foreground">Brainnova</span>
               ) : (
                 <img
-                  src={LOGO_SRC}
+                  src={BRAINNOVA_LOGO_SRC}
                   alt="Brainnova"
                   className="h-40 w-auto max-w-[720px] object-contain object-left"
                   onError={() => setLogoError(true)}

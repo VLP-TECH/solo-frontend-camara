@@ -9,6 +9,7 @@ import {
   Twitter,
   Linkedin
 } from "lucide-react";
+import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
 
 const FooterSection = () => {
   const quickLinks = [
@@ -41,7 +42,7 @@ const FooterSection = () => {
           <div className="space-y-4">
             <div className="flex items-center space-x-3">
               <img
-                src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+                src={BRAINNOVA_LOGO_SRC}
                 alt="Brainnova"
                 className="h-7 w-auto max-w-[100px] object-contain"
               />

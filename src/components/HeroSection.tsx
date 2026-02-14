@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TrendingUp, Activity, Zap, ArrowRight } from "lucide-react";
+import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 
 const HeroSection = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ const HeroSection = () => {
                 <div className="w-96 h-96 bg-white rounded-xl shadow-lg" />
               ) : (
                 <img
-                  src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+                  src={BRAINNOVA_LOGO_SRC}
                   alt="Brainnova"
                   className="h-96 w-auto max-w-[1200px] object-contain block"
                   onError={() => setLogoError(true)}
@@ -132,7 +133,7 @@ const HeroSection = () => {
         >
           {!logoError ? (
             <img
-              src="/camara-valencia-blanco.png"
+              src={CAMARA_VALENCIA_LOGO_SRC}
               alt="Cámara València"
               className="h-10 sm:h-12 w-auto object-contain object-left"
               onError={() => setLogoError(true)}

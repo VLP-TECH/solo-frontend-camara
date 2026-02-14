@@ -42,6 +42,7 @@ import {
   Loader2,
   UserCog
 } from "lucide-react";
+import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { toast } from "sonner";
 
 interface Survey {
@@ -265,7 +266,7 @@ const Surveys = () => {
         <div className="p-6">
           <div className="flex items-center space-x-3 mb-8">
             <img
-              src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+              src={BRAINNOVA_LOGO_SRC}
               alt="Brainnova"
               className="h-40 w-auto object-contain"
             />
@@ -306,7 +307,7 @@ const Surveys = () => {
         
         <div className="mt-auto p-6">
           <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
-            <img src="/camara-valencia-blanco.png" alt="Cámara Valencia" className="h-40 w-auto object-contain" />
+            <img src={CAMARA_VALENCIA_LOGO_SRC} alt="Cámara Valencia" className="h-40 w-auto object-contain" />
           </a>
           <p className="text-xs text-blue-200">Versión 2026</p>
           <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
