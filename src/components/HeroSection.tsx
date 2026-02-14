@@ -49,28 +49,30 @@ const HeroSection = () => {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center pb-28">
         <div className="space-y-12">
-          {/* Logo Section - logo 50% más grande */}
-          <div className="space-y-4">
-            <div className="flex flex-col items-center gap-1">
-              <div className="flex justify-center">
-                {logoError ? (
-                  <div className="w-96 h-96 bg-white rounded-xl shadow-lg" />
-                ) : (
-                  <img
-                    src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
-                    alt="Brainnova"
-                    className="h-96 w-auto max-w-[1200px] object-contain"
-                    onError={() => setLogoError(true)}
-                  />
-                )}
-              </div>
-              <p className="text-white text-base sm:text-lg font-medium">
-                Cámara Valencia
-              </p>
+          {/* Logo + Cámara Valencia (pegado debajo del logo) */}
+          <div className="flex flex-col items-center">
+            <div className="flex justify-center">
+              {logoError ? (
+                <div className="w-96 h-96 bg-white rounded-xl shadow-lg" />
+              ) : (
+                <img
+                  src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+                  alt="Brainnova"
+                  className="h-96 w-auto max-w-[1200px] object-contain block"
+                  onError={() => setLogoError(true)}
+                />
+              )}
             </div>
-            <h1 className="text-white text-2xl sm:text-3xl md:text-4xl font-bold leading-tight max-w-3xl mx-auto pt-1">
+            <p className="text-white text-base sm:text-lg font-medium leading-tight -mt-8">
+              Cámara Valencia
+            </p>
+          </div>
+
+          {/* Título y subtítulo separados del bloque logo */}
+          <div className="space-y-3 mt-10">
+            <h1 className="text-white text-2xl sm:text-3xl md:text-4xl font-bold leading-tight max-w-3xl mx-auto">
               Plataforma Avanzada de Economía Digital e Innovación
             </h1>
             <p className="text-white/95 text-lg sm:text-xl font-medium max-w-2xl mx-auto">
@@ -117,54 +119,62 @@ const HeroSection = () => {
               Sistema de Indicadores de Transformación Digital
             </p>
           </div>
-
-          {/* Footer */}
-          <div className="z-10 flex items-center justify-center w-full pl-4 pr-4 sm:pl-6 sm:pr-6 py-6 mt-8">
-            <p className="text-xs text-white/90">
-              © 2026 BRAINNOVA - Cámara Valencia -{" "}
-              <a
-                href="https://www.camaravalencia.com/politica-de-privacidad"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                Privacidad
-              </a>
-              {" · "}
-              <a
-                href="https://www.camaravalencia.com/aviso-legal"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                Términos de uso
-              </a>
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* Logo Cámara València: esquina inferior izquierda, .png; si falla la imagen se muestra texto */}
-      <a
-        href="https://www.camaravalencia.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute bottom-0 left-0 pl-4 pb-4 sm:pl-6 sm:pb-6 z-10 block min-h-[2.5rem]"
-      >
-        {!logoError ? (
-          <img
-            src="/camara-valencia-blanco.png"
-            alt="Cámara València"
-            className="h-10 sm:h-12 w-auto object-contain object-left"
-            onError={() => setLogoError(true)}
-          />
-        ) : (
-          <span className="text-white font-serif text-left block">
-            <span className="block text-lg sm:text-xl font-bold tracking-tight">Cámara</span>
-            <span className="block text-sm sm:text-base font-normal text-white/90">València</span>
-          </span>
-        )}
-      </a>
+      {/* Footer: ancho completo para que el logo quede en el margen izquierdo real */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-row items-center justify-between w-full pl-2 pr-4 sm:pl-4 sm:pr-6 py-6 gap-4">
+        <a
+          href="https://www.camaravalencia.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-shrink-0"
+        >
+          {!logoError ? (
+            <img
+              src="/camara-valencia-blanco.png"
+              alt="Cámara València"
+              className="h-10 sm:h-12 w-auto object-contain object-left"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <span className="text-white font-serif text-left block">
+              <span className="block text-lg sm:text-xl font-bold tracking-tight">Cámara</span>
+              <span className="block text-sm sm:text-base font-normal text-white/90">València</span>
+            </span>
+          )}
+        </a>
+        <p className="flex-1 text-center text-xs text-white/90">
+          © 2026 BRAINNOVA - Cámara Valencia -{" "}
+          <a
+            href="https://www.camaravalencia.com/politica-de-privacidad"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+          >
+            Privacidad
+          </a>
+          {" · "}
+          <a
+            href="https://www.camaravalencia.com/aviso-legal"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+          >
+            Términos de uso
+          </a>
+          {" · "}
+          <a
+            href="https://www.camaravalencia.com/politica-de-cookies"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+          >
+            Política de cookies
+          </a>
+        </p>
+        <div className="flex-shrink-0 min-w-[5rem]" aria-hidden />
+      </div>
     </section>
   );
 };

@@ -377,7 +377,7 @@ const SubdimensionDashboard = () => {
                           cx="50%"
                           cy="50%"
                           labelLine={false}
-                          label={({ name, value }) => `${name}: ${value}%`}
+                          label={false}
                           outerRadius={80}
                           fill="#8884d8"
                           dataKey="value"
@@ -387,7 +387,29 @@ const SubdimensionDashboard = () => {
                           ))}
                         </Pie>
                         <Tooltip />
-                        <Legend />
+                        <Legend
+                          content={({ payload }) => (
+                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-2 w-full">
+                              {payload?.map((entry, index) => {
+                                const pct = entry.payload?.value ?? pieData[index]?.value;
+                                return (
+                                  <div
+                                    key={`legend-${index}`}
+                                    className="flex items-start gap-2 min-w-0 sm:max-w-[45%]"
+                                  >
+                                    <span
+                                      className="inline-block w-3 h-3 rounded-sm flex-shrink-0 mt-0.5"
+                                      style={{ backgroundColor: entry.color }}
+                                    />
+                                    <span className="text-sm text-gray-700 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                                      {entry.value}: {pct}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
