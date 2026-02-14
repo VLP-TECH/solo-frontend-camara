@@ -28,6 +28,7 @@ import ComparacionTerritorial from "./pages/ComparacionTerritorial";
 import Dimensiones from "./pages/Dimensiones";
 import DimensionDetail from "./pages/DimensionDetail";
 import SubdimensionDashboard from "./pages/SubdimensionDashboard";
+import EditarUsuario from "./pages/EditarUsuario";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -192,6 +193,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <ComparacionTerritorial />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/editar-usuario" 
+                element={
+                  <ProtectedRoute>
+                    <EditarUsuario />
                   </ProtectedRoute>
                 } 
               />

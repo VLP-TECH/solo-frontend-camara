@@ -20,6 +20,8 @@ export type Database = {
           avatar_url: string | null
           cif: string | null
           created_at: string
+          deleted_at: string | null
+          deleted_by_user: boolean | null
           email: string | null
           first_name: string | null
           id: string
@@ -34,6 +36,8 @@ export type Database = {
           avatar_url?: string | null
           cif?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by_user?: boolean | null
           email?: string | null
           first_name?: string | null
           id?: string
@@ -48,6 +52,8 @@ export type Database = {
           avatar_url?: string | null
           cif?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by_user?: boolean | null
           email?: string | null
           first_name?: string | null
           id?: string

@@ -7,8 +7,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 
+const LOGO_SRC = `${import.meta.env.BASE_URL}brainnova-logo.png`;
+
 const NavigationHeader = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const { user, signOut } = useAuth();
   const { roles } = usePermissions();
   const navigate = useNavigate();
@@ -58,8 +61,17 @@ const NavigationHeader = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <BarChart3 className="h-6 w-6 text-white" />
+            <div className="h-40 min-w-[480px] flex items-center">
+              {logoError ? (
+                <span className="text-xl font-bold text-foreground">Brainnova</span>
+              ) : (
+                <img
+                  src={LOGO_SRC}
+                  alt="Brainnova"
+                  className="h-40 w-auto max-w-[720px] object-contain object-left"
+                  onError={() => setLogoError(true)}
+                />
+              )}
             </div>
             <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-foreground">Brainnova</h1>

@@ -13,6 +13,8 @@ interface UserProfile {
   active: boolean;
   created_at: string;
   updated_at: string;
+  deleted_by_user?: boolean | null;
+  deleted_at?: string | null;
 }
 
 export const useUserProfile = () => {
@@ -68,6 +70,7 @@ export const useUserProfile = () => {
   const role = profile?.role?.toLowerCase().trim();
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isActive = profile?.active || false;
+  const isDeletedByUser = !!profile?.deleted_by_user;
   
   // Debug: log del rol para troubleshooting
   if (profile) {
@@ -84,6 +87,7 @@ export const useUserProfile = () => {
     loading: loading || authLoading,
     isAdmin,
     isActive,
+    isDeletedByUser,
     refreshProfile: fetchProfile
   };
 };

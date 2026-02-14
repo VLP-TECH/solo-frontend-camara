@@ -51,31 +51,35 @@ const HeroSection = () => {
       {/* Content */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="space-y-12">
-          {/* Logo Section */}
-          <div className="space-y-3">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-white rounded-xl shadow-lg"></div>
+          {/* Logo Section - logo 50% más grande */}
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex justify-center">
+                {logoError ? (
+                  <div className="w-96 h-96 bg-white rounded-xl shadow-lg" />
+                ) : (
+                  <img
+                    src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+                    alt="Brainnova"
+                    className="h-96 w-auto max-w-[1200px] object-contain"
+                    onError={() => setLogoError(true)}
+                  />
+                )}
+              </div>
+              <p className="text-white text-base sm:text-lg font-medium">
+                Cámara Valencia
+              </p>
             </div>
-            <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tight">
-              BRAINNOVA
-            </h1>
-            <p className="text-lg text-slate-300 font-light">
-              Cámara Valencia
-            </p>
-          </div>
-
-          {/* Main Headline */}
-          <div className="space-y-6">
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight max-w-4xl mx-auto">
+            <h1 className="text-white text-2xl sm:text-3xl md:text-4xl font-bold leading-tight max-w-3xl mx-auto pt-1">
               Plataforma Avanzada de Economía Digital e Innovación
-            </h2>
-            <p className="text-xl md:text-2xl text-slate-200 max-w-3xl mx-auto leading-relaxed">
+            </h1>
+            <p className="text-white/95 text-lg sm:text-xl font-medium max-w-2xl mx-auto">
               Conoce, analiza y transforma la economía digital valenciana en tiempo real.
             </p>
           </div>
 
           {/* Key Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
             <Card className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300">
               <TrendingUp className="h-10 w-10 text-gray-700 mx-auto mb-4" />
               <h3 className="text-4xl font-bold text-gray-900 mb-2">7</h3>
@@ -91,7 +95,7 @@ const HeroSection = () => {
             <Card className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300">
               <Zap className="h-10 w-10 text-gray-700 mx-auto mb-4" />
               <h3 className="text-4xl font-bold text-gray-900 mb-2">2025</h3>
-              <p className="text-gray-600 text-sm font-medium">Actualizado Febrero 2026</p>
+              <p className="text-gray-600 text-sm font-medium">Actualizado Nov 2025</p>
             </Card>
           </div>
 
@@ -105,36 +109,37 @@ const HeroSection = () => {
               Acceder al Dashboard
               <ArrowRight className="h-5 w-5 text-[#0c6c8b]" />
             </Button>
+            <p className="text-white/90 text-sm sm:text-base mt-4">
+              Explora datos, dimensiones e informes en profundidad
+            </p>
+            <p className="text-white/90 text-sm mt-2 flex items-center justify-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-white/80" aria-hidden />
+              Sistema de Indicadores de Transformación Digital
+            </p>
           </div>
 
-          {/* Footer: debajo del botón, enlaces legales */}
-          <div className="z-10 flex items-center justify-center w-full pl-4 pr-4 sm:pl-6 sm:pr-6 py-4 mt-8">
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white">
-              <a
-                href="https://www.camaravalencia.com/aviso-legal"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                Aviso legal
-              </a>
+          {/* Footer */}
+          <div className="z-10 flex items-center justify-center w-full pl-4 pr-4 sm:pl-6 sm:pr-6 py-6 mt-8">
+            <p className="text-xs text-white/90">
+              © 2026 BRAINNOVA - Cámara Valencia -{" "}
               <a
                 href="https://www.camaravalencia.com/politica-de-privacidad"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
               >
-                Política de privacidad
+                Privacidad
               </a>
+              {" · "}
               <a
-                href="https://www.camaravalencia.com/politica-de-cookies"
+                href="https://www.camaravalencia.com/aviso-legal"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
               >
-                Política de Cookies
+                Términos de uso
               </a>
-            </div>
+            </p>
           </div>
         </div>
       </div>

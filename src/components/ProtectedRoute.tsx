@@ -12,7 +12,7 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading, signOut } = useAuth();
-  const { profile, loading: profileLoading, isActive, isAdmin } = useUserProfile();
+  const { profile, loading: profileLoading, isActive, isAdmin, isDeletedByUser } = useUserProfile();
   const navigate = useNavigate();
 
   // Mostrar loading mientras se verifica la autenticación
@@ -30,6 +30,47 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   // Si no hay usuario después de cargar, redirigir a /auth
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  // Si el usuario solicitó la baja (borrado por usuario), bloquear acceso
+  if (profile && isDeletedByUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+              <Shield className="h-8 w-8 text-red-600" />
+            </div>
+            <CardTitle className="text-2xl">Cuenta eliminada</CardTitle>
+            <CardDescription className="mt-2">
+              Esta cuenta ha sido dada de baja. No es posible acceder a la aplicación.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <p className="text-sm text-gray-600">
+              Si crees que es un error, contacta con el administrador del sistema.
+            </p>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await signOut();
+                  navigate('/', { replace: true });
+                } catch (error) {
+                  console.error('Error al cerrar sesión:', error);
+                  navigate('/', { replace: true });
+                }
+              }}
+              className="w-full"
+              type="button"
+            >
+              <Home className="h-4 w-4 mr-2" />
+              Volver al inicio
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   // Si el usuario no está activo, mostrar mensaje de espera (excepto admins y superadmins)

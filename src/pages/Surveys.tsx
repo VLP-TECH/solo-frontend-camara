@@ -40,6 +40,7 @@ import {
   BarChart3,
   Download,
   Loader2,
+  UserCog
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -246,6 +247,7 @@ const Surveys = () => {
       { icon: FileText, label: "Informes", href: "/informes" },
       { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
       { icon: BookOpen, label: "Metodología", href: "/metodologia" },
+      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
     ];
     
     // Solo mostrar "Gestión de Usuarios" para admin y superadmin
@@ -262,13 +264,11 @@ const Surveys = () => {
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
           <div className="flex items-center space-x-3 mb-8">
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-              <div className="w-8 h-8 bg-[#0c6c8b] rounded"></div>
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">BRAINNOVA</h1>
-              <p className="text-xs text-blue-200">Economía Digital</p>
-            </div>
+            <img
+              src={`${import.meta.env.BASE_URL}brainnova-logo.png`}
+              alt="Brainnova"
+              className="h-40 w-auto object-contain"
+            />
           </div>
           
           <nav className="space-y-2">
@@ -306,7 +306,7 @@ const Surveys = () => {
         
         <div className="mt-auto p-6">
           <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
-            <img src="/camara-valencia-blanco.png" alt="Cámara Valencia" className="h-10 w-auto object-contain" />
+            <img src="/camara-valencia-blanco.png" alt="Cámara Valencia" className="h-40 w-auto object-contain" />
           </a>
           <p className="text-xs text-blue-200">Versión 2026</p>
           <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
