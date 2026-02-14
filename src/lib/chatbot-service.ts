@@ -1,5 +1,28 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/** Datos de índice BRAINNOVA por provincia (alineado con /comparacion y dashboard) */
+const INDICE_POR_PROVINCIA: Record<string, { indice: number; ranking: number; dimensionDestacada: string; puntosDimension: number }> = {
+  valencia: { indice: 69.5, ranking: 1, dimensionDestacada: "Capital Humano", puntosDimension: 74 },
+  alicante: { indice: 66.8, ranking: 2, dimensionDestacada: "Infraestructura Digital", puntosDimension: 76 },
+  castellón: { indice: 64.3, ranking: 3, dimensionDestacada: "Transformación Digital Empresarial", puntosDimension: 70 },
+  castellon: { indice: 64.3, ranking: 3, dimensionDestacada: "Transformación Digital Empresarial", puntosDimension: 70 },
+};
+
+/** Puntos por dimensión por provincia (Comparación territorial) */
+const DIMENSION_POR_PROVINCIA: Record<string, Record<string, number>> = {
+  valencia: { "Transformación Digital Empresarial": 68, "Capital Humano": 74, "Infraestructura Digital": 75, "Ecosistema y Colaboración": 65, "Emprendimiento e Innovación": 60, "Servicios Públicos Digitales": 72, "Sostenibilidad Digital": 64 },
+  alicante: { "Transformación Digital Empresarial": 66, "Capital Humano": 70, "Infraestructura Digital": 76, "Ecosistema y Colaboración": 63, "Emprendimiento e Innovación": 58, "Servicios Públicos Digitales": 68, "Sostenibilidad Digital": 62 },
+  castellón: { "Transformación Digital Empresarial": 70, "Capital Humano": 68, "Infraestructura Digital": 72, "Ecosistema y Colaboración": 61, "Emprendimiento e Innovación": 54, "Servicios Públicos Digitales": 66, "Sostenibilidad Digital": 60 },
+  castellon: { "Transformación Digital Empresarial": 70, "Capital Humano": 68, "Infraestructura Digital": 72, "Ecosistema y Colaboración": 61, "Emprendimiento e Innovación": 54, "Servicios Públicos Digitales": 66, "Sostenibilidad Digital": 60 },
+};
+
+const NOMBRES_PROVINCIAS: Record<string, string> = {
+  valencia: "Valencia",
+  alicante: "Alicante",
+  castellón: "Castellón",
+  castellon: "Castellón",
+};
+
 export interface KnowledgeItem {
   id: string;
   category: string;
@@ -299,7 +322,108 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   // Limpiar la consulta
   const cleanQuery = userQuery.replace(/[¿?¡!]/g, '').trim();
   const lowerQuery = cleanQuery.toLowerCase();
-  
+
+  // --- Índice BRAINNOVA por provincia (Alicante, Castellón, Valencia) ---
+  const provinciaKey = Object.keys(NOMBRES_PROVINCIAS).find(
+    (key) => lowerQuery.includes(key)
+  );
+  const preguntaIndiceProvincia =
+    (lowerQuery.includes("índice") || lowerQuery.includes("indice")) &&
+    (lowerQuery.includes("brainnova") ||
+      lowerQuery.includes("economía digital") ||
+      lowerQuery.includes("economia digital") ||
+      lowerQuery.includes("digital")) &&
+    (provinciaKey || lowerQuery.includes("provincia") || lowerQuery.includes("alicante") || lowerQuery.includes("castellón") || lowerQuery.includes("castellon") || lowerQuery.includes("valencia"));
+
+  if (preguntaIndiceProvincia) {
+    if (provinciaKey) {
+      const datos = INDICE_POR_PROVINCIA[provinciaKey];
+      const nombreProvincia = NOMBRES_PROVINCIAS[provinciaKey];
+      if (datos) {
+        return `El **índice BRAINNOVA** de la provincia de **${nombreProvincia}** es **${datos.indice}** puntos (sobre 100), en posición ${datos.ranking} de las tres provincias de la Comunitat Valenciana. La dimensión más destacada en ${nombreProvincia} es **${datos.dimensionDestacada}** con ${datos.puntosDimension} puntos.\n\nPuedes ver el detalle en la sección *Comparación Territorial* del dashboard.`;
+      }
+    }
+    // Pregunta por índice en general (todas las provincias)
+    const provinciasListado = [
+      { key: "valencia", nombre: "Valencia" },
+      { key: "alicante", nombre: "Alicante" },
+      { key: "castellón", nombre: "Castellón" },
+    ];
+    const lineas = provinciasListado
+      .map(({ key, nombre }) => {
+        const datos = INDICE_POR_PROVINCIA[key] || INDICE_POR_PROVINCIA["castellon"];
+        return datos ? `• **${nombre}**: ${datos.indice} puntos (ranking ${datos.ranking})` : "";
+      })
+      .filter(Boolean);
+    return `**Índice BRAINNOVA por provincia** (Comunitat Valenciana):\n\n${lineas.join("\n")}\n\nPuedes ver el detalle en *Comparación Territorial* en el menú.`;
+  }
+
+  // --- Nivel de digitalización de las empresas por provincia ---
+  const preguntaDigitalizacionEmpresas =
+    (lowerQuery.includes("digitalización") || lowerQuery.includes("digitalizacion")) &&
+    (lowerQuery.includes("empresa") || lowerQuery.includes("empresas")) &&
+    (provinciaKey || lowerQuery.includes("castellón") || lowerQuery.includes("castellon") || lowerQuery.includes("alicante") || lowerQuery.includes("valencia"));
+
+  if (preguntaDigitalizacionEmpresas) {
+    if (provinciaKey) {
+      const key = provinciaKey === "castellón" ? "castellón" : provinciaKey;
+      const dims = DIMENSION_POR_PROVINCIA[key] || DIMENSION_POR_PROVINCIA[provinciaKey];
+      const nombreProvincia = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      const scoreTransformacion = dims?.["Transformación Digital Empresarial"];
+      if (scoreTransformacion !== undefined) {
+        return `El **nivel de digitalización de las empresas** en **${nombreProvincia}** (dimensión Transformación Digital Empresarial) es de **${scoreTransformacion}** puntos sobre 100. Esta dimensión mide el grado de adopción e integración de tecnologías digitales en las empresas.\n\nEn *Comparación Territorial* puedes ver el resto de dimensiones por provincia.`;
+      }
+    }
+    // Sin provincia: listar las tres
+    const lineas = [
+      { nombre: "Valencia", key: "valencia" },
+      { nombre: "Alicante", key: "alicante" },
+      { nombre: "Castellón", key: "castellón" },
+    ].map(({ nombre, key }) => {
+      const dims = DIMENSION_POR_PROVINCIA[key];
+      const score = dims?.["Transformación Digital Empresarial"];
+      return score !== undefined ? `• **${nombre}**: ${score} puntos` : "";
+    }).filter(Boolean);
+    if (lineas.length > 0) {
+      return `**Nivel de digitalización de las empresas** (dimensión Transformación Digital Empresarial) por provincia:\n\n${lineas.join("\n")}\n\nPuedes ver el detalle en *Comparación Territorial*.`;
+    }
+  }
+
+  // --- Indicadores concretos: "Digitalización básica" y "personas con habilidades digitales básicas" ---
+  const buscaDigitalizacionBasica = lowerQuery.includes("digitalización básica") || lowerQuery.includes("digitalizacion basica") || lowerQuery.includes("digitalización basica");
+  const buscaHabilidadesDigitales = lowerQuery.includes("habilidades digitales") || lowerQuery.includes("habilidad digital") || lowerQuery.includes("personas con habilidades");
+
+  if (buscaDigitalizacionBasica || buscaHabilidadesDigitales) {
+    const queryBusqueda = buscaDigitalizacionBasica
+      ? "digitalización básica"
+      : "habilidades digitales básicas personas";
+    const indicadores = await searchIndicators(queryBusqueda);
+    if (indicadores.length > 0) {
+      const detalle = await getIndicatorDetails(indicadores[0].nombre);
+      if (detalle) {
+        let respuesta = `**${detalle.nombre}**\n\n`;
+        if (detalle.dimension) respuesta += `📊 Dimensión: ${detalle.dimension}\n`;
+        if (detalle.subdimension) respuesta += `📈 Subdimensión: ${detalle.subdimension}\n`;
+        if (detalle.importancia) respuesta += `⭐ Importancia: ${detalle.importancia}\n`;
+        if (detalle.ultimoValor !== undefined && detalle.ultimoValor !== null) {
+          respuesta += `\n📊 Último valor disponible: **${detalle.ultimoValor}**`;
+          if (detalle.ultimoPeriodo) respuesta += ` (período ${detalle.ultimoPeriodo})`;
+          if (detalle.ultimoPais) respuesta += ` - ${detalle.ultimoPais}`;
+        }
+        if (indicadores.length > 1) {
+          respuesta += `\n\nTambién hay ${indicadores.length - 1} indicador(es) más relacionados. ¿Quieres el detalle de otro?`;
+        }
+        return respuesta;
+      }
+    }
+    // Búsqueda más amplia por palabras sueltas
+    const fallback = await searchIndicators(buscaDigitalizacionBasica ? "digitalización básica" : "habilidades digitales básicas");
+    if (fallback.length > 0) {
+      const lista = fallback.slice(0, 5).map((ind, i) => `${i + 1}. **${ind.nombre}**`).join("\n");
+      return `Indicadores relacionados:\n\n${lista}\n\n¿Sobre cuál quieres el valor o la definición?`;
+    }
+  }
+
   // Detectar si pregunta sobre encuestas
   if (lowerQuery.includes('encuesta') || lowerQuery.includes('survey') || lowerQuery.includes('cuestionario')) {
     const surveys = await getSurveyInfo();
@@ -471,9 +595,10 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   return `No encontré información específica sobre "${cleanQuery}" en la base de conocimiento. 
 
 Puedo ayudarte con:
-• **KPIs e Indicadores**: Pregunta sobre cualquier indicador de la base de datos (por ejemplo: "¿Qué es el indicador de empresas que usan inteligencia artificial?")
-• **Dimensiones**: Pregunta sobre las dimensiones disponibles (por ejemplo: "¿Qué dimensiones hay?" o "¿Qué indicadores hay en transformación digital empresarial?")
-• **Valores**: Pregunta sobre valores de indicadores (por ejemplo: "¿Cuál es el valor de empresas que usan inteligencia artificial?")
+• **Índice BRAINNOVA por provincia**: "¿Cuál es el índice Brainnova de Alicante?" o "¿Cuál es el índice de Valencia?"
+• **Digitalización de empresas por provincia**: "¿Cuál es el nivel de digitalización de las empresas de Castellón?"
+• **Indicadores concretos**: "Digitalización básica", "personas con habilidades digitales básicas", o el nombre de cualquier indicador
+• **Dimensiones y KPIs**: "¿Qué dimensiones hay?", "¿Qué indicadores hay en Capital Humano?", valores de indicadores
 • **Encuestas**: Información sobre encuestas disponibles
 
 ¿Podrías reformular tu pregunta o ser más específico?`;

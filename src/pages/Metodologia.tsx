@@ -192,10 +192,10 @@ const Metodologia = () => {
             {/* Title Section */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
-                Metodología BRAINNOVA
+                Metodología BRAINNOVA 2026
               </h1>
               <p className="text-lg text-gray-600">
-                Marco metodológico del Sistema de Indicadores de Economía Digital
+                Marco metodológico del Sistema de Indicadores de Economía Digital (2026)
               </p>
             </div>
 
@@ -455,7 +455,7 @@ const Metodologia = () => {
               <div className="mb-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-3">Referencia Metodológica</h2>
                 <p className="text-gray-700 mb-4">
-                  Para más información sobre la metodología completa, consulte el documento técnico "Marco Metodológico BRAINNOVA 2024" disponible en la sección de recursos.
+                  Para más información sobre la metodología completa, consulte el documento técnico "Marco Metodológico BRAINNOVA 2026" disponible en la sección de recursos.
                 </p>
               </div>
               
