@@ -5,6 +5,11 @@ import { Bot, X, Send, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { generateChatbotResponse } from "@/lib/chatbot-service";
 
+/** Quita markdown (** y *) de la respuesta del chatbot para mostrar solo texto */
+function stripMarkdown(text: string): string {
+  return text.replace(/\*\*/g, "").replace(/\*/g, "");
+}
+
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Array<{ text: string; sender: "user" | "bot" }>>([
@@ -26,7 +31,7 @@ const ChatWidget = () => {
     try {
       // Consultar base de datos para generar respuesta
       const aiResponse = await generateChatbotResponse(currentInput);
-      setMessages(prev => [...prev, { text: aiResponse, sender: "bot" }]);
+      setMessages(prev => [...prev, { text: stripMarkdown(aiResponse), sender: "bot" }]);
     } catch (error) {
       console.error('Error generating response:', error);
       setMessages(prev => [...prev, { 
