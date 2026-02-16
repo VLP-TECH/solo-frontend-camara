@@ -90,6 +90,27 @@ const Auth = () => {
           return;
         }
         
+        // Validar campos obligatorios
+        if (!razonSocial || razonSocial.trim() === '') {
+          toast({
+            title: "Campo obligatorio",
+            description: "La razón social es obligatoria.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        
+        if (!cif || cif.trim() === '') {
+          toast({
+            title: "Campo obligatorio",
+            description: "El CIF es obligatorio.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        
         // Validar contraseña
         const passwordError = validatePassword(password);
         if (passwordError) {
@@ -292,24 +313,26 @@ const Auth = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="razonSocial">Razón Social</Label>
+                    <Label htmlFor="razonSocial">Razón Social *</Label>
                     <Input
                       id="razonSocial"
                       type="text"
                       placeholder="Razón Social"
                       value={razonSocial}
                       onChange={(e) => setRazonSocial(e.target.value)}
+                      required
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="cif">CIF</Label>
+                    <Label htmlFor="cif">CIF *</Label>
                     <Input
                       id="cif"
                       type="text"
                       placeholder="CIF"
                       value={cif}
                       onChange={(e) => setCif(e.target.value)}
+                      required
                     />
                   </div>
                   

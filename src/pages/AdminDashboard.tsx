@@ -204,10 +204,19 @@ const AdminDashboard = () => {
   };
 
   const createUser = async () => {
-    if (!newUser.email || !newUser.password || !newUser.firstName) {
+    if (!newUser.email || !newUser.password || !newUser.firstName || !newUser.razonSocial || !newUser.cif) {
       toast({
         title: "Error",
-        description: "Por favor completa todos los campos obligatorios",
+        description: "Por favor completa todos los campos obligatorios (Email, Contraseña, Nombre, Razón Social y CIF)",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (!newUser.razonSocial.trim() || !newUser.cif.trim()) {
+      toast({
+        title: "Error",
+        description: "Razón Social y CIF son campos obligatorios",
         variant: "destructive"
       });
       return;
@@ -244,13 +253,9 @@ const AdminDashboard = () => {
           active: true
         };
         
-        // Try to include optional fields if provided (may not exist in DB)
-        if (newUser.razonSocial) {
-          updateData.razon_social = newUser.razonSocial;
-        }
-        if (newUser.cif) {
-          updateData.cif = newUser.cif;
-        }
+        // Razón social y CIF son obligatorios
+        updateData.razon_social = newUser.razonSocial;
+        updateData.cif = newUser.cif;
         
         const { error: profileError } = await supabase
           .from('profiles')
@@ -488,19 +493,21 @@ const AdminDashboard = () => {
                         </p>
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="razonSocial">Razón Social</Label>
+                        <Label htmlFor="razonSocial">Razón Social *</Label>
                         <Input 
                           id="razonSocial" 
                           value={newUser.razonSocial} 
-                          onChange={e => setNewUser({...newUser, razonSocial: e.target.value})} 
+                          onChange={e => setNewUser({...newUser, razonSocial: e.target.value})}
+                          required
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="cif">CIF</Label>
+                        <Label htmlFor="cif">CIF *</Label>
                         <Input 
                           id="cif" 
                           value={newUser.cif} 
-                          onChange={e => setNewUser({...newUser, cif: e.target.value})} 
+                          onChange={e => setNewUser({...newUser, cif: e.target.value})}
+                          required
                         />
                       </div>
                       <div className="grid gap-2">

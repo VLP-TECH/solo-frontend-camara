@@ -30,7 +30,30 @@ const HeroSection = () => {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0c6c8b]">
+    <>
+      {/* Logo Cámara Valencia flotante - siempre visible abajo a la izquierda */}
+      <a
+        href="https://www.camaravalencia.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-4 left-4 z-50 hover:opacity-80 transition-opacity"
+      >
+        {!logoError ? (
+          <img
+            src={CAMARA_VALENCIA_LOGO_SRC}
+            alt="Cámara València"
+            className="h-10 sm:h-12 w-auto object-contain object-left drop-shadow-lg"
+            onError={() => setLogoError(true)}
+          />
+        ) : (
+          <span className="text-white font-serif text-left block drop-shadow-lg">
+            <span className="block text-lg sm:text-xl font-bold tracking-tight">Cámara</span>
+            <span className="block text-sm sm:text-base font-normal text-white/90">València</span>
+          </span>
+        )}
+      </a>
+
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0c6c8b]">
       {/* Grid Pattern Background */}
       <div 
         className="absolute inset-0 z-0 opacity-20"
@@ -123,29 +146,9 @@ const HeroSection = () => {
         </div>
       </div>
 
-      {/* Footer: ancho completo para que el logo quede en el margen izquierdo real */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-row items-center justify-between w-full pl-2 pr-4 sm:pl-4 sm:pr-6 py-6 gap-4">
-        <a
-          href="https://www.camaravalencia.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-shrink-0"
-        >
-          {!logoError ? (
-            <img
-              src={CAMARA_VALENCIA_LOGO_SRC}
-              alt="Cámara València"
-              className="h-10 sm:h-12 w-auto object-contain object-left"
-              onError={() => setLogoError(true)}
-            />
-          ) : (
-            <span className="text-white font-serif text-left block">
-              <span className="block text-lg sm:text-xl font-bold tracking-tight">Cámara</span>
-              <span className="block text-sm sm:text-base font-normal text-white/90">València</span>
-            </span>
-          )}
-        </a>
-        <p className="flex-1 text-center text-xs text-white/90">
+      {/* Footer: solo copyright centrado */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-row items-center justify-center w-full px-4 sm:px-6 py-6">
+        <p className="text-center text-xs text-white/90">
           © 2026 BRAINNOVA - Cámara Valencia -{" "}
           <a
             href="https://www.camaravalencia.com/politica-de-privacidad"
@@ -174,9 +177,9 @@ const HeroSection = () => {
             Política de cookies
           </a>
         </p>
-        <div className="flex-shrink-0 min-w-[5rem]" aria-hidden />
       </div>
     </section>
+    </>
   );
 };
 
