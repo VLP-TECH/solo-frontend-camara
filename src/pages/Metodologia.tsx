@@ -92,14 +92,14 @@ const Metodologia = () => {
     return items;
   }, [userIsAdmin]);
 
-  const dimensiones = [
-    "Transformación Digital Empresarial",
-    "Infraestructura Digital",
-    "Emprendimiento e Innovación",
-    "Sostenibilidad Digital",
-    "Capital Humano",
-    "Ecosistema y Colaboración",
-    "Servicios Públicos Digitales"
+  const dimensionesPonderacion = [
+    { nombre: "Transformación digital empresarial", peso: 30, descripcion: "Núcleo del modelo, refleja adopción tecnológica real" },
+    { nombre: "Capital humano", peso: 20, descripcion: "Factor habilitador esencial" },
+    { nombre: "Infraestructura digital", peso: 15, descripcion: "Habilitador estructural: permite el uso de herramientas digitales, aunque no lo garantiza por sí solo" },
+    { nombre: "Ecosistema y colaboración", peso: 15, descripcion: "Refleja dinamismo, capacidad de renovación y transición hacia modelos empresariales digitales" },
+    { nombre: "Apoyo al emprendimiento e innovación", peso: 10, descripcion: "Importante para generar redes de innovación, transferencia y confianza, aunque su impacto es indirecto en pymes tradicionales" },
+    { nombre: "Servicios públicos digitales", peso: 10, descripcion: "Su impacto directo sobre las empresas es útil pero más periférico comparado con las dimensiones anteriores" },
+    { nombre: "Sostenibilidad digital", peso: 5, descripcion: "Dimensión emergente y transversal. Importante a medio plazo, pero aún incipiente en términos de adopción empresarial" },
   ];
 
   return (
@@ -366,10 +366,10 @@ const Metodologia = () => {
                 <div className="border-l-4 border-yellow-400 pl-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">4. Índice Global</h3>
                   <p className="text-gray-700 mb-2">
-                    El índice global es la media ponderada de las 7 dimensiones con pesos iguales:
+                    El índice global es la media ponderada de las 7 dimensiones según los pesos definidos (Transformación digital 30%, Capital humano 20%, etc.):
                   </p>
                   <div className="bg-gray-50 p-4 rounded-lg font-mono text-sm">
-                    Índice_BRAINNOVA = (1/7) × ∑ Dimensión_k
+                    Índice_BRAINNOVA = ∑ (Dimensión_k × Peso_k) / 100
                   </div>
                 </div>
               </div>
@@ -384,21 +384,18 @@ const Metodologia = () => {
                 </p>
               </div>
               
-              <div className="space-y-3">
-                {dimensiones.map((dimension) => (
-                  <div key={dimension} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700">{dimension}</span>
-                      <span className="text-sm font-semibold text-gray-900">14.3%</span>
+              <div className="space-y-4">
+                {dimensionesPonderacion.map((dim) => (
+                  <div key={dim.nombre} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-gray-900">{dim.nombre}</span>
+                      <span className="text-sm font-semibold text-gray-900 shrink-0">{dim.peso}%</span>
                     </div>
-                    <Progress value={14.3} className="h-2" />
+                    <p className="text-xs text-gray-600">{dim.descripcion}</p>
+                    <Progress value={dim.peso} className="h-2" />
                   </div>
                 ))}
               </div>
-              
-              <p className="text-xs text-gray-500 mt-4 italic">
-                * Actualmente todas las dimensiones tienen el mismo peso (14.3%), reflejando una visión equilibrada del desarrollo digital. Los pesos pueden ajustarse según prioridades estratégicas específicas.
-              </p>
             </Card>
 
             {/* Calidad y Actualizaciones */}
