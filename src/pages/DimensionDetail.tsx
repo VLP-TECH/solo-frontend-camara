@@ -51,8 +51,6 @@ import {
   type IndicadorConDatos
 } from "@/lib/kpis-data";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -186,14 +184,6 @@ const DimensionDetail = () => {
     },
     enabled: !!indicadores && indicadores.length > 0,
   });
-
-  // Preparar datos para el gráfico de barras (score del territorio seleccionado + España + UE)
-  const chartData = subdimensiones?.map(sub => ({
-    nombre: sub.nombre,
-    [selectedTerritorio]: Math.round(sub.score),
-    "España": Math.round(sub.espana),
-    "Media UE": Math.round(sub.ue),
-  })) || [];
 
   // Preparar datos para el gráfico de pastel
   const pieData = distribucion?.map(sub => ({
@@ -780,48 +770,6 @@ const DimensionDetail = () => {
                 })}
               </div>
             </div>
-
-            {/* Comparativa Regional */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold text-[#0c6c8b]">
-                  Comparativa Regional
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {chartData.length > 0 ? (
-                  <div>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis 
-                          dataKey="nombre" 
-                          angle={-45}
-                          textAnchor="end"
-                          height={120}
-                          interval={0}
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
-                        />
-                        <YAxis 
-                          domain={[0, 100]}
-                          tick={{ fontSize: 12, fill: '#6b7280' }}
-                          ticks={[0, 25, 50, 75, 100]}
-                        />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey={selectedTerritorio} fill="#0c6c8b" name={selectedTerritorio} />
-                        <Bar dataKey="España" fill="#3B82F6" />
-                        <Bar dataKey="Media UE" fill="#93C5FD" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    No hay datos disponibles para mostrar
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </main>
       </div>

@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -33,6 +34,7 @@ import {
   UserCog
 } from "lucide-react";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo } from "@/lib/kpis-data";
 import {
   RadarChart,
   Radar,
@@ -52,21 +54,55 @@ const Dashboard = () => {
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
 
+  // Análisis por dimensiones: siempre las 7 dimensiones Brainnova; filtro por provincia y año
+  const [radarProvincia, setRadarProvincia] = useState<string>("Valencia");
+  const [radarAno, setRadarAno] = useState<string>("2024");
+  const initialRadarSetRef = useRef(false);
+
+  const { data: firstAvailable } = useQuery({
+    queryKey: ["first-available-provincia-periodo"],
+    queryFn: getFirstAvailableProvinciaPeriodo,
+  });
+
+  useEffect(() => {
+    if (firstAvailable && !initialRadarSetRef.current) {
+      initialRadarSetRef.current = true;
+      setRadarProvincia(firstAvailable.provincia);
+      setRadarAno(String(firstAvailable.periodo));
+    }
+  }, [firstAvailable]);
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
 
-  // Datos del gráfico radar (ejemplo)
-  const radarData = [
-    { dimension: "Transformación Digital", cv: 65, ue: 60, topUE: 85 },
-    { dimension: "Capital Humano", cv: 70, ue: 65, topUE: 90 },
-    { dimension: "Infraestructura Digital", cv: 75, ue: 70, topUE: 95 },
-    { dimension: "Ecosistema y Colaboración", cv: 68, ue: 63, topUE: 88 },
-    { dimension: "Emprendimiento e Innovación", cv: 58, ue: 55, topUE: 80 },
-    { dimension: "Servicios Públicos", cv: 72, ue: 68, topUE: 92 },
-    { dimension: "Sostenibilidad Digital", cv: 66, ue: 62, topUE: 87 },
-  ];
+  const { data: dimensiones } = useQuery({
+    queryKey: ["dimensiones"],
+    queryFn: getDimensiones,
+  });
+
+  const { data: radarData, isLoading: radarLoading } = useQuery({
+    queryKey: ["dashboard-radar-7dim", radarProvincia, radarAno, dimensiones?.length],
+    queryFn: async () => {
+      const periodo = Number(radarAno) || 2024;
+      if (!dimensiones?.length) return [];
+      const allSubs = await Promise.all(
+        dimensiones.map((dim) => getSubdimensionesConScores(dim.nombre, radarProvincia, periodo))
+      );
+      const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+      return dimensiones.map((dim, i) => {
+        const subs = allSubs[i] || [];
+        const cv = subs.length ? subs.reduce((a, s) => a + s.score, 0) / subs.length : 0;
+        const ue = subs.length ? subs.reduce((a, s) => a + s.ue, 0) / subs.length : 0;
+        const espana = subs.length ? subs.reduce((a, s) => a + s.espana, 0) / subs.length : 0;
+        return { dimension: dim.nombre, cv: clamp(cv), ue: clamp(ue), topUE: clamp(Math.max(ue, espana)) };
+      });
+    },
+    enabled: !!dimensiones?.length,
+  });
+
+  const radarDataDisplay = radarData ?? [];
 
   // El botón siempre debe estar activo para admins y superadmins
   // Verificar directamente el rol del perfil para evitar problemas de timing
@@ -265,53 +301,86 @@ const Dashboard = () => {
               </Card>
             </div>
 
-            {/* Analysis by Dimensions */}
+            {/* Analysis by Dimensions - Índice BRAINNOVA: 7 dimensiones */}
             <Card className="p-6 bg-white mb-8">
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-1">
-                  Análisis por Dimensiones
-                </h2>
-                <p className="text-sm text-gray-600">
-                  Comparativa del índice BRAINNOVA CV vs Media UE
-                </p>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">
+                    Análisis por Dimensiones
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Índice BRAINNOVA por las 7 dimensiones. Selecciona provincia y año para ver la malla.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select value={radarProvincia} onValueChange={setRadarProvincia}>
+                    <SelectTrigger className="w-44 bg-white">
+                      <SelectValue placeholder="Provincia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Valencia">Valencia</SelectItem>
+                      <SelectItem value="Alicante">Alicante</SelectItem>
+                      <SelectItem value="Castellón">Castellón</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={radarAno} onValueChange={setRadarAno}>
+                    <SelectTrigger className="w-28 bg-white">
+                      <SelectValue placeholder="Año" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2024, 2023, 2022, 2021, 2020].map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               <div className="h-96">
+                {radarLoading ? (
+                  <div className="h-full flex items-center justify-center text-gray-500">Cargando...</div>
+                ) : radarDataDisplay.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-gray-500">Sin datos para mostrar</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={radarData}>
+                  <RadarChart data={radarDataDisplay}>
                     <PolarGrid />
-                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 12 }} />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
+                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11 }} />
+                    <PolarRadiusAxis angle={90} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 10 }} />
                     <Radar
-                      name="Comunitat Valenciana"
+                      name={radarProvincia}
                       dataKey="cv"
                       stroke="#0c6c8b"
                       fill="#0c6c8b"
-                      fillOpacity={0.6}
+                      fillOpacity={0.5}
+                      strokeWidth={2}
                     />
                     <Radar
                       name="Media UE"
                       dataKey="ue"
-                      stroke="#3B82F6"
+                      stroke="#2563eb"
                       fill="#3B82F6"
-                      fillOpacity={0.3}
+                      fillOpacity={0.35}
                       strokeDasharray="5 5"
+                      strokeWidth={2}
                     />
                     <Radar
                       name="Top UE"
                       dataKey="topUE"
                       stroke="#93C5FD"
                       fill="#93C5FD"
-                      fillOpacity={0.1}
+                      fillOpacity={0.2}
+                      strokeWidth={2}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
+                )}
               </div>
               
               <div className="flex items-center justify-center space-x-6 mt-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 rounded-full bg-[#0c6c8b]"></div>
-                  <span className="text-sm text-gray-600">Comunitat Valenciana</span>
+                  <span className="text-sm text-gray-600">{radarProvincia}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 rounded-full bg-[#3B82F6]"></div>

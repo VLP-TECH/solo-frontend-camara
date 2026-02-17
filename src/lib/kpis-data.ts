@@ -107,6 +107,46 @@ export interface IndicadorConDatos extends Indicador {
 }
 
 /**
+ * Obtiene la primera combinación (provincia, periodo) que tenga datos en resultado_indicadores,
+ * para mostrar por defecto en el dashboard (evitar provincia/año sin datos).
+ */
+export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: string; periodo: number } | null> {
+  try {
+    const provincias: { key: string; display: string }[] = [
+      { key: "Valencia", display: "Valencia" },
+      { key: "Alicante", display: "Alicante" },
+      { key: "Castellón", display: "Castellón" },
+      { key: "Castellon", display: "Castellón" },
+    ];
+    for (const { key, display } of provincias) {
+      const { data, error } = await supabase
+        .from("resultado_indicadores")
+        .select("periodo")
+        .eq("pais", key)
+        .order("periodo", { ascending: false })
+        .limit(1);
+      if (error || !data?.length) continue;
+      const periodo = Number(data[0]?.periodo);
+      if (isNaN(periodo)) continue;
+      return { provincia: display, periodo };
+    }
+    const { data: cv } = await supabase
+      .from("resultado_indicadores")
+      .select("periodo")
+      .eq("pais", "Comunitat Valenciana")
+      .order("periodo", { ascending: false })
+      .limit(1);
+    if (cv?.length && cv[0]?.periodo != null) {
+      return { provincia: "Valencia", periodo: Number(cv[0].periodo) };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching first available provincia/periodo:", error);
+    return null;
+  }
+}
+
+/**
  * Obtiene todas las dimensiones desde Supabase
  */
 export async function getDimensiones(): Promise<Dimension[]> {
@@ -412,7 +452,10 @@ export async function getSubdimensionesConScores(
             // Mapeo de nombres de país comunes
             const paisVariations: Record<string, string[]> = {
               "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
-              "España": ["España", "Spain", "Esp"]
+              "España": ["España", "Spain", "Esp"],
+              "Valencia": ["Valencia", "Comunitat Valenciana"],
+              "Alicante": ["Alicante"],
+              "Castellón": ["Castellón", "Castellon"],
             };
             
             const variations = paisVariations[pais] || [pais];

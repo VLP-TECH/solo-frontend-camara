@@ -314,7 +314,6 @@ const KPIsDashboard = () => {
                       <tr>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
-                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Valor Actual</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Normalizado</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Tendencia</th>
                       </tr>
@@ -359,17 +358,10 @@ const KPIsDashboard = () => {
                                 {indicador.dimension || "—"}
                               </span>
                             </td>
-                            <td className="py-4 px-4 text-center">
-                              <span className={`text-sm font-medium ${hasData ? "text-gray-900" : "text-gray-400"}`}>
-                                {indicador.ultimoValor !== undefined 
-                                  ? `${indicador.ultimoValor.toFixed(1)}${indicador.ultimoValor > 1 ? '%' : ''}` 
-                                  : "—"}
-                              </span>
-                            </td>
                             <td className="py-4 px-4">
                               <div className="flex items-center space-x-2">
                                 <span className={`text-sm font-medium w-16 ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                  {normalized.toFixed(3)}
+                                  {normalized.toFixed(1)}%
                                 </span>
                                 <div className="flex-1">
                                   <Progress 
