@@ -1,6 +1,80 @@
 // Funciones para obtener datos de KPIs desde Supabase
 import { supabase } from "@/integrations/supabase/client";
 
+/** Normaliza nombre para comparación (insensible a mayúsculas y espacios) */
+function normalizeName(name: string): string {
+  return (name || "").trim().toLowerCase();
+}
+
+function dimensionMatch(a: string, b: string): boolean {
+  return normalizeName(a) === normalizeName(b);
+}
+
+function subdimensionMatch(a: string, b: string): boolean {
+  return normalizeName(a) === normalizeName(b);
+}
+
+/** Pesos de importancia según metodología Brainnova Score (Documentación técnica) */
+const PESO_IMPORTANCIA: Record<string, number> = { Alta: 3, Media: 2, Baja: 1 };
+function pesoImportancia(importancia: string | null): number {
+  if (!importancia) return 1;
+  return PESO_IMPORTANCIA[importancia.trim()] ?? 1;
+}
+
+/** Obtiene mínimo y máximo global por indicador (todos los territorios, opcionalmente filtrado por periodo) */
+async function getMinMaxPorIndicador(
+  nombresIndicadores: string[],
+  periodo: number,
+  options?: { fallbackTodosPeriodos?: boolean }
+): Promise<Map<string, { min: number; max: number }>> {
+  const result = new Map<string, { min: number; max: number }>();
+  if (nombresIndicadores.length === 0) return result;
+
+  let { data, error } = await supabase
+    .from("resultado_indicadores")
+    .select("nombre_indicador, valor_calculado")
+    .in("nombre_indicador", nombresIndicadores)
+    .eq("periodo", periodo);
+
+  if (error || !data || data.length === 0) {
+    if (options?.fallbackTodosPeriodos) {
+      const { data: dataAll, error: errAll } = await supabase
+        .from("resultado_indicadores")
+        .select("nombre_indicador, valor_calculado")
+        .in("nombre_indicador", nombresIndicadores);
+      if (!errAll && dataAll && dataAll.length > 0) {
+        data = dataAll;
+      }
+    } else {
+      return result;
+    }
+  }
+
+  if (!data) return result;
+
+  const byIndicator = new Map<string, number[]>();
+  for (const row of data) {
+    const v = Number(row.valor_calculado);
+    if (isNaN(v)) continue;
+    const name = row.nombre_indicador;
+    if (!byIndicator.has(name)) byIndicator.set(name, []);
+    byIndicator.get(name)!.push(v);
+  }
+  byIndicator.forEach((vals, name) => {
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    result.set(name, { min, max });
+  });
+  return result;
+}
+
+/** Normalización Min-Max: (valor - min) / (max - min). Si max===min, devuelve 1 si valor>0 sino 0. */
+function normalizarMinMax(valor: number, min: number, max: number): number {
+  if (max === min) return valor > 0 ? 1 : 0;
+  const n = (valor - min) / (max - min);
+  return Math.max(0, Math.min(1, n));
+}
+
 export interface Dimension {
   nombre: string;
   peso: number;
@@ -119,22 +193,21 @@ export async function getIndicadoresConDatos(
     if (nombreDimension) {
       const subdimensiones = await getSubdimensiones();
       const subdimensionesFiltradas = subdimensiones
-        .filter((sub) => sub.nombre_dimension === nombreDimension)
+        .filter((sub) => dimensionMatch(sub.nombre_dimension, nombreDimension))
         .map((sub) => sub.nombre);
       
       indicadores = indicadores.filter((ind) =>
-        subdimensionesFiltradas.includes(ind.nombre_subdimension)
+        subdimensionesFiltradas.some((s) => subdimensionMatch(s, ind.nombre_subdimension))
       );
     }
 
-    // Obtener subdimensiones para mapear a dimensiones
+    // Obtener subdimensiones para mapear a dimensiones (búsqueda por nombre normalizada)
     const subdimensiones = await getSubdimensiones();
-    const subdimMap = new Map(
-      subdimensiones.map((sub) => [sub.nombre, sub.nombre_dimension])
-    );
+    const getDimensionForSubdimension = (nombreSub: string) =>
+      subdimensiones.find((s) => subdimensionMatch(s.nombre, nombreSub))?.nombre_dimension || "";
 
     console.log("📊 Mapeo de subdimensiones a dimensiones:", 
-      Array.from(subdimMap.entries()).slice(0, 10).map(([sub, dim]) => `${sub} → ${dim}`)
+      subdimensiones.slice(0, 10).map((s) => `${s.nombre} → ${s.nombre_dimension}`)
     );
 
     // Obtener datos de resultados para cada indicador
@@ -162,7 +235,7 @@ export async function getIndicadoresConDatos(
         const tieneDatos = ultimoValor !== undefined;
         const activo = ind.activo !== undefined ? ind.activo : tieneDatos;
 
-        const dimension = subdimMap.get(ind.nombre_subdimension) || "";
+        const dimension = getDimensionForSubdimension(ind.nombre_subdimension);
         
         if (!dimension && ind.nombre_subdimension) {
           console.warn(`⚠️ No se encontró dimensión para subdimensión: "${ind.nombre_subdimension}" (Indicador: ${ind.nombre})`);
@@ -244,7 +317,7 @@ export async function getDatosPorSubdimension(
   try {
     const subdimensiones = await getSubdimensiones();
     const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => sub.nombre_dimension === nombreDimension
+      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
     );
 
     const datos = await Promise.all(
@@ -307,24 +380,21 @@ export async function getSubdimensionesConScores(
     console.log("getSubdimensionesConScores - nombreDimension:", nombreDimension, "pais:", pais, "periodo:", periodo);
     const subdimensiones = await getSubdimensiones();
     const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => sub.nombre_dimension === nombreDimension
+      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
     );
     console.log("Subdimensiones filtradas:", subdimensionesFiltradas.length, subdimensionesFiltradas.map(s => s.nombre));
 
+    const todosIndicadores = await getIndicadores();
+
     const datos = await Promise.all(
       subdimensionesFiltradas.map(async (sub) => {
-        // Obtener indicadores de esta subdimensión
-        const { data: indicadores, error: indicadoresError } = await supabase
-          .from("definicion_indicadores")
-          .select("nombre")
-          .eq("nombre_subdimension", sub.nombre);
-
-        if (indicadoresError) {
-          console.error("Error obteniendo indicadores para subdimensión", sub.nombre, indicadoresError);
-        }
+        // Indicadores de esta subdimensión (comparación insensible a mayúsculas)
+        const indicadores = todosIndicadores.filter((ind) =>
+          subdimensionMatch(ind.nombre_subdimension, sub.nombre)
+        );
 
         if (!indicadores || indicadores.length === 0) {
-          console.log("No hay indicadores para subdimensión:", sub.nombre);
+          console.log("No hay indicadores para subdimensión:", sub.nombre, "(nombres en BD:", todosIndicadores.filter(ind => ind.nombre_subdimension).map(i => i.nombre_subdimension).slice(0, 5), ")");
           return {
             nombre: sub.nombre,
             score: 0,
@@ -333,7 +403,7 @@ export async function getSubdimensionesConScores(
             indicadores: 0,
           };
         }
-        
+
         console.log(`Subdimensión ${sub.nombre}: ${indicadores.length} indicadores encontrados`);
 
         // Obtener valores promedio de los indicadores para el territorio seleccionado
@@ -438,7 +508,6 @@ export async function getSubdimensionesConScores(
         // Obtener valores promedio para UE (usando un país de referencia o promedio)
         const valoresUE = await Promise.all(
           indicadores.map(async (ind) => {
-            // Buscar valores de países UE (simplificado, usar promedio si hay varios)
             const { data } = await supabase
               .from("resultado_indicadores")
               .select("valor_calculado")
@@ -446,7 +515,6 @@ export async function getSubdimensionesConScores(
               .eq("periodo", periodo)
               .in("pais", ["Alemania", "Francia", "Italia", "Países Bajos"])
               .limit(4);
-            
             if (data && data.length > 0) {
               const promedio = data.reduce((sum, d) => sum + Number(d.valor_calculado || 0), 0) / data.length;
               return promedio;
@@ -455,56 +523,44 @@ export async function getSubdimensionesConScores(
           })
         );
 
-        // Calcular promedios (normalizados a 0-100)
-        const calcularPromedio = (valores: (number | null)[], tipo: string = "") => {
-          const valoresValidos = valores.filter(v => v !== null && !isNaN(v)) as number[];
-          if (valoresValidos.length === 0) {
-            console.log(`⚠️ No hay valores válidos para ${sub.nombre} (${tipo}). Total valores: ${valores.length}, Válidos: 0`);
-            console.log(`   Valores recibidos:`, valores.slice(0, 5));
-            return 0;
-          }
-          
-          // Log de valores para debugging
-          console.log(`📊 Valores para ${sub.nombre} (${tipo}):`, {
-            total: valores.length,
-            validos: valoresValidos.length,
-            valores: valoresValidos.slice(0, 5),
-            min: Math.min(...valoresValidos),
-            max: Math.max(...valoresValidos),
-            promedio: valoresValidos.reduce((sum, v) => sum + v, 0) / valoresValidos.length
+        // Min-Max global por indicador (mismo periodo; si no hay datos, todos los periodos) para normalización
+        let minMaxGlobal = await getMinMaxPorIndicador(
+          indicadores.map((i) => i.nombre),
+          periodo,
+          { fallbackTodosPeriodos: true }
+        );
+        // Indicadores con valor pero sin min/max en este periodo: usar min/max de todos los periodos
+        const conValorSinMinMax = indicadores
+          .map((ind, idx) => (valoresTerritorio[idx] != null ? ind.nombre : null))
+          .filter((n): n is string => n != null && !minMaxGlobal.has(n));
+        if (conValorSinMinMax.length > 0) {
+          const minMaxFallback = await getMinMaxPorIndicador(conValorSinMinMax, periodo, { fallbackTodosPeriodos: true });
+          minMaxFallback.forEach((v, k) => minMaxGlobal.set(k, v));
+        }
+
+        /** Score según metodología Brainnova: normalización Min-Max + ponderación por importancia */
+        const calcularScorePonderado = (valores: (number | null)[]): number => {
+          let sumaPonderada = 0;
+          let sumaPesos = 0;
+          indicadores.forEach((ind, idx) => {
+            const valor = valores[idx];
+            if (valor === null || valor === undefined || isNaN(valor)) return;
+            const mm = minMaxGlobal.get(ind.nombre);
+            if (!mm) return;
+            const norm = normalizarMinMax(valor, mm.min, mm.max);
+            const peso = pesoImportancia(ind.importancia);
+            sumaPonderada += norm * peso;
+            sumaPesos += peso;
           });
-          
-          const promedio = valoresValidos.reduce((sum, v) => sum + v, 0) / valoresValidos.length;
-          
-          // Normalizar a escala 0-100
-          // Si los valores ya están en escala 0-100, solo hacemos clamp
-          // Si están en otra escala, necesitamos normalizar
-          let valorNormalizado = promedio;
-          
-          // Si el promedio es mayor a 100, probablemente los valores no están normalizados
-          // En ese caso, asumimos que están en porcentaje o escala diferente
-          if (promedio > 100) {
-            console.warn(`⚠️ Promedio > 100 para ${sub.nombre} (${tipo}): ${promedio}. Los valores pueden no estar normalizados.`);
-            // Intentar normalizar dividiendo por 100 si parece un porcentaje
-            if (promedio < 10000) {
-              valorNormalizado = promedio / 100;
-            } else {
-              // Si es muy grande, mantener el clamp
-              valorNormalizado = 100;
-            }
-          }
-          
-          const resultado = Math.min(100, Math.max(0, valorNormalizado));
-          console.log(`✅ Promedio calculado para ${sub.nombre} (${tipo}): ${resultado.toFixed(2)} (promedio raw: ${promedio.toFixed(2)}, de ${valoresValidos.length} valores válidos)`);
-          
-          return resultado;
+          if (sumaPesos === 0) return 0;
+          return Math.round((sumaPonderada / sumaPesos) * 100);
         };
 
-        const score = calcularPromedio(valoresTerritorio, "territorio");
-        const espana = calcularPromedio(valoresEspana, "España");
-        const ue = calcularPromedio(valoresUE, "UE");
+        const score = Math.min(100, Math.max(0, calcularScorePonderado(valoresTerritorio)));
+        const espana = Math.min(100, Math.max(0, calcularScorePonderado(valoresEspana)));
+        const ue = Math.min(100, Math.max(0, calcularScorePonderado(valoresUE)));
 
-        console.log(`Resultado para ${sub.nombre}: score=${score}, espana=${espana}, ue=${ue}`);
+        console.log(`Resultado para ${sub.nombre}: score=${score}, espana=${espana}, ue=${ue} (metodología Min-Max + ponderación importancia)`);
 
         return {
           nombre: sub.nombre,
@@ -575,14 +631,14 @@ export async function getDistribucionPorSubdimension(
   try {
     const subdimensiones = await getSubdimensiones();
     const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => sub.nombre_dimension === nombreDimension
+      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
     );
 
     const indicadores = await getIndicadoresConDatos();
     
     const distribucion = await Promise.all(
       subdimensionesFiltradas.map(async (sub) => {
-        const indicadoresSub = indicadores.filter(ind => ind.subdimension === sub.nombre);
+        const indicadoresSub = indicadores.filter(ind => subdimensionMatch(ind.subdimension, sub.nombre));
         return {
           nombre: sub.nombre,
           totalIndicadores: indicadoresSub.length,

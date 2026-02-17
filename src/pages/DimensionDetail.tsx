@@ -7,11 +7,18 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   LayoutDashboard,
   Layers,
   LineChart,
-  Map,
+  Map as MapIcon,
   BookOpen,
   Clock,
   FileText,
@@ -29,13 +36,15 @@ import {
   Download,
   GraduationCap,
   TrendingUp,
-  UserCog
+  UserCog,
+  Calculator,
+  Info
 } from "lucide-react";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { 
   getSubdimensionesConScores, 
   getDimensionScore,
-  getSubdimensiones,
+  getDimensiones,
   getIndicadoresConDatos,
   getDistribucionPorSubdimension,
   getDatosHistoricosIndicador,
@@ -60,7 +69,10 @@ import { exportIndicadoresToCSV } from "@/lib/csv-export";
 
 const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
 
-// Mapeo de dimensiones con sus iconos y descripciones
+// Pesos de importancia según documentación técnica Brainnova Score (Alta=3, Media=2, Baja=1)
+const PESO_IMPORTANCIA: Record<string, number> = { Alta: 3, Media: 2, Baja: 1 };
+
+// Mapeo de dimensiones con sus iconos y descripciones (fallback si la BD no tiene descripción)
 const dimensionesInfo: Record<string, { icon: any; descripcion: string }> = {
   "Transformación Digital Empresarial": {
     icon: Building2,
@@ -98,7 +110,7 @@ const DimensionDetail = () => {
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const [searchParams] = useSearchParams();
-  const dimensionNombre = searchParams.get("dimension") || "";
+  const dimensionNombre = (searchParams.get("dimension") || "").trim();
   
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
@@ -109,46 +121,51 @@ const DimensionDetail = () => {
     navigate('/');
   };
 
-  const dimensionInfo = dimensionesInfo[dimensionNombre] || {
+  // Obtener información de la dimensión desde Supabase
+  const { data: dimensiones } = useQuery({
+    queryKey: ["dimensiones"],
+    queryFn: getDimensiones,
+  });
+
+  // Resolver nombre canónico (insensible a mayúsculas) para que coincida con la BD
+  const normalizeDim = (s: string) => (s || "").trim().toLowerCase();
+  const dimensionNombreNorm = normalizeDim(dimensionNombre);
+  const dimensionInfoDB = dimensiones?.find(dim => normalizeDim(dim.nombre) === dimensionNombreNorm);
+  const canonicalDimensionNombre = dimensionInfoDB?.nombre ?? dimensionNombre;
+
+  const dimensionInfoKey = Object.keys(dimensionesInfo).find(k => normalizeDim(k) === dimensionNombreNorm);
+  const dimensionInfo = dimensionesInfo[dimensionInfoKey || ""] || {
     icon: Layers,
     descripcion: "Información detallada de la dimensión."
   };
   const Icon = dimensionInfo.icon;
 
-  // Obtener información de la dimensión desde Supabase
-  const { data: dimensiones } = useQuery({
-    queryKey: ["dimensiones"],
-    queryFn: () => getDimensiones(),
-  });
-
-  const dimensionInfoDB = dimensiones?.find(dim => dim.nombre === dimensionNombre);
-
-  // Obtener score global de la dimensión
+  // Obtener score global de la dimensión (nombre acepta mayúsculas/minúsculas)
   const { data: dimensionScore } = useQuery({
-    queryKey: ["dimension-score", dimensionNombre, selectedTerritorio, selectedAno],
-    queryFn: () => getDimensionScore(dimensionNombre, selectedTerritorio, Number(selectedAno)),
-    enabled: !!dimensionNombre,
+    queryKey: ["dimension-score", canonicalDimensionNombre, selectedTerritorio, selectedAno],
+    queryFn: () => getDimensionScore(canonicalDimensionNombre, selectedTerritorio, Number(selectedAno)),
+    enabled: !!canonicalDimensionNombre,
   });
 
   // Obtener subdimensiones con scores
   const { data: subdimensiones } = useQuery({
-    queryKey: ["subdimensiones-scores", dimensionNombre, selectedTerritorio, selectedAno],
-    queryFn: () => getSubdimensionesConScores(dimensionNombre, selectedTerritorio, Number(selectedAno)),
-    enabled: !!dimensionNombre,
+    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, selectedTerritorio, selectedAno],
+    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, selectedTerritorio, Number(selectedAno)),
+    enabled: !!canonicalDimensionNombre,
   });
 
   // Obtener todos los indicadores de la dimensión
   const { data: indicadores } = useQuery({
-    queryKey: ["indicadores-dimension", dimensionNombre],
-    queryFn: () => getIndicadoresConDatos(dimensionNombre),
-    enabled: !!dimensionNombre,
+    queryKey: ["indicadores-dimension", canonicalDimensionNombre],
+    queryFn: () => getIndicadoresConDatos(canonicalDimensionNombre),
+    enabled: !!canonicalDimensionNombre,
   });
 
   // Obtener distribución por subdimensión
   const { data: distribucion } = useQuery({
-    queryKey: ["distribucion-dimension", dimensionNombre],
-    queryFn: () => getDistribucionPorSubdimension(dimensionNombre),
-    enabled: !!dimensionNombre,
+    queryKey: ["distribucion-dimension", canonicalDimensionNombre],
+    queryFn: () => getDistribucionPorSubdimension(canonicalDimensionNombre),
+    enabled: !!canonicalDimensionNombre,
   });
 
   // Obtener datos históricos para todos los indicadores
@@ -170,11 +187,11 @@ const DimensionDetail = () => {
     enabled: !!indicadores && indicadores.length > 0,
   });
 
-  // Preparar datos para el gráfico de barras
+  // Preparar datos para el gráfico de barras (score del territorio seleccionado + España + UE)
   const chartData = subdimensiones?.map(sub => ({
     nombre: sub.nombre,
-    "Comunitat Valenciana": Math.round(sub.score),
-    "Media España": Math.round(sub.espana),
+    [selectedTerritorio]: Math.round(sub.score),
+    "España": Math.round(sub.espana),
     "Media UE": Math.round(sub.ue),
   })) || [];
 
@@ -184,6 +201,23 @@ const DimensionDetail = () => {
     value: sub.porcentaje,
     totalIndicadores: sub.totalIndicadores
   })) || [];
+
+  // Mapa subdimensión -> % de indicadores (el mismo % que sale en la página de subdimensión)
+  const porcentajePorSubdimension = useMemo(() => {
+    const map = new Map<string, number>();
+    (distribucion ?? []).forEach((d) => {
+      if (d?.nombre != null && typeof d.porcentaje === "number") {
+        map.set(String(d.nombre).trim().toLowerCase(), d.porcentaje);
+      }
+    });
+    return map;
+  }, [distribucion]);
+  const getPorcentajeIndicadores = (nombreSub: string) => {
+    if (nombreSub == null || typeof nombreSub !== "string") return null;
+    const key = nombreSub.trim().toLowerCase();
+    if (porcentajePorSubdimension.has(key)) return porcentajePorSubdimension.get(key) ?? null;
+    return distribucion?.find((d) => d && normalizeDim(d.nombre) === key)?.porcentaje ?? null;
+  };
 
   // Preparar datos para el gráfico de línea (evolución histórica)
   const lineData: Array<{ periodo: number; [key: string]: number | string }> = [];
@@ -210,7 +244,7 @@ const DimensionDetail = () => {
 
   const handleExportCSV = () => {
     if (indicadores) {
-      exportIndicadoresToCSV(indicadores, `dimension-${dimensionNombre}`);
+      exportIndicadoresToCSV(indicadores, `dimension-${displayDimensionNombre}`);
     }
   };
 
@@ -232,7 +266,7 @@ const DimensionDetail = () => {
       { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
       { icon: Layers, label: "Dimensiones", href: "/dimensiones", active: true },
       { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
+      { icon: MapIcon, label: "Comparación Territorial", href: "/comparacion" },
       { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
       { icon: FileText, label: "Informes", href: "/informes" },
       { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
@@ -258,6 +292,8 @@ const DimensionDetail = () => {
       </div>
     );
   }
+
+  const displayDimensionNombre = canonicalDimensionNombre;
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -348,28 +384,108 @@ const DimensionDetail = () => {
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
           <div className="max-w-7xl mx-auto space-y-6">
-            {/* Title Section */}
+            {/* Title Section: nombre y descripción desde BD / fallback */}
             <div className="mb-6">
-              <div className="flex items-center space-x-3 mb-2">
-                <LineChart className="h-8 w-8 text-[#0c6c8b]" />
-                <h1 className="text-3xl font-bold text-[#0c6c8b]">
-                  Dashboard completo de KPIs
-                </h1>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-[#0c6c8b]/10 rounded-lg">
+                    <Icon className="h-8 w-8 text-[#0c6c8b]" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-bold text-[#0c6c8b]">
+                      {displayDimensionNombre}
+                    </h1>
+                    {dimensionInfoDB && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Peso en el índice global: <span className="font-semibold">{dimensionInfoDB.peso}%</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Territorio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Comunitat Valenciana">Comunitat Valenciana</SelectItem>
+                      <SelectItem value="España">España</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={selectedAno} onValueChange={setSelectedAno}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="Año" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2024, 2023, 2022, 2021].map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <p className="text-lg text-gray-600">
-                Sistema de indicadores del ecosistema digital valenciano organizados por dimensiones
+              <p className="text-lg text-gray-600 mt-4 max-w-4xl">
+                {dimensionInfo.descripcion}
               </p>
             </div>
 
-            {/* Dimension Navigation */}
-            <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-              <span className="text-sm font-semibold text-[#0c6c8b] px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
-                {dimensionNombre}
-              </span>
-            </div>
+            {/* Metodología de cálculo (Documentación técnica Brainnova Score) */}
+            <Card className="bg-white border-[#0c6c8b]/20 mb-6">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-xl text-[#0c6c8b]">
+                  <Calculator className="h-5 w-5" />
+                  Metodología de cálculo (Brainnova Score)
+                </CardTitle>
+                <p className="text-sm text-gray-600">
+                  El Brainnova Score es un indicador compuesto (0-100) que evalúa el rendimiento en un contexto dado. Cálculo en 4 etapas:
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">1. Definición del contexto</h4>
+                  <p className="text-gray-700">Se seleccionan todos los indicadores disponibles para el contexto (Periodo, País, Sector, Tamaño).</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">2. Normalización dinámica (Min-Max)</h4>
+                  <p className="text-gray-700 mb-1">Para cada indicador, puntuación normalizada comparando con el mínimo y máximo global del indicador en el ecosistema (mismo año):</p>
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                    Valor Normalizado = (Valor Real − Mínimo Global) / (Máximo Global − Mínimo Global)  →  resultado entre 0 y 1
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">3. Ponderación por importancia (nivel subdimensión)</h4>
+                  <p className="text-gray-700 mb-1">Cada indicador tiene importancia Alta, Media o Baja. Pesos: Alta=3, Media=2, Baja=1. Media ponderada en cada subdimensión:</p>
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                    Score Subdimensión = Suma(Valor Normalizado × Peso) / Suma(Pesos)
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">4. Agregación (dimensión y global)</h4>
+                  <p className="text-gray-700 mb-1">Score de dimensión = promedio simple de los scores de sus subdimensiones. El índice global es la suma ponderada de los scores de las dimensiones según su peso (ej. {dimensionInfoDB?.peso ?? 0}% para esta dimensión).</p>
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                    Score Dimensión = Promedio(Scores Subdimensiones)  ·  Brainnova Score = Suma(Score Dimensión × Peso %)
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* KPI Cards */}
+            {/* KPI Cards (datos desde BD) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Score de la dimensión */}
+              <Card className="bg-white border-[#0c6c8b]/30">
+                <CardContent className="p-6">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <TrendingUp className="h-5 w-5 text-[#0c6c8b]" />
+                    <span className="text-sm text-gray-600">Score dimensión</span>
+                  </div>
+                  <div className="text-3xl font-bold text-[#0c6c8b]">
+                    {dimensionScore != null ? Math.round(dimensionScore) : "—"}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {selectedTerritorio} · {selectedAno} (promedio de subdimensiones)
+                  </div>
+                </CardContent>
+              </Card>
               {/* Total Indicadores Card */}
               <Card className="bg-gray-50 border-gray-200">
                 <CardContent className="p-6">
@@ -384,7 +500,7 @@ const DimensionDetail = () => {
                       </div>
                       {dimensionInfoDB && (
                         <div className="text-xs text-gray-500">
-                          Peso: {dimensionInfoDB.peso || 0}%
+                          Peso en índice global: {dimensionInfoDB.peso ?? 0}%
                         </div>
                       )}
                     </div>
@@ -392,31 +508,24 @@ const DimensionDetail = () => {
                 </CardContent>
               </Card>
 
-              {/* Individual Indicator Cards */}
-              {indicadores?.slice(0, 3).map((indicador, index) => (
-                <Card key={indicador.nombre} className="bg-gray-50 border-gray-200">
+              {/* Vista previa de indicadores (primeros 2) */}
+              {indicadores?.slice(0, 2).map((indicador) => (
+                <Card
+                  key={indicador.nombre}
+                  className="bg-gray-50 border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => navigate(`/kpis?search=${encodeURIComponent(indicador.nombre)}`)}
+                >
                   <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <TrendingUp className="h-5 w-5 text-[#0c6c8b]" />
-                        </div>
-                        <div className="text-3xl font-bold text-gray-900 mb-1">
-                          {indicador.ultimoValor !== undefined ? indicador.ultimoValor.toFixed(1) : "0"}
-                        </div>
-                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">
-                          {indicador.nombre}
-                        </p>
-                        {indicador.subdimension && (
-                          <button
-                            onClick={() => navigate(`/kpis/subdimension?subdimension=${encodeURIComponent(indicador.subdimension)}&dimension=${encodeURIComponent(dimensionNombre)}`)}
-                            className="text-xs text-[#0c6c8b] hover:text-[#0a5a73] hover:underline cursor-pointer"
-                          >
-                            {indicador.subdimension}
-                          </button>
-                        )}
-                      </div>
+                    <div className="flex items-center space-x-2 mb-2">
+                      <TrendingUp className="h-5 w-5 text-[#0c6c8b]" />
                     </div>
+                    <div className="text-2xl font-bold text-gray-900 mb-1">
+                      {indicador.ultimoValor !== undefined ? indicador.ultimoValor.toFixed(1) : "—"}
+                    </div>
+                    <p className="text-xs text-gray-600 line-clamp-2 mb-1">{indicador.nombre}</p>
+                    {indicador.subdimension && (
+                      <p className="text-xs text-[#0c6c8b]">{indicador.subdimension}</p>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -552,43 +661,123 @@ const DimensionDetail = () => {
               </Card>
             </div>
 
+            {/* Indicadores de esta dimensión (datos desde BD: importancia, fórmula, fuente) */}
+            {indicadores && indicadores.length > 0 && (
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-xl text-[#0c6c8b]">
+                    <Info className="h-5 w-5" />
+                    Indicadores de esta dimensión ({indicadores.length})
+                  </CardTitle>
+                  <p className="text-sm text-gray-600">
+                    Importancia usada en el cálculo: Alta (peso 3), Media (peso 2), Baja (peso 1). Datos desde la base de datos.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50">
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700">Indicador</th>
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700">Subdimensión</th>
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700">Importancia</th>
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700">Último valor</th>
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700 hidden lg:table-cell">Fórmula / Fuente</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {indicadores.map((ind) => (
+                          <tr
+                            key={ind.nombre}
+                            className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => navigate(`/kpis?search=${encodeURIComponent(ind.nombre)}`)}
+                          >
+                            <td className="py-3 px-2 font-medium text-gray-900">{ind.nombre}</td>
+                            <td className="py-3 px-2 text-gray-700">{ind.subdimension || "—"}</td>
+                            <td className="py-3 px-2">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                                ind.importancia === "Alta" ? "bg-emerald-100 text-emerald-800" :
+                                ind.importancia === "Media" ? "bg-amber-100 text-amber-800" :
+                                "bg-gray-100 text-gray-700"
+                              }`}>
+                                {ind.importancia || "—"} {ind.importancia ? `(peso ${PESO_IMPORTANCIA[ind.importancia] ?? 1})` : ""}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-gray-700">
+                              {ind.ultimoValor !== undefined ? ind.ultimoValor.toFixed(2) : "—"}
+                              {ind.ultimoPeriodo != null && ` (${ind.ultimoPeriodo})`}
+                            </td>
+                            <td className="py-3 px-2 text-gray-600 hidden lg:table-cell max-w-xs truncate" title={[ind.formula, ind.fuente].filter(Boolean).join(" · ")}>
+                              {ind.formula ? `Fórmula: ${ind.formula}` : ""}
+                              {ind.formula && ind.fuente ? " · " : ""}
+                              {ind.fuente ? `Fuente: ${ind.fuente}` : ""}
+                              {!ind.formula && !ind.fuente ? "—" : ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Detalle de Subdimensiones - Clickable */}
             <div>
               <h2 className="text-2xl font-bold text-[#0c6c8b] mb-6">
                 Detalle de Subdimensiones
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {subdimensiones?.map((subdimension) => (
+                {subdimensiones?.map((subdimension) => {
+                  const nombreSub = subdimension?.nombre ?? "";
+                  const porcentajeIndicadores = getPorcentajeIndicadores(nombreSub);
+                  const scoreNum = Number(subdimension?.score);
+                  const tieneScore = !isNaN(scoreNum) && scoreNum > 0;
+                  const progressValue = tieneScore ? Math.min(100, Math.max(0, scoreNum)) : (typeof porcentajeIndicadores === "number" && !isNaN(porcentajeIndicadores) ? porcentajeIndicadores : 0);
+                  return (
                   <Card 
-                    key={subdimension.nombre} 
+                    key={nombreSub} 
                     className="bg-white border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
-                    onClick={() => navigate(`/kpis/subdimension?subdimension=${encodeURIComponent(subdimension.nombre)}&dimension=${encodeURIComponent(dimensionNombre)}`)}
+                    onClick={() => navigate(`/kpis/subdimension?subdimension=${encodeURIComponent(nombreSub)}&dimension=${encodeURIComponent(displayDimensionNombre)}`)}
                   >
                     <CardContent className="p-6">
                       <div className="mb-4">
                         <h3 className="text-lg font-bold text-gray-900 mb-4">
-                          {subdimension.nombre}
+                          {nombreSub}
                         </h3>
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <div className="text-4xl font-bold text-gray-900">
-                              {Math.round(subdimension.score)}
+                              {tieneScore ? Math.round(scoreNum) : (porcentajeIndicadores != null ? `${porcentajeIndicadores}%` : "—")}
                             </div>
-                            <div className="text-sm text-gray-500 mt-1">Comunitat Valenciana</div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {tieneScore ? selectedTerritorio : (porcentajeIndicadores != null ? "de los indicadores de la dimensión" : "Sin datos")}
+                            </div>
                           </div>
                           <div className="text-right space-y-1">
-                            <div className="text-sm text-gray-600">España: <span className="font-semibold">{Math.round(subdimension.espana)}</span></div>
-                            <div className="text-sm text-gray-600">UE: <span className="font-semibold">{Math.round(subdimension.ue)}</span></div>
+                            {tieneScore && (
+                              <>
+                                <div className="text-sm text-gray-600">España: <span className="font-semibold">{Math.round(subdimension.espana)}</span></div>
+                                <div className="text-sm text-gray-600">UE: <span className="font-semibold">{Math.round(subdimension.ue)}</span></div>
+                              </>
+                            )}
+                            {porcentajeIndicadores != null && (
+                              <div className="text-sm text-[#0c6c8b] font-medium">
+                                {porcentajeIndicadores}% indicadores
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <Progress value={subdimension.score} className="h-2" />
+                        <Progress value={progressValue} className="h-2" />
+                        <div className="text-xs text-gray-500 mt-1">{subdimension.indicadores ?? 0} indicadores</div>
                       </div>
                       <div className="flex items-center justify-end mt-4">
                         <ArrowRight className="h-5 w-5 text-[#0c6c8b]" />
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -620,8 +809,8 @@ const DimensionDetail = () => {
                         />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="Comunitat Valenciana" fill="#0c6c8b" />
-                        <Bar dataKey="Media España" fill="#3B82F6" />
+                        <Bar dataKey={selectedTerritorio} fill="#0c6c8b" name={selectedTerritorio} />
+                        <Bar dataKey="España" fill="#3B82F6" />
                         <Bar dataKey="Media UE" fill="#93C5FD" />
                       </BarChart>
                     </ResponsiveContainer>

@@ -22,7 +22,6 @@ import {
   Clock,
   FileText,
   CheckCircle2,
-  Download,
   ArrowRight,
   MessageSquare,
   Shield,
@@ -445,24 +444,6 @@ const Metodologia = () => {
                   </div>
                 </div>
               </div>
-            </Card>
-
-            {/* Referencia Metodológica */}
-            <Card className="p-6 bg-white">
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-3">Referencia Metodológica</h2>
-                <p className="text-gray-700 mb-4">
-                  Para más información sobre la metodología completa, consulte el documento técnico "Marco Metodológico BRAINNOVA 2026" disponible en la sección de recursos.
-                </p>
-              </div>
-              
-              <Button
-                className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                size="lg"
-              >
-                <Download className="h-5 w-5 mr-2" />
-                Descargar Documento Técnico
-              </Button>
             </Card>
           </div>
         </main>
