@@ -131,10 +131,19 @@ const Informes = () => {
     setPdfCacheBuster(Date.now());
   };
 
+  /** URL absoluta del PDF para iframe y descarga (evita rutas relativas que no cargan bien) */
+  const getAbsolutePdfUrl = (pdfUrl?: string | null): string => {
+    if (!pdfUrl) return '';
+    if (pdfUrl.startsWith('http://') || pdfUrl.startsWith('https://')) return pdfUrl;
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
+    const path = pdfUrl.startsWith('/') ? pdfUrl : `/${pdfUrl}`;
+    return `${window.location.origin}${base}${path}`;
+  };
+
   const handleDownload = (pdfUrl?: string) => {
     if (pdfUrl) {
       const link = document.createElement('a');
-      link.href = pdfUrl;
+      link.href = getAbsolutePdfUrl(pdfUrl);
       link.download = pdfUrl.split('/').pop() || 'informe.pdf';
       link.click();
     }
@@ -532,7 +541,12 @@ const Informes = () => {
               <Tabs defaultValue="html" className="w-full" key={selectedInforme?.pdfUrl}>
                 <TabsList className="grid w-full grid-cols-2 mb-4">
                   <TabsTrigger value="html">Ver Online (HTML)</TabsTrigger>
-                  <TabsTrigger value="pdf">Ver PDF</TabsTrigger>
+                  <TabsTrigger
+                    value="pdf"
+                    onClick={() => setPdfLoadError(false)}
+                  >
+                    Ver PDF
+                  </TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="html" className="mt-4">
@@ -542,9 +556,19 @@ const Informes = () => {
                 </TabsContent>
                 
                 <TabsContent value="pdf" className="mt-4">
-                  <div className="border rounded-lg bg-white relative">
-                    {pdfLoadError ? (
-                      <div className="flex flex-col items-center justify-center h-[70vh] p-8 text-center">
+                  <div className="border rounded-lg bg-white relative min-h-[70vh] overflow-hidden">
+                    {!selectedInforme?.pdfUrl ? (
+                      <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
+                        <FileText className="h-12 w-12 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          No hay PDF disponible
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          Este informe no tiene archivo PDF asociado. Un administrador puede subir uno.
+                        </p>
+                      </div>
+                    ) : pdfLoadError ? (
+                      <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
                         <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">
                           Error al cargar el PDF
@@ -563,25 +587,22 @@ const Informes = () => {
                     ) : (
                       <iframe
                         key={`${selectedInforme?.pdfUrl}-${pdfCacheBuster}`}
-                        src={`${selectedInforme?.pdfUrl}?t=${pdfCacheBuster}#toolbar=1&navpanes=1&scrollbar=1`}
-                        className="w-full h-[70vh] border-0"
-                        title={selectedInforme?.title}
+                        src={`${getAbsolutePdfUrl(selectedInforme?.pdfUrl)}?t=${pdfCacheBuster}#toolbar=1&navpanes=1&scrollbar=1`}
+                        className="w-full min-h-[70vh] h-[70vh] border-0 block"
+                        style={{ minHeight: '70vh' }}
+                        title={`PDF: ${selectedInforme?.title}`}
                         onError={() => {
                           console.error('Error loading PDF in iframe');
                           setPdfLoadError(true);
                         }}
                         onLoad={(e) => {
-                          // Verificar si el iframe cargó correctamente
                           try {
                             const iframe = e.target as HTMLIFrameElement;
-                            // Si el iframe no puede acceder al contenido, podría ser un error CORS
                             if (iframe.contentWindow === null) {
                               setPdfLoadError(true);
                             }
-                          } catch (err) {
-                            // Error al acceder al contenido del iframe (probablemente CORS)
-                            console.warn('Cannot access iframe content (CORS):', err);
-                            // No establecer error aquí, ya que algunos navegadores bloquean el acceso pero el PDF se carga
+                          } catch {
+                            // CORS: el PDF puede haberse cargado igual
                           }
                         }}
                       />
