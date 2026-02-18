@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getSubdimensionesConScores } from "@/lib/kpis-data";
 
 /** Datos de índice BRAINNOVA por provincia (alineado con /comparacion y dashboard) */
 const INDICE_POR_PROVINCIA: Record<string, { indice: number; ranking: number; dimensionDestacada: string; puntosDimension: number }> = {
@@ -182,11 +183,23 @@ export async function searchIndicators(query: string): Promise<any[]> {
   }
 }
 
+/** Opciones para obtener detalle de indicador (p. ej. filtrar por territorio) */
+export interface GetIndicatorDetailsOptions {
+  pais?: string;
+  periodo?: number;
+}
+
 /**
- * Obtiene información detallada de un indicador específico
+ * Obtiene información detallada de un indicador específico.
+ * Si se indica pais (y opcionalmente periodo), ultimoValor/ultimoPeriodo/ultimoPais corresponden a ese territorio.
  */
-export async function getIndicatorDetails(nombreIndicador: string): Promise<any> {
+export async function getIndicatorDetails(
+  nombreIndicador: string,
+  options?: GetIndicatorDetailsOptions
+): Promise<any> {
   try {
+    const { pais: filterPais, periodo: filterPeriodo } = options || {};
+
     // Obtener información del indicador
     const { data: indicador, error: indicadorError } = await supabase
       .from('definicion_indicadores')
@@ -205,13 +218,42 @@ export async function getIndicatorDetails(nombreIndicador: string): Promise<any>
       .eq('nombre', indicador.nombre_subdimension)
       .single();
 
-    // Obtener último valor
-    const { data: ultimoResultado } = await supabase
-      .from('resultado_indicadores')
-      .select('valor_calculado, periodo, pais')
-      .eq('nombre_indicador', nombreIndicador)
-      .order('periodo', { ascending: false })
-      .limit(1);
+    // Obtener valor: si hay territorio, filtrar por él; si no, último disponible
+    const variacionesPais: Record<string, string[]> = {
+      Valencia: ['Valencia'],
+      Alicante: ['Alicante'],
+      Castellón: ['Castellón', 'Castellon'],
+      Castellon: ['Castellón', 'Castellon'],
+    };
+    let ultimoResultado: { valor_calculado: number; periodo: number; pais: string } | null = null;
+
+    if (filterPais) {
+      const variaciones = variacionesPais[filterPais] || [filterPais];
+      for (const p of variaciones) {
+        let q = supabase
+          .from('resultado_indicadores')
+          .select('valor_calculado, periodo, pais')
+          .eq('nombre_indicador', nombreIndicador)
+          .eq('pais', p);
+        if (filterPeriodo) {
+          q = q.eq('periodo', filterPeriodo);
+        }
+        const { data } = await q.order('periodo', { ascending: false }).limit(1);
+        if (data && data.length > 0) {
+          ultimoResultado = data[0] as any;
+          break;
+        }
+      }
+    }
+    if (!ultimoResultado) {
+      const { data } = await supabase
+        .from('resultado_indicadores')
+        .select('valor_calculado, periodo, pais')
+        .eq('nombre_indicador', nombreIndicador)
+        .order('periodo', { ascending: false })
+        .limit(1);
+      ultimoResultado = data?.[0] as any ?? null;
+    }
 
     // Obtener total de resultados
     const { count } = await supabase
@@ -223,9 +265,9 @@ export async function getIndicatorDetails(nombreIndicador: string): Promise<any>
       ...indicador,
       dimension: subdimension?.nombre_dimension || '',
       subdimension: indicador.nombre_subdimension,
-      ultimoValor: ultimoResultado?.[0]?.valor_calculado,
-      ultimoPeriodo: ultimoResultado?.[0]?.periodo,
-      ultimoPais: ultimoResultado?.[0]?.pais,
+      ultimoValor: ultimoResultado?.valor_calculado,
+      ultimoPeriodo: ultimoResultado?.periodo,
+      ultimoPais: ultimoResultado?.pais,
       totalResultados: count || 0,
     };
   } catch (error) {
@@ -358,10 +400,102 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     return `**Índice BRAINNOVA por provincia** (Comunitat Valenciana):\n\n${lineas.join("\n")}\n\nPuedes ver el detalle en *Comparación Territorial* en el menú.`;
   }
 
-  // --- Nivel de digitalización de las empresas por provincia ---
+  // --- Digitalización BÁSICA: desambiguar empresas (subdimensión) vs personas (indicador) ---
+  const buscaDigitalizacionBasica =
+    lowerQuery.includes("digitalización básica") ||
+    lowerQuery.includes("digitalizacion basica") ||
+    lowerQuery.includes("digitalización basica") ||
+    (lowerQuery.includes("digitalizacion") && lowerQuery.includes("basica"));
+  const referenciaEmpresas = lowerQuery.includes("empresa") || lowerQuery.includes("empresas");
+  const referenciaPersonasHabilidades =
+    (lowerQuery.includes("personas") && lowerQuery.includes("habilidades")) ||
+    (lowerQuery.includes("personas") && lowerQuery.includes("digitales")) ||
+    (lowerQuery.includes("habilidades digitales") && lowerQuery.includes("personas"));
+
+  if (buscaDigitalizacionBasica) {
+    // Caso 1: usuario pregunta explícitamente por personas/habilidades → indicador "Personas con habilidades digitales básicas"
+    if (referenciaPersonasHabilidades && !referenciaEmpresas) {
+      const indicadores = await searchIndicators("personas habilidades digitales básicas");
+      const indicadorPersonas = indicadores.find(
+        (ind) =>
+          ind.nombre?.toLowerCase().includes("habilidades") ||
+          ind.nombre?.toLowerCase().includes("personas")
+      ) || indicadores[0];
+      if (indicadorPersonas) {
+        const nombreProvincia = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : undefined;
+        const detalle = await getIndicatorDetails(indicadorPersonas.nombre, {
+          pais: nombreProvincia,
+          periodo: 2024,
+        });
+        if (detalle) {
+          let respuesta = `**${detalle.nombre}**\n\n`;
+          if (detalle.dimension) respuesta += `📊 Dimensión: ${detalle.dimension}\n`;
+          if (detalle.subdimension) respuesta += `📈 Subdimensión: ${detalle.subdimension}\n`;
+          if (detalle.importancia) respuesta += `⭐ Importancia: ${detalle.importancia}\n`;
+          if (detalle.ultimoValor !== undefined && detalle.ultimoValor !== null) {
+            respuesta += `\n📊 ${nombreProvincia ? `Valor en **${nombreProvincia}**` : "Último valor disponible"}: **${detalle.ultimoValor}**`;
+            if (detalle.ultimoPeriodo) respuesta += ` (período ${detalle.ultimoPeriodo})`;
+            if (detalle.ultimoPais && !nombreProvincia) respuesta += ` - ${detalle.ultimoPais}`;
+          }
+          return respuesta;
+        }
+      }
+    }
+
+    // Caso 2: digitalización básica en empresas o por territorio (Castellón, etc.) → subdimensión "Digitalización Básica" (Transformación Digital Empresarial)
+    const dimensionTransformacion = "Transformación Digital Empresarial";
+    const periodoChatbot = 2024;
+    const provinciasParaListar = [
+      { key: "valencia" as const, nombre: "Valencia" },
+      { key: "alicante" as const, nombre: "Alicante" },
+      { key: "castellón" as const, nombre: "Castellón" },
+    ];
+    const provinciaParaConsulta = provinciaKey
+      ? (provinciaKey === "castellón" ? "Castellón" : (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey))
+      : null;
+
+    const subs =
+      provinciaParaConsulta
+        ? await getSubdimensionesConScores(dimensionTransformacion, provinciaParaConsulta, periodoChatbot)
+        : await getSubdimensionesConScores(dimensionTransformacion, "Valencia", periodoChatbot);
+    const subParaScore = subs.find(
+      (s) =>
+        (s.nombre.toLowerCase().includes("digitalización") || s.nombre.toLowerCase().includes("digitalizacion")) &&
+        (s.nombre.toLowerCase().includes("básica") || s.nombre.toLowerCase().includes("basica"))
+    );
+
+    if (subParaScore) {
+      if (provinciaParaConsulta) {
+        const score = subParaScore.score;
+        return `El **nivel de digitalización básica en las empresas** en **${provinciaParaConsulta}** (subdimensión **${subParaScore.nombre}**, dentro de Transformación Digital Empresarial) es de **${score}** puntos sobre 100. Esta subdimensión mide el grado de adopción de digitalización básica en el tejido empresarial.\n\nPuedes ver el detalle por dimensiones en *Comparación Territorial*.`;
+      }
+      // Sin provincia: devolver las tres
+      const lineas: string[] = [];
+      for (const { key, nombre } of provinciasParaListar) {
+        const subsProv = await getSubdimensionesConScores(
+          dimensionTransformacion,
+          nombre,
+          periodoChatbot
+        );
+        const sub = subsProv.find(
+          (s) =>
+            (s.nombre.toLowerCase().includes("digitalización") || s.nombre.toLowerCase().includes("digitalizacion")) &&
+            (s.nombre.toLowerCase().includes("básica") || s.nombre.toLowerCase().includes("basica"))
+        );
+        if (sub) lineas.push(`• **${nombre}**: ${sub.score} puntos`);
+      }
+      if (lineas.length > 0) {
+        const nombreSub = subParaScore.nombre;
+        return `**Digitalización básica en las empresas** (subdimensión ${nombreSub}, Transformación Digital Empresarial) por provincia:\n\n${lineas.join("\n")}\n\nPuedes ver el detalle en *Comparación Territorial* o en la ficha de la dimensión *Transformación Digital Empresarial*.`;
+      }
+    }
+  }
+
+  // --- Nivel de digitalización de las empresas (dimensión completa, sin "básica") por provincia ---
   const preguntaDigitalizacionEmpresas =
     (lowerQuery.includes("digitalización") || lowerQuery.includes("digitalizacion")) &&
     (lowerQuery.includes("empresa") || lowerQuery.includes("empresas")) &&
+    !buscaDigitalizacionBasica &&
     (provinciaKey || lowerQuery.includes("castellón") || lowerQuery.includes("castellon") || lowerQuery.includes("alicante") || lowerQuery.includes("valencia"));
 
   if (preguntaDigitalizacionEmpresas) {
@@ -371,10 +505,9 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
       const nombreProvincia = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
       const scoreTransformacion = dims?.["Transformación Digital Empresarial"];
       if (scoreTransformacion !== undefined) {
-        return `El **nivel de digitalización de las empresas** en **${nombreProvincia}** (dimensión Transformación Digital Empresarial) es de **${scoreTransformacion}** puntos sobre 100. Esta dimensión mide el grado de adopción e integración de tecnologías digitales en las empresas.\n\nEn *Comparación Territorial* puedes ver el resto de dimensiones por provincia.`;
+        return `El **nivel de digitalización de las empresas** en **${nombreProvincia}** (dimensión Transformación Digital Empresarial) es de **${scoreTransformacion}** puntos sobre 100. Esta dimensión mide el grado de adopción e integración de tecnologías digitales en las empresas.\n\nPara el dato de **digitalización básica** (subdimensión) puedes preguntar: "¿Cómo está la digitalización básica en las empresas de ${nombreProvincia}?".\n\nEn *Comparación Territorial* puedes ver el resto de dimensiones por provincia.`;
       }
     }
-    // Sin provincia: listar las tres
     const lineas = [
       { nombre: "Valencia", key: "valencia" },
       { nombre: "Alicante", key: "alicante" },
@@ -389,26 +522,32 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
 
-  // --- Indicadores concretos: "Digitalización básica" y "personas con habilidades digitales básicas" ---
-  const buscaDigitalizacionBasica = lowerQuery.includes("digitalización básica") || lowerQuery.includes("digitalizacion basica") || lowerQuery.includes("digitalización basica");
-  const buscaHabilidadesDigitales = lowerQuery.includes("habilidades digitales") || lowerQuery.includes("habilidad digital") || lowerQuery.includes("personas con habilidades");
+  // --- Indicador "personas con habilidades digitales básicas" cuando se pregunta por habilidades (sin "digitalización básica" ya tratada) ---
+  const buscaHabilidadesDigitales =
+    (lowerQuery.includes("habilidades digitales") || lowerQuery.includes("habilidad digital") || lowerQuery.includes("personas con habilidades")) &&
+    !buscaDigitalizacionBasica;
 
-  if (buscaDigitalizacionBasica || buscaHabilidadesDigitales) {
-    const queryBusqueda = buscaDigitalizacionBasica
-      ? "digitalización básica"
-      : "habilidades digitales básicas personas";
-    const indicadores = await searchIndicators(queryBusqueda);
-    if (indicadores.length > 0) {
-      const detalle = await getIndicatorDetails(indicadores[0].nombre);
+  if (buscaHabilidadesDigitales) {
+    const indicadores = await searchIndicators("habilidades digitales básicas personas");
+    const indicadorPersonas = indicadores.find(
+      (ind) =>
+        ind.nombre?.toLowerCase().includes("habilidades") || ind.nombre?.toLowerCase().includes("personas")
+    ) || indicadores[0];
+    if (indicadorPersonas) {
+      const nombreProvincia = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : undefined;
+      const detalle = await getIndicatorDetails(indicadorPersonas.nombre, {
+        pais: nombreProvincia,
+        periodo: 2024,
+      });
       if (detalle) {
         let respuesta = `**${detalle.nombre}**\n\n`;
         if (detalle.dimension) respuesta += `📊 Dimensión: ${detalle.dimension}\n`;
         if (detalle.subdimension) respuesta += `📈 Subdimensión: ${detalle.subdimension}\n`;
         if (detalle.importancia) respuesta += `⭐ Importancia: ${detalle.importancia}\n`;
         if (detalle.ultimoValor !== undefined && detalle.ultimoValor !== null) {
-          respuesta += `\n📊 Último valor disponible: **${detalle.ultimoValor}**`;
+          respuesta += `\n📊 ${nombreProvincia ? `Valor en **${nombreProvincia}**` : "Último valor disponible"}: **${detalle.ultimoValor}**`;
           if (detalle.ultimoPeriodo) respuesta += ` (período ${detalle.ultimoPeriodo})`;
-          if (detalle.ultimoPais) respuesta += ` - ${detalle.ultimoPais}`;
+          if (detalle.ultimoPais && !nombreProvincia) respuesta += ` - ${detalle.ultimoPais}`;
         }
         if (indicadores.length > 1) {
           respuesta += `\n\nTambién hay ${indicadores.length - 1} indicador(es) más relacionados. ¿Quieres el detalle de otro?`;
@@ -416,8 +555,7 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
         return respuesta;
       }
     }
-    // Búsqueda más amplia por palabras sueltas
-    const fallback = await searchIndicators(buscaDigitalizacionBasica ? "digitalización básica" : "habilidades digitales básicas");
+    const fallback = await searchIndicators("habilidades digitales básicas");
     if (fallback.length > 0) {
       const lista = fallback.slice(0, 5).map((ind, i) => `${i + 1}. **${ind.nombre}**`).join("\n");
       return `Indicadores relacionados:\n\n${lista}\n\n¿Sobre cuál quieres el valor o la definición?`;

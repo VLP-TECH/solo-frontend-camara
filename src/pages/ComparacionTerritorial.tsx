@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
+import { getDimensiones, getDimensionScore } from "@/lib/kpis-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -40,26 +42,95 @@ const ComparacionTerritorial = () => {
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
 
+  const periodo = parseInt(selectedAno, 10) || 2024;
+
+  const { data: comparacionData, isLoading: loadingComparacion } = useQuery({
+    queryKey: ["comparacion-territorial", periodo],
+    queryFn: async () => {
+      const dimensiones = await getDimensiones();
+      const provinciasNombres = ["Valencia", "Alicante", "Castellón"] as const;
+      const scoresPorDimension: Array<{ dimension: string; valencia: number; alicante: number; castellon: number; destacado: "valencia" | "alicante" | "castellon" }> = [];
+      for (const dim of dimensiones) {
+        const [valencia, alicante, castellon] = await Promise.all([
+          getDimensionScore(dim.nombre, "Valencia", periodo),
+          getDimensionScore(dim.nombre, "Alicante", periodo),
+          getDimensionScore(dim.nombre, "Castellón", periodo),
+        ]);
+        const max = Math.max(valencia, alicante, castellon);
+        const destacado: "valencia" | "alicante" | "castellon" =
+          max === valencia ? "valencia" : max === alicante ? "alicante" : "castellon";
+        scoresPorDimension.push({
+          dimension: dim.nombre,
+          valencia,
+          alicante,
+          castellon,
+          destacado,
+        });
+      }
+      const provinciaToKey: Record<string, "valencia" | "alicante" | "castellon"> = {
+        Valencia: "valencia",
+        Alicante: "alicante",
+        "Castellón": "castellon",
+      };
+      const indicePorProvincia: Record<string, number> = {};
+      const mejorDimensionPorProvincia: Record<string, { nombre: string; puntos: number }> = {};
+      for (const p of provinciasNombres) {
+        let suma = 0;
+        let count = 0;
+        let mejorNombre = "";
+        let mejorPuntos = 0;
+        const key = provinciaToKey[p];
+        for (const row of scoresPorDimension) {
+          const v = row[key];
+          if (typeof v === "number") {
+            suma += v;
+            count++;
+            if (v > mejorPuntos) {
+              mejorPuntos = v;
+              mejorNombre = row.dimension;
+            }
+          }
+        }
+        indicePorProvincia[p] = count > 0 ? Math.round((suma / count) * 10) / 10 : 0;
+        mejorDimensionPorProvincia[p] = { nombre: mejorNombre, puntos: mejorPuntos };
+      }
+      const ordenadas = [...provinciasNombres].sort(
+        (a, b) => (indicePorProvincia[b] ?? 0) - (indicePorProvincia[a] ?? 0)
+      );
+      const provincias = ordenadas.map((nombre, idx) => ({
+        nombre,
+        indice: indicePorProvincia[nombre] ?? 0,
+        ranking: idx + 1,
+        dimensionDestacada: mejorDimensionPorProvincia[nombre]?.nombre ?? "",
+        puntosDimension: mejorDimensionPorProvincia[nombre]?.puntos ?? 0,
+        color: "#3B82F6",
+      }));
+      const mediaRegional =
+        provincias.length > 0
+          ? Math.round((provincias.reduce((s, p) => s + p.indice, 0) / provincias.length) * 10) / 10
+          : 0;
+      const brecha =
+        provincias.length >= 2
+          ? Math.round((Math.max(...provincias.map((p) => p.indice)) - Math.min(...provincias.map((p) => p.indice))) * 10) / 10
+          : 0;
+      return {
+        provincias,
+        comparativaDimensiones: scoresPorDimension,
+        mediaRegional,
+        brechaProvincial: brecha,
+      };
+    },
+  });
+
+  const provincias = comparacionData?.provincias ?? [];
+  const comparativaDimensiones = comparacionData?.comparativaDimensiones ?? [];
+  const mediaRegional = comparacionData?.mediaRegional ?? 0;
+  const brechaProvincial = comparacionData?.brechaProvincial ?? 0;
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
-
-  const provincias = [
-    { nombre: "Valencia", indice: 69.5, ranking: 1, dimensionDestacada: "Capital Humano", puntosDimension: 74, color: "#3B82F6" },
-    { nombre: "Alicante", indice: 66.8, ranking: 2, dimensionDestacada: "Infraestructura Digital", puntosDimension: 76, color: "#3B82F6" },
-    { nombre: "Castellón", indice: 64.3, ranking: 3, dimensionDestacada: "Transformación Digital", puntosDimension: 70, color: "#3B82F6" },
-  ];
-
-  const comparativaDimensiones = [
-    { dimension: "Transformación Digital", valencia: 68, alicante: 66, castellon: 70, destacado: "castellon" },
-    { dimension: "Capital Humano", valencia: 74, alicante: 70, castellon: 68, destacado: "valencia" },
-    { dimension: "Infraestructura Digital", valencia: 75, alicante: 76, castellon: 72, destacado: "alicante" },
-    { dimension: "Ecosistema", valencia: 65, alicante: 63, castellon: 61, destacado: "valencia" },
-    { dimension: "Emprendimiento", valencia: 60, alicante: 58, castellon: 54, destacado: "valencia" },
-    { dimension: "Servicios Públicos", valencia: 72, alicante: 68, castellon: 66, destacado: "valencia" },
-    { dimension: "Sostenibilidad", valencia: 64, alicante: 62, castellon: 60, destacado: "valencia" },
-  ];
 
   const getColorForIndex = (indice: number) => {
     if (indice >= 70) return "bg-green-500";
@@ -191,15 +262,40 @@ const ComparacionTerritorial = () => {
         <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Title Section */}
-            <div className="mb-6">
-              <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
-                Comparación Territorial
-              </h1>
-              <p className="text-lg text-gray-600">
-                Análisis comparativo del índice BRAINNOVA por provincias de la Comunitat Valenciana
-              </p>
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
+                  Comparación Territorial
+                </h1>
+                <p className="text-lg text-gray-600">
+                  Análisis comparativo del índice BRAINNOVA por provincias de la Comunitat Valenciana
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Año:</span>
+                <Select value={selectedAno} onValueChange={setSelectedAno}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2022">2022</SelectItem>
+                    <SelectItem value="2023">2023</SelectItem>
+                    <SelectItem value="2024">2024</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
+            {loadingComparacion && (
+              <div className="text-center py-8 text-gray-500">Cargando datos de comparación...</div>
+            )}
+
+            {!loadingComparacion && provincias.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No hay datos disponibles para el año seleccionado.</div>
+            )}
+
+            {!loadingComparacion && provincias.length > 0 && (
+            <>
             {/* Mapa Provincial */}
             <Card className="bg-white">
               <CardHeader>
@@ -367,18 +463,28 @@ const ComparacionTerritorial = () => {
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                   <div className="flex-1">
                     <p className="text-white/90 leading-relaxed">
-                      Valencia lidera el ranking provincial (69.5 pts) destacando en Capital Humano, seguida de Alicante (66.8 pts) con fortaleza en Infraestructura Digital. Castellón (64.3 pts) muestra oportunidades de mejora especialmente en Apoyo al emprendimiento e innovación.
+                      {provincias.length >= 1 && (
+                        <>
+                          {provincias[0].nombre} lidera el ranking provincial ({provincias[0].indice} pts) destacando en {provincias[0].dimensionDestacada}.
+                          {provincias.length >= 2 && (
+                            <> {provincias[1].nombre} ({provincias[1].indice} pts) con fortaleza en {provincias[1].dimensionDestacada}.</>
+                          )}
+                          {provincias.length >= 3 && (
+                            <> {provincias[2].nombre} ({provincias[2].indice} pts) muestra oportunidades de mejora, especialmente en {provincias[2].dimensionDestacada || "otras dimensiones"}.</>
+                          )}
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="bg-white/10 rounded-lg p-4 text-center min-w-[120px]">
                       <p className="text-xs text-blue-200 mb-1">Brecha Provincial</p>
-                      <p className="text-2xl font-bold">5.2</p>
+                      <p className="text-2xl font-bold">{brechaProvincial}</p>
                       <p className="text-xs text-blue-200">puntos</p>
                     </div>
                     <div className="bg-white/10 rounded-lg p-4 text-center min-w-[120px]">
                       <p className="text-xs text-blue-200 mb-1">Media Regional</p>
-                      <p className="text-2xl font-bold">66.9</p>
+                      <p className="text-2xl font-bold">{mediaRegional}</p>
                       <p className="text-xs text-blue-200">puntos</p>
                     </div>
                     <div className="bg-white/10 rounded-lg p-4 text-center min-w-[120px]">
@@ -392,6 +498,8 @@ const ComparacionTerritorial = () => {
                 </div>
               </CardContent>
             </Card>
+            </>
+            )}
           </div>
         </main>
       </div>
