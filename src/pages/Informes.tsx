@@ -45,6 +45,7 @@ interface Informe {
   pdfUrl?: string;
 }
 
+// Sin pdfUrl por defecto: el PDF se sube desde la app a Supabase Storage y se guarda la URL en la tabla informes.
 const DEFAULT_INFORMES: Informe[] = [
   {
     id: "brainnova-2025",
@@ -54,7 +55,7 @@ const DEFAULT_INFORMES: Informe[] = [
     pages: 14,
     category: "Informes anuales",
     format: "PDF + HTML",
-    pdfUrl: "/informes/InformeBrainnova_2025.pdf"
+    pdfUrl: undefined
   }
 ];
 
@@ -81,9 +82,10 @@ const Informes = () => {
     let cancelled = false;
     const loadInformes = async () => {
       try {
+        // Usar select('*') para evitar 400 si alguna columna no existe en el schema
         const { data, error } = await supabase
           .from('informes' as any)
-          .select('id, title, description, date, pages, category, format, pdf_url');
+          .select('*');
 
         if (cancelled) return;
         if (error) {
@@ -100,7 +102,7 @@ const Informes = () => {
             pages: Number(row.pages) || 0,
             category: String(row.category ?? ''),
             format: String(row.format ?? 'PDF'),
-            pdfUrl: row.pdf_url ? String(row.pdf_url) : undefined
+            pdfUrl: (row.pdf_url ?? row.pdfUrl) ? String(row.pdf_url ?? row.pdfUrl) : undefined
           }));
           setInformes(mapped);
         }
@@ -191,118 +193,65 @@ const Informes = () => {
 
     setUploading(true);
     try {
-      // Generar nombre único para el archivo
       const fileName = `${selectedInforme.id}-${Date.now()}.pdf`;
-      const filePath = `informes/${fileName}`;
+      const filePath = fileName;
 
-      let newPdfUrl = '';
+      const { error: uploadError } = await supabase.storage
+        .from('informes')
+        .upload(filePath, selectedFile, {
+          cacheControl: '3600',
+          upsert: true,
+        });
 
-      // Intentar subir a Supabase Storage primero
-      try {
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('informes')
-          .upload(filePath, selectedFile, {
-            cacheControl: '3600',
-            upsert: true // Permitir sobrescribir si existe
-          });
-
-        if (uploadError) {
-          console.error('Supabase Storage upload error:', uploadError);
-          throw uploadError;
-        }
-
-        // Obtener URL pública del archivo
-        const { data: urlData } = supabase.storage
-          .from('informes')
-          .getPublicUrl(filePath);
-
-        newPdfUrl = urlData.publicUrl;
-      } catch (storageError: any) {
-        // Si falla Supabase Storage, usar FormData para subir al backend
-        console.warn('Error uploading to Supabase Storage, trying backend:', storageError);
-        
-        try {
-          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
-          const formData = new FormData();
-          formData.append('file', selectedFile);
-          formData.append('informe_id', selectedInforme.id);
-          formData.append('filename', fileName);
-
-          const response = await fetch(`${API_BASE_URL}/api/v1/admin/upload-informe-pdf`, {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error('Error al subir el PDF al servidor');
-          }
-
-          const data = await response.json();
-          newPdfUrl = data.url || `/informes/${fileName}`;
-        } catch (backendError: any) {
-          // Último fallback: usar URL local (requiere que el archivo se copie manualmente)
-          console.warn('Backend upload failed, using local path:', backendError);
-          newPdfUrl = `/informes/${fileName}`;
-          
-          toast({
-            title: "Advertencia",
-            description: "El PDF se ha configurado pero debe copiarse manualmente a public/informes/",
-            variant: "default",
-          });
-        }
+      if (uploadError) {
+        console.error('Supabase Storage upload error:', uploadError);
+        const isBucketMissing =
+          uploadError.message?.toLowerCase().includes('bucket') ||
+          uploadError.message?.toLowerCase().includes('not found') ||
+          uploadError.message?.toLowerCase().includes('does not exist');
+        toast({
+          title: "Error al subir el PDF",
+          description: isBucketMissing
+            ? "Crea el bucket 'informes' en Supabase: Dashboard → Storage → New bucket → nombre 'informes', marcado como público. Luego ejecuta la migración de políticas de storage."
+            : uploadError.message || "No se pudo subir el PDF. Inténtalo de nuevo.",
+          variant: "destructive",
+        });
+        return;
       }
 
-      // Persistir pdf_url en Supabase (tabla informes) para que se guarde correctamente
-      try {
-        const { error: updateError } = await supabase
-          .from('informes' as any)
-          .update({ pdf_url: newPdfUrl })
-          .eq('id', selectedInforme.id);
+      const { data: urlData } = supabase.storage.from('informes').getPublicUrl(filePath);
+      const newPdfUrl = urlData.publicUrl;
 
-        if (updateError) {
-          console.warn('No se pudo actualizar pdf_url en Supabase (la tabla puede no tener la columna pdf_url):', updateError.message);
-        }
-      } catch (e) {
-        console.warn('Error actualizando informe en Supabase:', e);
+      const { error: updateError } = await supabase
+        .from('informes' as any)
+        .update({ pdf_url: newPdfUrl })
+        .eq('id', selectedInforme.id);
+
+      if (updateError) {
+        console.warn('No se pudo actualizar pdf_url en la tabla informes:', updateError.message);
       }
 
-      // Actualizar el informe con la nueva URL (reemplaza completamente el PDF anterior)
       const updatedInforme = { ...selectedInforme, pdfUrl: newPdfUrl };
-      
-      // Actualizar la lista de informes
-      setInformes(prev => prev.map(inf => 
-        inf.id === selectedInforme.id 
-          ? updatedInforme
-          : inf
-      ));
-
-      // Actualizar el informe seleccionado (esto actualizará el modal si está abierto)
+      setInformes(prev =>
+        prev.map(inf => (inf.id === selectedInforme.id ? updatedInforme : inf))
+      );
       setSelectedInforme(updatedInforme);
       setPdfCacheBuster(Date.now());
 
       toast({
         title: "Éxito",
-        description: "PDF subido correctamente. El nuevo PDF ha reemplazado al anterior.",
+        description: "PDF subido a Supabase Storage. Ya puedes verlo o descargarlo.",
       });
 
-      // Si el modal de visualización está abierto, mantenerlo abierto para que vea el nuevo PDF
-      // Si no está abierto, abrirlo automáticamente para mostrar el nuevo PDF
-      if (!showPreview) {
-        setShowPreview(true);
-      }
-
-      // Cerrar diálogo de upload y limpiar
+      if (!showPreview) setShowPreview(true);
       setShowUploadDialog(false);
       setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (error: any) {
       console.error('Error uploading PDF:', error);
-      const msg = error?.message || "No se pudo subir el PDF. Por favor, inténtalo de nuevo.";
       toast({
         title: "Error al subir PDF",
-        description: msg,
+        description: error?.message || "No se pudo subir el PDF. Por favor, inténtalo de nuevo.",
         variant: "destructive",
       });
     } finally {
@@ -571,18 +520,27 @@ const Informes = () => {
                       <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
                         <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          Error al cargar el PDF
+                          No se pudo cargar el PDF (404 o error de red)
                         </h3>
                         <p className="text-sm text-gray-600 mb-4">
-                          No se pudo cargar el archivo PDF. Por favor, intenta descargarlo directamente.
+                          El archivo puede no estar disponible en el servidor o la ruta no es correcta. Prueba a abrirlo en una nueva pestaña o a descargarlo.
                         </p>
-                        <Button
-                          onClick={() => handleDownload(selectedInforme?.pdfUrl)}
-                          className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Descargar PDF
-                        </Button>
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          <Button
+                            onClick={() => window.open(getAbsolutePdfUrl(selectedInforme?.pdfUrl), '_blank', 'noopener,noreferrer')}
+                            variant="outline"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Abrir en nueva pestaña
+                          </Button>
+                          <Button
+                            onClick={() => handleDownload(selectedInforme?.pdfUrl)}
+                            className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Descargar PDF
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <iframe
@@ -611,14 +569,23 @@ const Informes = () => {
                 </TabsContent>
               </Tabs>
               
-              <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
                 <Button
-                  className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                  className="flex-1 min-w-[140px] bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
                   onClick={() => handleDownload(selectedInforme?.pdfUrl)}
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Descargar PDF
                 </Button>
+                {selectedInforme?.pdfUrl && (
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(getAbsolutePdfUrl(selectedInforme?.pdfUrl), '_blank', 'noopener,noreferrer')}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    Abrir PDF en nueva pestaña
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setShowPreview(false)}
