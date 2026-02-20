@@ -11,23 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import {
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
-  MessageSquare,
-  Plus,
-  Trash2,
-  Save,
-  Shield,
-  ArrowLeft,
-  Loader2,
-  UserCog
-} from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Loader2 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { toast } from "sonner";
 
@@ -126,29 +111,7 @@ const EditSurvey = () => {
     }
   };
 
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas", active: true },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" }
-    ];
-    if (userIsAdmin) {
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   const addQuestion = () => {
     setQuestions([

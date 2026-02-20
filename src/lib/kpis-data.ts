@@ -581,13 +581,15 @@ export async function getSubdimensionesConScores(
           minMaxFallback.forEach((v, k) => minMaxGlobal.set(k, v));
         }
 
-        /** Score según metodología Brainnova: normalización Min-Max + ponderación por importancia */
+        /** Score según metodología Brainnova: normalización Min-Max + ponderación por importancia.
+         * Solo se cuentan indicadores con valor calculable y distinto de cero; los que no se pueden calcular o son 0 no entran en el promedio.
+         */
         const calcularScorePonderado = (valores: (number | null)[]): number => {
           let sumaPonderada = 0;
           let sumaPesos = 0;
           indicadores.forEach((ind, idx) => {
             const valor = valores[idx];
-            if (valor === null || valor === undefined || isNaN(valor)) return;
+            if (valor === null || valor === undefined || isNaN(valor) || valor === 0) return;
             const mm = minMaxGlobal.get(ind.nombre);
             if (!mm) return;
             const norm = normalizarMinMax(valor, mm.min, mm.max);
@@ -623,7 +625,8 @@ export async function getSubdimensionesConScores(
 }
 
 /**
- * Obtiene el score global de una dimensión
+ * Obtiene el score global de una dimensión.
+ * Solo se promedian las subdimensiones con score > 0; las que no se pueden calcular o son 0 no cuentan para el score de la dimensión.
  */
 export async function getDimensionScore(
   nombreDimension: string,
@@ -632,9 +635,10 @@ export async function getDimensionScore(
 ): Promise<number> {
   try {
     const subdimensiones = await getSubdimensionesConScores(nombreDimension, pais, periodo);
-    if (subdimensiones.length === 0) return 0;
-    
-    const promedio = subdimensiones.reduce((sum, sub) => sum + sub.score, 0) / subdimensiones.length;
+    const conScore = subdimensiones.filter((sub) => sub.score != null && !isNaN(sub.score) && sub.score > 0);
+    if (conScore.length === 0) return 0;
+
+    const promedio = conScore.reduce((sum, sub) => sum + sub.score, 0) / conScore.length;
     return Math.round(promedio);
   } catch (error) {
     console.error("Error fetching dimension score:", error);

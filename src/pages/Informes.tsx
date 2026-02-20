@@ -12,24 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
   FileText,
-  MessageSquare,
-  Shield,
   LogOut,
   Download,
   Eye,
   Upload,
   Loader2,
   Plus,
-  AlertCircle,
-  UserCog
+  AlertCircle
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { InformeContent } from "@/components/InformeBrainnova2025";
 import CreateInformeDialog from "@/components/CreateInformeDialog";
@@ -222,13 +214,46 @@ const Informes = () => {
       const { data: urlData } = supabase.storage.from('informes').getPublicUrl(filePath);
       const newPdfUrl = urlData.publicUrl;
 
-      const { error: updateError } = await supabase
+      // Persistir pdf_url en la tabla informes para que al recargar siga apareciendo
+      const { data: updatedRows, error: updateError } = await supabase
         .from('informes' as any)
         .update({ pdf_url: newPdfUrl })
-        .eq('id', selectedInforme.id);
+        .eq('id', selectedInforme.id)
+        .select('id');
 
-      if (updateError) {
-        console.warn('No se pudo actualizar pdf_url en la tabla informes:', updateError.message);
+      const updatePersisted = !updateError && updatedRows && updatedRows.length > 0;
+      if (updatePersisted) {
+        console.log('[Informes] pdf_url guardado en Supabase (update):', selectedInforme.id, newPdfUrl);
+      } else {
+        if (updateError) console.warn('[Informes] Update falló:', updateError.message);
+        else console.warn('[Informes] No se actualizó ninguna fila (¿existe el id en la tabla?). Intentando upsert...');
+        // Si no existía la fila (0 filas actualizadas) o hubo error: crear/actualizar con upsert
+        const { data: upsertData, error: upsertError } = await supabase
+          .from('informes' as any)
+          .upsert(
+            [{
+              id: selectedInforme.id,
+              title: selectedInforme.title,
+              description: selectedInforme.description,
+              date: selectedInforme.date,
+              pages: selectedInforme.pages ?? 0,
+              category: selectedInforme.category,
+              format: selectedInforme.format,
+              pdf_url: newPdfUrl,
+            }],
+            { onConflict: 'id' }
+          )
+          .select('id');
+        if (upsertError) {
+          console.error('[Informes] Upsert falló:', upsertError.message);
+          toast({
+            title: "PDF subido pero no guardado",
+            description: "El PDF se subió al almacenamiento pero no se pudo guardar la referencia. Al recargar puede no aparecer. Revisa permisos de la tabla 'informes'.",
+            variant: "destructive",
+          });
+        } else {
+          console.log('[Informes] pdf_url guardado en Supabase (upsert):', selectedInforme.id, upsertData);
+        }
       }
 
       const updatedInforme = { ...selectedInforme, pdfUrl: newPdfUrl };
@@ -259,37 +284,7 @@ const Informes = () => {
     }
   };
 
-  // Verificar si el usuario es admin o superadmin
-  const role = profile?.role?.toLowerCase().trim();
-  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
-  
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes", active: true },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
-    if (userIsAdmin) {
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

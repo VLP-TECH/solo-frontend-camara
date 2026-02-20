@@ -14,14 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  LayoutDashboard,
   Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
-  MessageSquare,
   Building2,
   Users,
   Wifi,
@@ -32,9 +25,9 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
-  LogOut,
-  UserCog
+  LogOut
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { getDimensiones, getIndicadoresConDatos, getDimensionScore, type IndicadorConDatos } from "@/lib/kpis-data";
 
@@ -188,37 +181,7 @@ const Dimensiones = () => {
     setExpandedDimensions(newExpanded);
   };
 
-  // Verificar si el usuario es admin o superadmin
-  const role = profile?.role?.toLowerCase().trim();
-  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
-  
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones", active: true },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
-    if (userIsAdmin) {
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

@@ -16,23 +16,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
   Search,
   Download,
   TrendingUp,
   ArrowRight,
   Loader2,
   MessageSquare,
-  LogOut,
-  Shield,
-  UserCog
+  LogOut
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import {
   LineChart as RechartsLineChart,
@@ -129,37 +121,7 @@ const KPIsDashboard = () => {
     return Math.min(100, Math.max(0, (valor / 100) * 100));
   };
 
-  // Verificar si el usuario es admin o superadmin
-  const role = profile?.role?.toLowerCase().trim();
-  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
-  
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis", active: true },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
-    if (userIsAdmin) {
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

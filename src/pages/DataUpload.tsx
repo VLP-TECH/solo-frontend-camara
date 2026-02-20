@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Database, Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { downloadCSV, convertToCSV } from "@/lib/csv-export";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +40,7 @@ const DataUpload = () => {
   const role = profile?.role?.toLowerCase().trim();
   const isAdminLike = isAdmin || roles.isAdmin || roles.isSuperAdmin || role === 'admin' || role === 'superadmin';
   const isLoading = permissionsLoading || profileLoading;
+  const menuItems = useAppMenuItems();
 
   // Debug: log para troubleshooting
   console.log('🔍 DataUpload - Permissions check:', {
@@ -425,7 +427,7 @@ const DataUpload = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
-      {/* Sidebar simplificado: reutilizamos el patrón visual del dashboard */}
+      {/* Sidebar: mismo menú que en el resto de secciones */}
       <aside className="hidden md:flex w-64 bg-[#0c6c8b] text-white flex-col">
         <div className="p-6">
           <div className="flex items-center space-x-3 mb-8">
@@ -437,13 +439,25 @@ const DataUpload = () => {
           </div>
 
           <nav className="space-y-2">
-            <button
-              className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-blue-100 hover:bg-[#0a5a73]/50"
-              onClick={() => navigate("/dashboard")}
-            >
-              <Database className="h-5 w-5" />
-              <span className="text-sm font-medium">Volver al Dashboard</span>
-            </button>
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.active;
+              const isDisabled = item.disabled;
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => !isDisabled && item.href && navigate(item.href)}
+                  disabled={isDisabled}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    isActive ? "bg-[#0a5a73] text-white" : isDisabled ? "text-blue-300 opacity-50 cursor-not-allowed" : "text-blue-100 hover:bg-[#0a5a73]/50"
+                  }`}
+                  style={isActive ? { borderLeft: "4px solid #4FD1C7" } : {}}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </div>
 

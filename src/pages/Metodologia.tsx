@@ -14,20 +14,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
   CheckCircle2,
   ArrowRight,
   MessageSquare,
-  Shield,
-  LogOut,
-  UserCog
+  LogOut
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 
 const Metodologia = () => {
@@ -59,37 +51,7 @@ const Metodologia = () => {
   // La protección real está en la ruta /admin-usuarios que verifica permisos
   const shouldDisable = !user; // Solo deshabilitar si no hay usuario autenticado
   
-  // Verificar si el usuario es admin o superadmin
-  const role = profile?.role?.toLowerCase().trim();
-  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const userIsAdmin = isAdmin || roles.isAdmin || roles.isSuperAdmin || profileRoleIsAdmin;
-  
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia", active: true },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Gestión de Usuarios" para admin y superadmin
-    if (userIsAdmin) {
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   const dimensionesPonderacion = [
     { nombre: "Transformación digital empresarial", peso: 30, descripcion: "Núcleo del modelo, refleja adopción tecnológica real" },

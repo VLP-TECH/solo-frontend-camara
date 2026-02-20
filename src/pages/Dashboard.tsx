@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,13 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
   User,
   Target,
   Wifi,
@@ -28,11 +20,9 @@ import {
   TrendingUp,
   ArrowUpRight,
   MessageSquare,
-  LogOut,
-  Shield,
-  Database,
-  UserCog
+  LogOut
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo } from "@/lib/kpis-data";
 import {
@@ -41,14 +31,15 @@ import {
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Tooltip,
+  Legend
 } from "recharts";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
-  const { roles } = usePermissions();
-  const { isAdmin, profile, loading: profileLoading } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   
   const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
@@ -104,39 +95,7 @@ const Dashboard = () => {
 
   const radarDataDisplay = radarData ?? [];
 
-  // El botón siempre debe estar activo para admins y superadmins
-  // Verificar directamente el rol del perfil para evitar problemas de timing
-  const role = profile?.role?.toLowerCase().trim();
-  const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
-  const isUserAdmin = isAdmin || roles.isAdmin || profileRoleIsAdmin;
-  
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard", active: true },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Carga de datos (CSV)" y "Gestión de Usuarios" para admin y superadmin
-    if (isUserAdmin) {
-      items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    
-    return items;
-  }, [isUserAdmin]);
+  const menuItems = useAppMenuItems();
 
   return (
     <>
@@ -236,13 +195,13 @@ const Dashboard = () => {
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto">
-            {/* Title Section */}
+            {/* Title Section (el texto usa la provincia del selector de Análisis por Dimensiones) */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
                 Índice Global de Economía Digital BRAINNOVA
               </h1>
               <p className="text-lg text-gray-600">
-                Análisis integral del desarrollo de la economía digital en Comunitat Valenciana
+                Análisis integral del desarrollo de la economía digital en <strong>{radarProvincia}</strong>
               </p>
             </div>
 
@@ -309,7 +268,7 @@ const Dashboard = () => {
                     Análisis por Dimensiones
                   </h2>
                   <p className="text-sm text-gray-600">
-                    Índice BRAINNOVA por las 7 dimensiones. Selecciona provincia y año para ver la malla.
+                    Índice BRAINNOVA por las 7 dimensiones para <strong>{radarProvincia}</strong> ({radarAno}).
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -347,6 +306,20 @@ const Dashboard = () => {
                     <PolarGrid />
                     <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11 }} />
                     <PolarRadiusAxis angle={90} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 10 }} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number };
+                        return (
+                          <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
+                            <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
+                            <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
+                            <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend />
                     <Radar
                       name={radarProvincia}
                       dataKey="cv"
@@ -364,14 +337,6 @@ const Dashboard = () => {
                       strokeDasharray="5 5"
                       strokeWidth={2}
                     />
-                    <Radar
-                      name="Top UE"
-                      dataKey="topUE"
-                      stroke="#93C5FD"
-                      fill="#93C5FD"
-                      fillOpacity={0.2}
-                      strokeWidth={2}
-                    />
                   </RadarChart>
                 </ResponsiveContainer>
                 )}
@@ -385,10 +350,6 @@ const Dashboard = () => {
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 rounded-full bg-[#3B82F6]"></div>
                   <span className="text-sm text-gray-600">Media UE</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#93C5FD]"></div>
-                  <span className="text-sm text-gray-600">Top UE</span>
                 </div>
               </div>
             </Card>

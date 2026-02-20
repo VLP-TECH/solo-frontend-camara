@@ -19,18 +19,9 @@ import {
   Shield, 
   Plus, 
   Edit, 
-  LogOut,
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
-  MessageSquare,
-  Database,
-  UserCog
+  LogOut
 } from 'lucide-react';
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import { Navigate } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -85,34 +76,7 @@ const AdminDashboard = () => {
   const profileRoleIsAdmin = role === 'admin' || role === 'superadmin';
   const userIsAdmin = isAdmin || profileRoleIsAdmin;
 
-  // Memoizar menuItems para evitar recálculos innecesarios que puedan deshabilitar el botón
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: any;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario" },
-    ];
-    
-    // Solo mostrar "Carga de datos (CSV)" y "Gestión de Usuarios" para admin y superadmin
-    if (userIsAdmin) {
-      items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios", active: true, disabled: false });
-    }
-    
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   useEffect(() => {
     if (!loading) {

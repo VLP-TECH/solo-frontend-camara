@@ -20,23 +20,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LayoutDashboard,
-  Layers,
-  LineChart,
-  Map,
-  BookOpen,
-  Clock,
-  FileText,
-  MessageSquare,
-  UserCog,
-  Shield,
-  Database,
   LogOut,
   Loader2,
   Trash2,
   KeyRound,
   User,
 } from "lucide-react";
+import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 
 const validatePassword = (password: string): string | null => {
@@ -84,33 +74,7 @@ const EditarUsuario = () => {
     }
   }, [profile?.id, profile?.first_name, profile?.last_name, profile?.razon_social, profile?.cif]);
 
-  const role = profile?.role?.toLowerCase().trim();
-  const userIsAdmin = isAdmin || role === "admin" || role === "superadmin";
-
-  const menuItems = useMemo(() => {
-    const items: Array<{
-      icon: unknown;
-      label: string;
-      href: string;
-      active?: boolean;
-      disabled?: boolean;
-    }> = [
-      { icon: LayoutDashboard, label: "Dashboard General", href: "/dashboard" },
-      { icon: Layers, label: "Dimensiones", href: "/dimensiones" },
-      { icon: LineChart, label: "Todos los Indicadores", href: "/kpis" },
-      { icon: Map, label: "Comparación Territorial", href: "/comparacion" },
-      { icon: Clock, label: "Evolución Temporal", href: "/evolucion" },
-      { icon: FileText, label: "Informes", href: "/informes" },
-      { icon: MessageSquare, label: "Encuestas", href: "/encuestas" },
-      { icon: BookOpen, label: "Metodología", href: "/metodologia" },
-      { icon: UserCog, label: "Editar usuario", href: "/editar-usuario", active: true },
-    ];
-    if (userIsAdmin) {
-      items.push({ icon: Database, label: "Carga de datos (CSV)", href: "/carga-datos" });
-      items.push({ icon: Shield, label: "Gestión de Usuarios", href: "/admin-usuarios" });
-    }
-    return items;
-  }, [userIsAdmin]);
+  const menuItems = useAppMenuItems();
 
   const handleSignOut = async () => {
     await signOut();
