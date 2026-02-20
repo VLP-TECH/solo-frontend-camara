@@ -87,17 +87,49 @@ const Informes = () => {
           return;
         }
         if (data && data.length > 0) {
-          const mapped: Informe[] = data.map((row: any) => ({
-            id: String(row.id ?? ''),
-            title: String(row.title ?? row.titulo ?? ''),
-            description: String(row.description ?? row.descripcion ?? ''),
-            date: String(row.date ?? row.fecha ?? ''),
-            pages: Number(row.pages ?? row.paginas) || 0,
-            category: String(row.category ?? row.categoria ?? ''),
-            format: String(row.format ?? row.formato ?? 'PDF'),
-            pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
-          }));
+          const mapped: Informe[] = await Promise.all(
+            data.map(async (row: any) => {
+              const informeId = String(row.id ?? '');
+              let pdfUrl = (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined;
+              
+              // Si no hay pdf_url en BD pero el informe existe, buscar el PDF más reciente en Storage
+              if (!pdfUrl) {
+                try {
+                  const { data: files } = await supabase.storage
+                    .from('informes')
+                    .list('', {
+                      limit: 100,
+                      sortBy: { column: 'created_at', order: 'desc' }
+                    });
+                  
+                  // Buscar archivo que empiece con el id del informe
+                  const matchingFile = files?.find(f => f.name.startsWith(`${informeId}-`) && f.name.endsWith('.pdf'));
+                  if (matchingFile) {
+                    const { data: urlData } = supabase.storage.from('informes').getPublicUrl(matchingFile.name);
+                    pdfUrl = urlData.publicUrl;
+                    // Intentar guardar esta URL en BD para la próxima vez
+                    await supabase.rpc('upsert_informe_pdf', { p_id: informeId, p_pdf_url: pdfUrl }).catch(() => {});
+                  }
+                } catch (e) {
+                  console.warn('No se pudo buscar PDF en Storage para', informeId, e);
+                }
+              }
+              
+              return {
+                id: informeId,
+                title: String(row.title ?? row.titulo ?? ''),
+                description: String(row.description ?? row.descripcion ?? ''),
+                date: String(row.date ?? row.fecha ?? ''),
+                pages: Number(row.pages ?? row.paginas) || 0,
+                category: String(row.category ?? row.categoria ?? ''),
+                format: String(row.format ?? row.formato ?? 'PDF'),
+                pdfUrl
+              };
+            })
+          );
           setInformes(mapped);
+        } else {
+          setInformes(DEFAULT_INFORMES);
         }
       } catch (e) {
         if (!cancelled) {
@@ -235,83 +267,48 @@ const Informes = () => {
       const { data: urlData } = supabase.storage.from('informes').getPublicUrl(filePath);
       const newPdfUrl = urlData.publicUrl;
 
-      // Persistir pdf_url en la tabla informes (producción puede tener columnas en español: titulo, descripcion, etc.)
-      let updatePersisted = false;
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('informes' as any)
-        .update({ pdf_url: newPdfUrl })
-        .eq('id', selectedInforme.id)
-        .select('id');
-
-      if (!updateError && updatedRows && updatedRows.length > 0) {
-        updatePersisted = true;
-      }
-
-      if (updatePersisted) {
-        console.log('[Informes] pdf_url guardado en Supabase (update):', selectedInforme.id, newPdfUrl);
+      // Guardar URL en BD: intentar función RPC primero, luego métodos directos como fallback
+      let savedToDB = false;
+      
+      // Método 1: Función RPC (más robusto, evita problemas de esquema)
+      const { error: rpcError } = await supabase.rpc('upsert_informe_pdf', {
+        p_id: selectedInforme.id,
+        p_pdf_url: newPdfUrl,
+      });
+      
+      if (!rpcError) {
+        savedToDB = true;
+        console.log('[Informes] pdf_url guardado en Supabase via RPC:', selectedInforme.id, newPdfUrl);
       } else {
-        // Upsert: intentar solo id + pdf_url (compatible con cualquier esquema). Si falla, probar con columnas completas.
-        const minimalPayload = { id: selectedInforme.id, pdf_url: newPdfUrl };
-        const payloadUpsertEs = {
-          id: selectedInforme.id,
-          titulo: selectedInforme.title,
-          descripcion: selectedInforme.description,
-          fecha: selectedInforme.date,
-          paginas: selectedInforme.pages ?? 0,
-          categoria: selectedInforme.category,
-          formato: selectedInforme.format,
-          pdf_url: newPdfUrl,
-        };
-        const payloadUpsertEn = {
-          id: selectedInforme.id,
-          title: selectedInforme.title,
-          description: selectedInforme.description,
-          date: selectedInforme.date,
-          pages: selectedInforme.pages ?? 0,
-          category: selectedInforme.category,
-          format: selectedInforme.format,
-          pdf_url: newPdfUrl,
-        };
-
-        let upsertOk = false;
-        let lastError: { message?: string } | null = null;
-
-        const tryUpsert = async (payload: Record<string, unknown>) => {
-          const { data, error } = await supabase
+        console.warn('[Informes] Función RPC no disponible, intentando update directo:', rpcError.message);
+        
+        // Método 2: Update directo simple (solo pdf_url)
+        const { data: updatedRows, error: updateError } = await supabase
+          .from('informes' as any)
+          .update({ pdf_url: newPdfUrl })
+          .eq('id', selectedInforme.id)
+          .select('id');
+        
+        if (!updateError && updatedRows && updatedRows.length > 0) {
+          savedToDB = true;
+          console.log('[Informes] pdf_url guardado via update directo:', selectedInforme.id);
+        } else {
+          // Método 3: Insert mínimo (solo id + pdf_url)
+          const { error: insertError } = await supabase
             .from('informes' as any)
-            .upsert([payload], { onConflict: 'id' })
-            .select('id');
-          return { ok: !error && (data?.length ?? 0) > 0, error };
-        };
-
-        let res = await tryUpsert(minimalPayload);
-        if (res.ok) upsertOk = true;
-        else lastError = res.error ?? null;
-
-        if (!upsertOk && lastError?.message?.includes('column')) {
-          res = await tryUpsert(payloadUpsertEs);
-          if (res.ok) upsertOk = true;
-          else lastError = res.error ?? null;
-        }
-        if (!upsertOk && lastError?.message?.includes('column')) {
-          res = await tryUpsert(payloadUpsertEn);
-          if (res.ok) upsertOk = true;
-          else lastError = res.error ?? null;
-        }
-
-        if (!upsertOk && lastError) {
-          console.error('[Informes] Upsert falló:', lastError.message);
-          const errMsg = lastError.message || '';
-          const hintUuid = errMsg.toLowerCase().includes('uuid')
-            ? " Ejecuta en Supabase (SQL Editor) la migración 20250220100000_informes_id_text_and_seed.sql para que la columna id sea de tipo text."
-            : "";
-          toast({
-            title: "PDF subido pero no guardado en BD",
-            description: errMsg + hintUuid,
-            variant: "destructive",
-          });
-        } else if (upsertOk) {
-          console.log('[Informes] pdf_url guardado en Supabase (upsert):', selectedInforme.id);
+            .insert({ id: selectedInforme.id, pdf_url: newPdfUrl });
+          
+          if (!insertError) {
+            savedToDB = true;
+            console.log('[Informes] pdf_url guardado via insert directo:', selectedInforme.id);
+          } else {
+            console.error('[Informes] No se pudo guardar pdf_url en BD:', insertError.message);
+            toast({
+              title: "PDF subido pero no guardado en BD",
+              description: "El PDF está en Storage pero no se pudo guardar la referencia. Ejecuta en Supabase SQL Editor las migraciones de la tabla informes y la función upsert_informe_pdf.",
+              variant: "destructive",
+            });
+          }
         }
       }
 
