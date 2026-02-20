@@ -250,16 +250,8 @@ const Informes = () => {
       if (updatePersisted) {
         console.log('[Informes] pdf_url guardado en Supabase (update):', selectedInforme.id, newPdfUrl);
       } else {
-        const payloadUpsertEn = {
-          id: selectedInforme.id,
-          title: selectedInforme.title,
-          description: selectedInforme.description,
-          date: selectedInforme.date,
-          pages: selectedInforme.pages ?? 0,
-          category: selectedInforme.category,
-          format: selectedInforme.format,
-          pdf_url: newPdfUrl,
-        };
+        // Upsert: intentar solo id + pdf_url (compatible con cualquier esquema). Si falla, probar con columnas completas.
+        const minimalPayload = { id: selectedInforme.id, pdf_url: newPdfUrl };
         const payloadUpsertEs = {
           id: selectedInforme.id,
           titulo: selectedInforme.title,
@@ -270,29 +262,52 @@ const Informes = () => {
           formato: selectedInforme.format,
           pdf_url: newPdfUrl,
         };
+        const payloadUpsertEn = {
+          id: selectedInforme.id,
+          title: selectedInforme.title,
+          description: selectedInforme.description,
+          date: selectedInforme.date,
+          pages: selectedInforme.pages ?? 0,
+          category: selectedInforme.category,
+          format: selectedInforme.format,
+          pdf_url: newPdfUrl,
+        };
 
-        const { data: upsertData, error: upsertError } = await supabase
-          .from('informes' as any)
-          .upsert(payloadUpsertEs, { onConflict: 'id' })
-          .select('id');
+        let upsertOk = false;
+        let lastError: { message?: string } | null = null;
 
-        let upsertOk = !upsertError && upsertData?.length;
-        if (!upsertOk && upsertError?.message?.includes('column')) {
-          const resEn = await supabase
+        const tryUpsert = async (payload: Record<string, unknown>) => {
+          const { data, error } = await supabase
             .from('informes' as any)
-            .upsert(payloadUpsertEn, { onConflict: 'id' })
+            .upsert([payload], { onConflict: 'id' })
             .select('id');
-          upsertOk = !resEn.error && resEn.data?.length;
+          return { ok: !error && (data?.length ?? 0) > 0, error };
+        };
+
+        let res = await tryUpsert(minimalPayload);
+        if (res.ok) upsertOk = true;
+        else lastError = res.error ?? null;
+
+        if (!upsertOk && lastError?.message?.includes('column')) {
+          res = await tryUpsert(payloadUpsertEs);
+          if (res.ok) upsertOk = true;
+          else lastError = res.error ?? null;
         }
-        if (!upsertOk && upsertError) {
-          console.error('[Informes] Upsert falló:', upsertError.message);
-          const errMsg = upsertError.message || '';
+        if (!upsertOk && lastError?.message?.includes('column')) {
+          res = await tryUpsert(payloadUpsertEn);
+          if (res.ok) upsertOk = true;
+          else lastError = res.error ?? null;
+        }
+
+        if (!upsertOk && lastError) {
+          console.error('[Informes] Upsert falló:', lastError.message);
+          const errMsg = lastError.message || '';
           const hintUuid = errMsg.toLowerCase().includes('uuid')
-            ? " Ejecuta en Supabase SQL Editor la migración que cambia informes.id a text (20250220100000_informes_id_text_and_seed.sql)."
+            ? " Ejecuta en Supabase (SQL Editor) la migración 20250220100000_informes_id_text_and_seed.sql para que la columna id sea de tipo text."
             : "";
           toast({
-            title: "PDF subido pero no guardado",
-            description: "No se pudo guardar la referencia en la base de datos. " + errMsg + hintUuid,
+            title: "PDF subido pero no guardado en BD",
+            description: errMsg + hintUuid,
             variant: "destructive",
           });
         } else if (upsertOk) {
