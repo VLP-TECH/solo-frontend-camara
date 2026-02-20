@@ -89,13 +89,13 @@ const Informes = () => {
         if (data && data.length > 0) {
           const mapped: Informe[] = data.map((row: any) => ({
             id: String(row.id ?? ''),
-            title: String(row.title ?? ''),
-            description: String(row.description ?? ''),
-            date: String(row.date ?? ''),
-            pages: Number(row.pages) || 0,
-            category: String(row.category ?? ''),
-            format: String(row.format ?? 'PDF'),
-            pdfUrl: (row.pdf_url ?? row.pdfUrl) ? String(row.pdf_url ?? row.pdfUrl) : undefined
+            title: String(row.title ?? row.titulo ?? ''),
+            description: String(row.description ?? row.descripcion ?? ''),
+            date: String(row.date ?? row.fecha ?? ''),
+            pages: Number(row.pages ?? row.paginas) || 0,
+            category: String(row.category ?? row.categoria ?? ''),
+            format: String(row.format ?? row.formato ?? 'PDF'),
+            pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
           }));
           setInformes(mapped);
         }
@@ -235,45 +235,68 @@ const Informes = () => {
       const { data: urlData } = supabase.storage.from('informes').getPublicUrl(filePath);
       const newPdfUrl = urlData.publicUrl;
 
-      // Persistir pdf_url en la tabla informes para que al recargar siga apareciendo
+      // Persistir pdf_url en la tabla informes (producción puede tener columnas en español: titulo, descripcion, etc.)
+      let updatePersisted = false;
       const { data: updatedRows, error: updateError } = await supabase
         .from('informes' as any)
         .update({ pdf_url: newPdfUrl })
         .eq('id', selectedInforme.id)
         .select('id');
 
-      const updatePersisted = !updateError && updatedRows && updatedRows.length > 0;
+      if (!updateError && updatedRows && updatedRows.length > 0) {
+        updatePersisted = true;
+      }
+
       if (updatePersisted) {
         console.log('[Informes] pdf_url guardado en Supabase (update):', selectedInforme.id, newPdfUrl);
       } else {
-        if (updateError) console.warn('[Informes] Update falló:', updateError.message);
-        else console.warn('[Informes] No se actualizó ninguna fila (¿existe el id en la tabla?). Intentando upsert...');
-        // Si no existía la fila (0 filas actualizadas) o hubo error: crear/actualizar con upsert
+        const payloadUpsertEn = {
+          id: selectedInforme.id,
+          title: selectedInforme.title,
+          description: selectedInforme.description,
+          date: selectedInforme.date,
+          pages: selectedInforme.pages ?? 0,
+          category: selectedInforme.category,
+          format: selectedInforme.format,
+          pdf_url: newPdfUrl,
+        };
+        const payloadUpsertEs = {
+          id: selectedInforme.id,
+          titulo: selectedInforme.title,
+          descripcion: selectedInforme.description,
+          fecha: selectedInforme.date,
+          paginas: selectedInforme.pages ?? 0,
+          categoria: selectedInforme.category,
+          formato: selectedInforme.format,
+          pdf_url: newPdfUrl,
+        };
+
         const { data: upsertData, error: upsertError } = await supabase
           .from('informes' as any)
-          .upsert(
-            [{
-              id: selectedInforme.id,
-              title: selectedInforme.title,
-              description: selectedInforme.description,
-              date: selectedInforme.date,
-              pages: selectedInforme.pages ?? 0,
-              category: selectedInforme.category,
-              format: selectedInforme.format,
-              pdf_url: newPdfUrl,
-            }],
-            { onConflict: 'id' }
-          )
+          .upsert(payloadUpsertEs, { onConflict: 'id' })
           .select('id');
-        if (upsertError) {
+
+        let upsertOk = !upsertError && upsertData?.length;
+        if (!upsertOk && upsertError?.message?.includes('column')) {
+          const resEn = await supabase
+            .from('informes' as any)
+            .upsert(payloadUpsertEn, { onConflict: 'id' })
+            .select('id');
+          upsertOk = !resEn.error && resEn.data?.length;
+        }
+        if (!upsertOk && upsertError) {
           console.error('[Informes] Upsert falló:', upsertError.message);
+          const errMsg = upsertError.message || '';
+          const hintUuid = errMsg.toLowerCase().includes('uuid')
+            ? " Ejecuta en Supabase SQL Editor la migración que cambia informes.id a text (20250220100000_informes_id_text_and_seed.sql)."
+            : "";
           toast({
             title: "PDF subido pero no guardado",
-            description: "El PDF se subió al almacenamiento pero no se pudo guardar la referencia. Al recargar puede no aparecer. Revisa permisos de la tabla 'informes'.",
+            description: "No se pudo guardar la referencia en la base de datos. " + errMsg + hintUuid,
             variant: "destructive",
           });
-        } else {
-          console.log('[Informes] pdf_url guardado en Supabase (upsert):', selectedInforme.id, upsertData);
+        } else if (upsertOk) {
+          console.log('[Informes] pdf_url guardado en Supabase (upsert):', selectedInforme.id);
         }
       }
 
