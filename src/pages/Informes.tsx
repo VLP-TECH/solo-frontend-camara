@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { InformeContent } from "@/components/InformeBrainnova2025";
 import CreateInformeDialog from "@/components/CreateInformeDialog";
 
@@ -183,6 +184,17 @@ const Informes = () => {
       return;
     }
 
+    // En producción la subida requiere sesión activa; sin ella Storage rechaza por RLS
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: "Sesión requerida",
+        description: "Debes tener la sesión iniciada para subir PDFs. Cierra sesión, vuelve a entrar y prueba de nuevo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploading(true);
     try {
       const fileName = `${selectedInforme.id}-${Date.now()}.pdf`;
@@ -197,15 +209,24 @@ const Informes = () => {
 
       if (uploadError) {
         console.error('Supabase Storage upload error:', uploadError);
+        const msg = uploadError.message || "No se pudo subir el PDF.";
         const isBucketMissing =
-          uploadError.message?.toLowerCase().includes('bucket') ||
-          uploadError.message?.toLowerCase().includes('not found') ||
-          uploadError.message?.toLowerCase().includes('does not exist');
+          msg.toLowerCase().includes('bucket') ||
+          msg.toLowerCase().includes('not found') ||
+          msg.toLowerCase().includes('does not exist');
+        const isPolicy =
+          msg.toLowerCase().includes('policy') ||
+          msg.toLowerCase().includes('row-level security') ||
+          msg.toLowerCase().includes('rls');
+        let suggestion = msg;
+        if (isBucketMissing) {
+          suggestion = "Crea el bucket 'informes' en Supabase: Storage → New bucket → nombre 'informes', público. Luego en Policies añade INSERT para 'authenticated'.";
+        } else if (isPolicy) {
+          suggestion = "En Supabase Storage → bucket 'informes' → Policies: permite INSERT a usuarios 'authenticated'. Ejecuta la migración de políticas si no lo has hecho.";
+        }
         toast({
           title: "Error al subir el PDF",
-          description: isBucketMissing
-            ? "Crea el bucket 'informes' en Supabase: Dashboard → Storage → New bucket → nombre 'informes', marcado como público. Luego ejecuta la migración de políticas de storage."
-            : uploadError.message || "No se pudo subir el PDF. Inténtalo de nuevo.",
+          description: suggestion,
           variant: "destructive",
         });
         return;
@@ -287,7 +308,9 @@ const Informes = () => {
   const menuItems = useAppMenuItems();
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <>
+      <FloatingCamaraLogo />
+      <div className="min-h-screen bg-gray-100 flex">
       {/* Sidebar */}
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
@@ -669,6 +692,7 @@ const Informes = () => {
         />
       </div>
     </div>
+    </>
   );
 };
 

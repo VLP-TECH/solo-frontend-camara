@@ -14,6 +14,7 @@ import { useUserProfile } from "@/hooks/useUserProfile";
 import { Plus, Trash2, Save, ArrowLeft, Loader2 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { toast } from "sonner";
 
 interface Question {
@@ -231,7 +232,9 @@ const EditSurvey = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <>
+      <FloatingCamaraLogo />
+      <div className="min-h-screen bg-gray-100 flex">
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
           <div className="flex items-center space-x-3 mb-8">
@@ -452,6 +455,7 @@ const EditSurvey = () => {
         </main>
       </div>
     </div>
+    </>
   );
 };
 

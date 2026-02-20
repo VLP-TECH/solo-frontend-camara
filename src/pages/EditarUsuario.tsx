@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 
 const validatePassword = (password: string): string | null => {
   if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres";
@@ -84,6 +85,16 @@ const EditarUsuario = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    const razonSocial = form.razon_social?.trim() ?? "";
+    const cif = form.cif?.trim() ?? "";
+    if (!razonSocial) {
+      toast({ title: "Campo obligatorio", description: "La razón social es obligatoria.", variant: "destructive" });
+      return;
+    }
+    if (!cif) {
+      toast({ title: "Campo obligatorio", description: "El CIF es obligatorio.", variant: "destructive" });
+      return;
+    }
     setSavingProfile(true);
     try {
       const { error } = await supabase
@@ -91,8 +102,8 @@ const EditarUsuario = () => {
         .update({
           first_name: form.first_name || null,
           last_name: form.last_name || null,
-          razon_social: form.razon_social || null,
-          cif: form.cif || null,
+          razon_social: razonSocial,
+          cif,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -194,7 +205,9 @@ const EditarUsuario = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <>
+      <FloatingCamaraLogo />
+      <div className="min-h-screen bg-gray-100 flex">
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
           <div className="flex items-center space-x-3 mb-8">
@@ -264,7 +277,7 @@ const EditarUsuario = () => {
                 <User className="h-5 w-5" />
                 Datos personales
               </CardTitle>
-              <CardDescription>Actualiza tu nombre, razón social y CIF. El email no se puede modificar aquí.</CardDescription>
+              <CardDescription>Actualiza tu nombre, razón social y CIF. Razón social y CIF son obligatorios. El email no se puede modificar aquí.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSaveProfile} className="space-y-4">
@@ -291,19 +304,21 @@ const EditarUsuario = () => {
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Razón social (opcional)</Label>
+                  <Label>Razón social *</Label>
                   <Input
                     value={form.razon_social}
                     onChange={(e) => setForm((f) => ({ ...f, razon_social: e.target.value }))}
                     placeholder="Razón social"
+                    required
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label>CIF (opcional)</Label>
+                  <Label>CIF *</Label>
                   <Input
                     value={form.cif}
                     onChange={(e) => setForm((f) => ({ ...f, cif: e.target.value }))}
                     placeholder="CIF"
+                    required
                   />
                 </div>
                 <Button type="submit" disabled={savingProfile}>
@@ -407,6 +422,7 @@ const EditarUsuario = () => {
         </main>
       </div>
     </div>
+    </>
   );
 };
 

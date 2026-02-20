@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { 
   getSubdimensionesConScores, 
   getDimensionScore,
@@ -249,7 +250,9 @@ const DimensionDetail = () => {
   const displayDimensionNombre = canonicalDimensionNombre;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <>
+      <FloatingCamaraLogo />
+      <div className="min-h-screen bg-gray-100 flex">
       {/* Sidebar */}
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
@@ -737,6 +740,7 @@ const DimensionDetail = () => {
         </main>
       </div>
     </div>
+    </>
   );
 };
 

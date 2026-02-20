@@ -88,6 +88,27 @@ END $$;
 
 ---
 
+## Producción (Digital Ocean, etc.): si la subida falla
+
+1. **Bucket "informes"**  
+   En Supabase Dashboard → **Storage** → si no existe el bucket **informes**:  
+   **New bucket** → Name: `informes` → marcar **Public bucket** → Create.
+
+2. **Políticas de Storage**  
+   En **SQL Editor** ejecuta el contenido de  
+   `supabase/migrations/20250221100000_storage_informes_policies_idempotent.sql`  
+   (DROP policies si existen y CREATE de nuevo). Así te aseguras de que los usuarios autenticados pueden hacer INSERT en el bucket.
+
+3. **Sesión**  
+   La subida solo funciona con usuario **logueado**. Si en producción da error, cierra sesión, vuelve a entrar y prueba otra vez.
+
+4. **Tabla informes**  
+   Si la tabla tiene la columna `id` como UUID, ejecuta también  
+   `supabase/migrations/20250220100000_informes_id_text_and_seed.sql`  
+   para que la app pueda guardar la URL del PDF (id como text).
+
+---
+
 ## Opción: usar la CLI de Supabase
 
 Si usas Supabase CLI y quieres aplicar solo la migración de la columna:

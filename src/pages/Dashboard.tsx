@@ -23,7 +23,8 @@ import {
   LogOut
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
-import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo } from "@/lib/kpis-data";
 import {
   RadarChart,
@@ -99,20 +100,7 @@ const Dashboard = () => {
 
   return (
     <>
-      {/* Logo Cámara Valencia flotante - siempre visible abajo a la izquierda */}
-      <a
-        href="https://www.camaravalencia.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-4 left-4 z-50 hover:opacity-80 transition-opacity"
-      >
-        <img
-          src={CAMARA_VALENCIA_LOGO_SRC}
-          alt="Cámara València"
-          className="h-10 sm:h-12 w-auto object-contain object-left drop-shadow-lg"
-        />
-      </a>
-
+      <FloatingCamaraLogo />
       <div className="min-h-screen bg-gray-100 flex">
         {/* Sidebar */}
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">

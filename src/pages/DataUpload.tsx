@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Database, Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
+import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { downloadCSV, convertToCSV } from "@/lib/csv-export";
 import { useToast } from "@/hooks/use-toast";
 
@@ -426,7 +427,9 @@ const DataUpload = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <>
+      <FloatingCamaraLogo />
+      <div className="min-h-screen bg-gray-100 flex">
       {/* Sidebar: mismo menú que en el resto de secciones */}
       <aside className="hidden md:flex w-64 bg-[#0c6c8b] text-white flex-col">
         <div className="p-6">
@@ -653,6 +656,7 @@ const DataUpload = () => {
         </main>
       </div>
     </div>
+    </>
   );
 };
 
