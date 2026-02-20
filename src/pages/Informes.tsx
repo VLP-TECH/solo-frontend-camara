@@ -68,21 +68,45 @@ const Informes = () => {
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [pdfCacheBuster, setPdfCacheBuster] = useState(0);
   const [informesLoading, setInformesLoading] = useState(true);
+  const [retryingPdf, setRetryingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Buscar PDF en Storage por id de informe (nombre tipo "brainnova-2025-123.pdf")
   const getPdfUrlFromStorage = async (informeId: string): Promise<string | undefined> => {
+    const findInList = (items: { name?: string }[] | null, prefix: string): string | undefined => {
+      if (!items || !Array.isArray(items)) return undefined;
+      const match = items.find(
+        (f) => typeof f.name === 'string' && f.name.startsWith(prefix) && f.name.endsWith('.pdf')
+      );
+      return match ? match.name : undefined;
+    };
     try {
-      const { data: files } = await supabase.storage
+      // Listar raíz del bucket (sin sortBy por compatibilidad)
+      const { data: rootFiles, error: rootError } = await supabase.storage
         .from('informes')
-        .list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-      const matchingFile = files?.find(f => f.name.startsWith(`${informeId}-`) && f.name.endsWith('.pdf'));
-      if (matchingFile) {
-        const { data: urlData } = supabase.storage.from('informes').getPublicUrl(matchingFile.name);
+        .list('', { limit: 200 });
+      let fileName = findInList(rootFiles, `${informeId}-`);
+      if (fileName) {
+        const { data: urlData } = supabase.storage.from('informes').getPublicUrl(fileName);
         return urlData.publicUrl;
       }
+      // Si hay subcarpetas, buscar también (ej. carpeta "informes" dentro del bucket)
+      if (rootFiles && Array.isArray(rootFiles)) {
+        for (const item of rootFiles) {
+          const name = item?.name;
+          if (typeof name === 'string' && name && !name.includes('.')) {
+            const { data: subFiles } = await supabase.storage.from('informes').list(name, { limit: 200 });
+            fileName = findInList(subFiles, `${informeId}-`);
+            if (fileName) {
+              const { data: urlData } = supabase.storage.from('informes').getPublicUrl(`${name}/${fileName}`);
+              return urlData.publicUrl;
+            }
+          }
+        }
+      }
+      if (rootError) console.warn('[Informes] Storage list error:', rootError.message);
     } catch (e) {
-      console.warn('No se pudo listar Storage para', informeId, e);
+      console.warn('[Informes] No se pudo listar Storage para', informeId, e);
     }
     return undefined;
   };
@@ -155,6 +179,21 @@ const Informes = () => {
     setPdfLoadError(false);
     setPdfCacheBuster(Date.now());
   };
+
+  // Si se abre el detalle sin pdfUrl, intentar una vez más desde Storage (p. ej. listado cargó antes de que existiera el PDF)
+  useEffect(() => {
+    if (!showPreview || !selectedInforme?.id || selectedInforme.pdfUrl) return;
+    let cancelled = false;
+    getPdfUrlFromStorage(selectedInforme.id).then((url) => {
+      if (cancelled || !url) return;
+      setSelectedInforme((prev) => (prev ? { ...prev, pdfUrl: url } : null));
+      setInformes((prev) =>
+        prev.map((inf) => (inf.id === selectedInforme.id ? { ...inf, pdfUrl: url } : inf))
+      );
+      setPdfCacheBuster(Date.now());
+    });
+    return () => { cancelled = true; };
+  }, [showPreview, selectedInforme?.id, selectedInforme?.pdfUrl]);
 
   /** URL absoluta del PDF para iframe y descarga (evita rutas relativas que no cargan bien) */
   const getAbsolutePdfUrl = (pdfUrl?: string | null): string => {
@@ -563,9 +602,34 @@ const Informes = () => {
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">
                           No hay PDF disponible
                         </h3>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-600 mb-4">
                           Este informe no tiene archivo PDF asociado. Un administrador puede subir uno.
                         </p>
+                        <Button
+                          variant="outline"
+                          disabled={retryingPdf}
+                          onClick={async () => {
+                            if (!selectedInforme?.id) return;
+                            setRetryingPdf(true);
+                            try {
+                              const url = await getPdfUrlFromStorage(selectedInforme.id);
+                              if (url) {
+                                setSelectedInforme((prev) => (prev ? { ...prev, pdfUrl: url } : null));
+                                setInformes((prev) =>
+                                  prev.map((inf) => (inf.id === selectedInforme.id ? { ...inf, pdfUrl: url } : inf))
+                                );
+                                setPdfCacheBuster(Date.now());
+                              } else {
+                                toast({ title: "No encontrado", description: "No se encontró el PDF en Storage.", variant: "destructive" });
+                              }
+                            } finally {
+                              setRetryingPdf(false);
+                            }
+                          }}
+                        >
+                          {retryingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                          Reintentar buscar PDF
+                        </Button>
                       </div>
                     ) : pdfLoadError ? (
                       <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
