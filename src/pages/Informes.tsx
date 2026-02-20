@@ -70,67 +70,65 @@ const Informes = () => {
   const [informesLoading, setInformesLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cargar informes desde Supabase (o usar lista por defecto)
+  // Buscar PDF en Storage por id de informe (nombre tipo "brainnova-2025-123.pdf")
+  const getPdfUrlFromStorage = async (informeId: string): Promise<string | undefined> => {
+    try {
+      const { data: files } = await supabase.storage
+        .from('informes')
+        .list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+      const matchingFile = files?.find(f => f.name.startsWith(`${informeId}-`) && f.name.endsWith('.pdf'));
+      if (matchingFile) {
+        const { data: urlData } = supabase.storage.from('informes').getPublicUrl(matchingFile.name);
+        return urlData.publicUrl;
+      }
+    } catch (e) {
+      console.warn('No se pudo listar Storage para', informeId, e);
+    }
+    return undefined;
+  };
+
+  // Cargar informes desde Supabase (o usar lista por defecto) y enriquecer con PDFs desde Storage si faltan
   useEffect(() => {
     let cancelled = false;
     const loadInformes = async () => {
       try {
-        // Usar select('*') para evitar 400 si alguna columna no existe en el schema
         const { data, error } = await supabase
           .from('informes' as any)
           .select('*');
 
         if (cancelled) return;
-        if (error) {
-          console.warn('No se pudieron cargar informes desde Supabase, usando lista por defecto:', error.message);
-          setInformes(DEFAULT_INFORMES);
-          return;
-        }
-        if (data && data.length > 0) {
-          const mapped: Informe[] = await Promise.all(
-            data.map(async (row: any) => {
-              const informeId = String(row.id ?? '');
-              let pdfUrl = (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined;
-              
-              // Si no hay pdf_url en BD pero el informe existe, buscar el PDF más reciente en Storage
-              if (!pdfUrl) {
-                try {
-                  const { data: files } = await supabase.storage
-                    .from('informes')
-                    .list('', {
-                      limit: 100,
-                      sortBy: { column: 'created_at', order: 'desc' }
-                    });
-                  
-                  // Buscar archivo que empiece con el id del informe
-                  const matchingFile = files?.find(f => f.name.startsWith(`${informeId}-`) && f.name.endsWith('.pdf'));
-                  if (matchingFile) {
-                    const { data: urlData } = supabase.storage.from('informes').getPublicUrl(matchingFile.name);
-                    pdfUrl = urlData.publicUrl;
-                    // Intentar guardar esta URL en BD para la próxima vez
-                    await supabase.rpc('upsert_informe_pdf', { p_id: informeId, p_pdf_url: pdfUrl }).catch(() => {});
-                  }
-                } catch (e) {
-                  console.warn('No se pudo buscar PDF en Storage para', informeId, e);
-                }
-              }
-              
-              return {
-                id: informeId,
-                title: String(row.title ?? row.titulo ?? ''),
-                description: String(row.description ?? row.descripcion ?? ''),
-                date: String(row.date ?? row.fecha ?? ''),
-                pages: Number(row.pages ?? row.paginas) || 0,
-                category: String(row.category ?? row.categoria ?? ''),
-                format: String(row.format ?? row.formato ?? 'PDF'),
-                pdfUrl
-              };
-            })
-          );
-          setInformes(mapped);
+        
+        let list: Informe[] = [];
+        
+        if (error || !data || data.length === 0) {
+          list = [...DEFAULT_INFORMES];
         } else {
-          setInformes(DEFAULT_INFORMES);
+          list = data.map((row: any) => ({
+            id: String(row.id ?? ''),
+            title: String(row.title ?? row.titulo ?? ''),
+            description: String(row.description ?? row.descripcion ?? ''),
+            date: String(row.date ?? row.fecha ?? ''),
+            pages: Number(row.pages ?? row.paginas) || 0,
+            category: String(row.category ?? row.categoria ?? ''),
+            format: String(row.format ?? row.formato ?? 'PDF'),
+            pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
+          }));
         }
+
+        // Para cada informe sin pdfUrl, buscar en Storage (así al cerrar sesión y volver se recupera el link)
+        const enriched = await Promise.all(
+          list.map(async (inf) => {
+            if (inf.pdfUrl) return inf;
+            const urlFromStorage = await getPdfUrlFromStorage(inf.id);
+            if (urlFromStorage) {
+              await supabase.rpc('upsert_informe_pdf', { p_id: inf.id, p_pdf_url: urlFromStorage }).catch(() => {});
+              return { ...inf, pdfUrl: urlFromStorage };
+            }
+            return inf;
+          })
+        );
+
+        if (!cancelled) setInformes(enriched);
       } catch (e) {
         if (!cancelled) {
           console.warn('Error cargando informes:', e);
