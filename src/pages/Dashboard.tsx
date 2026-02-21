@@ -35,7 +35,6 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Tooltip,
-  Legend
 } from "recharts";
 
 const Dashboard = () => {
@@ -72,9 +71,17 @@ const Dashboard = () => {
     }
   }, [firstAvailable]);
 
+  const isRadarSpain = radarPaisSelect === "España" || radarPaisSelect === "Spain";
+  const showRadarProvincia = isRadarSpain;
+
+  const handleRadarPaisChange = (pais: string) => {
+    setRadarPaisSelect(pais);
+    if (pais !== "España" && pais !== "Spain") setRadarProvinciaSelect("");
+  };
+
   const handleMostrarRadar = () => {
     setRadarAno(radarAnoSelect);
-    setRadarProvincia(radarProvinciaSelect && radarProvinciaSelect !== "_" ? radarProvinciaSelect : radarPaisSelect);
+    setRadarProvincia(showRadarProvincia && radarProvinciaSelect && radarProvinciaSelect !== "_" ? radarProvinciaSelect : radarPaisSelect);
   };
 
   const handleSignOut = async () => {
@@ -107,7 +114,7 @@ const Dashboard = () => {
       : [2024, 2023, 2022, 2021, 2020]
   ).map(String);
 
-  const { data: radarData, isLoading: radarLoading } = useQuery({
+  const { data: radarData, isLoading: radarLoading, isFetching: radarFetching } = useQuery({
     queryKey: ["dashboard-radar-7dim", radarProvincia, radarAno],
     queryFn: async () => {
       const periodo = Number(radarAno) || 2024;
@@ -309,7 +316,7 @@ const Dashboard = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={radarPaisSelect} onValueChange={setRadarPaisSelect}>
+                  <Select value={radarPaisSelect} onValueChange={handleRadarPaisChange}>
                     <SelectTrigger className="w-44 bg-white">
                       <SelectValue placeholder="País" />
                     </SelectTrigger>
@@ -319,19 +326,25 @@ const Dashboard = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={radarProvinciaSelect || "_"} onValueChange={(v) => setRadarProvinciaSelect(v === "_" ? "" : v)}>
-                    <SelectTrigger className="w-44 bg-white">
-                      <SelectValue placeholder="Provincia" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">— Provincia —</SelectItem>
-                      {provinciasCVOpciones.map((p) => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button onClick={handleMostrarRadar} className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white">
-                    MOSTRAR
+                  {showRadarProvincia && (
+                    <Select value={radarProvinciaSelect || "_"} onValueChange={(v) => setRadarProvinciaSelect(v === "_" ? "" : v)}>
+                      <SelectTrigger className="w-44 bg-white">
+                        <SelectValue placeholder="Provincia (Castellón, Valencia, Alicante)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_">— Provincia —</SelectItem>
+                        {provinciasCVOpciones.map((p) => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button
+                    onClick={handleMostrarRadar}
+                    disabled={radarFetching}
+                    className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
+                  >
+                    {radarFetching ? "CALCULANDO..." : "MOSTRAR"}
                   </Button>
                 </div>
               </div>
@@ -367,7 +380,6 @@ const Dashboard = () => {
                         );
                       }}
                     />
-                    <Legend />
                     <Radar
                       name={radarProvincia}
                       dataKey="cv"

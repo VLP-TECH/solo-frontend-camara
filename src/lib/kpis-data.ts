@@ -565,55 +565,40 @@ export async function getSubdimensionesConScores(
           })
         );
 
-        // Obtener valores promedio para España
+        // Obtener valores promedio para España (mismas variaciones que territorio: España/Spain/Esp)
+        const espanaVariations = ["España", "Spain", "Esp"];
         const valoresEspana = await Promise.all(
           indicadores.map(async (ind) => {
-            // Primero intentar con el periodo exacto
-            let { data } = await supabase
-              .from("resultado_indicadores")
-              .select("valor_calculado, periodo")
-              .eq("nombre_indicador", ind.nombre)
-              .eq("pais", "España")
-              .eq("periodo", periodo)
-              .limit(1);
-            
-            // Si no hay datos para ese periodo, buscar el último periodo disponible
-            if (!data || data.length === 0) {
+            let data: { valor_calculado: unknown; periodo?: number }[] | null = null;
+            for (const paisVar of espanaVariations) {
+              let { data: periodData } = await supabase
+                .from("resultado_indicadores")
+                .select("valor_calculado, periodo")
+                .eq("nombre_indicador", ind.nombre)
+                .eq("pais", paisVar)
+                .eq("periodo", periodo)
+                .limit(1);
+              if (periodData && periodData.length > 0) {
+                data = periodData;
+                break;
+              }
               const { data: lastData } = await supabase
                 .from("resultado_indicadores")
                 .select("valor_calculado, periodo")
                 .eq("nombre_indicador", ind.nombre)
-                .eq("pais", "España")
+                .eq("pais", paisVar)
                 .order("periodo", { ascending: false })
                 .limit(1);
-              data = lastData;
+              if (lastData && lastData.length > 0) {
+                data = lastData;
+                break;
+              }
             }
-            
             const valor = data?.[0]?.valor_calculado;
             if (valor !== null && valor !== undefined) {
               const numValor = Number(valor);
-              if (isNaN(numValor)) {
-                return null;
-              }
+              if (isNaN(numValor)) return null;
               return numValor;
-            }
-            return null;
-          })
-        );
-
-        // Obtener valores promedio para UE (usando un país de referencia o promedio)
-        const valoresUE = await Promise.all(
-          indicadores.map(async (ind) => {
-            const { data } = await supabase
-              .from("resultado_indicadores")
-              .select("valor_calculado")
-              .eq("nombre_indicador", ind.nombre)
-              .eq("periodo", periodo)
-              .in("pais", ["Alemania", "Francia", "Italia", "Países Bajos"])
-              .limit(4);
-            if (data && data.length > 0) {
-              const promedio = data.reduce((sum, d) => sum + Number(d.valor_calculado || 0), 0) / data.length;
-              return promedio;
             }
             return null;
           })
@@ -656,7 +641,59 @@ export async function getSubdimensionesConScores(
 
         const score = Math.min(100, Math.max(0, calcularScorePonderado(valoresTerritorio)));
         const espana = Math.min(100, Math.max(0, calcularScorePonderado(valoresEspana)));
-        const ue = Math.min(100, Math.max(0, calcularScorePonderado(valoresUE)));
+
+        // Media UE según doc: Score_EU_D = media aritmética de los Score_D de cada país (score por país, luego media)
+        const paisesUEConVariaciones: { variaciones: string[] }[] = [
+          { variaciones: ["España", "Spain", "Esp"] },
+          { variaciones: ["Alemania", "Germany", "Deutschland"] },
+          { variaciones: ["Francia", "France"] },
+          { variaciones: ["Italia", "Italy"] },
+          { variaciones: ["Países Bajos", "Netherlands", "Holanda"] },
+        ];
+        const scoresPorPais: number[] = [];
+        for (const { variaciones } of paisesUEConVariaciones) {
+          const valoresPais = await Promise.all(
+            indicadores.map(async (ind) => {
+              let data: { valor_calculado: unknown }[] | null = null;
+              for (const paisVar of variaciones) {
+                let { data: periodData } = await supabase
+                  .from("resultado_indicadores")
+                  .select("valor_calculado")
+                  .eq("nombre_indicador", ind.nombre)
+                  .eq("pais", paisVar)
+                  .eq("periodo", periodo)
+                  .limit(1);
+                if (periodData && periodData.length > 0) {
+                  data = periodData;
+                  break;
+                }
+                const { data: lastData } = await supabase
+                  .from("resultado_indicadores")
+                  .select("valor_calculado")
+                  .eq("nombre_indicador", ind.nombre)
+                  .eq("pais", paisVar)
+                  .order("periodo", { ascending: false })
+                  .limit(1);
+                if (lastData && lastData.length > 0) {
+                  data = lastData;
+                  break;
+                }
+              }
+              const valor = data?.[0]?.valor_calculado;
+              if (valor !== null && valor !== undefined) {
+                const numValor = Number(valor);
+                return isNaN(numValor) ? null : numValor;
+              }
+              return null;
+            })
+          );
+          const scorePais = calcularScorePonderado(valoresPais);
+          if (scorePais > 0) scoresPorPais.push(scorePais);
+        }
+        const ue =
+          scoresPorPais.length > 0
+            ? Math.min(100, Math.max(0, Math.round(scoresPorPais.reduce((a, b) => a + b, 0) / scoresPorPais.length)))
+            : 0;
 
         // #region agent log
         const nonNullTerritorio = valoresTerritorio.filter((v) => v != null).length;

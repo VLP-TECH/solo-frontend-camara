@@ -48,7 +48,6 @@ import {
   getIndicadoresConDatos,
   getDistribucionPorSubdimension,
   getDatosHistoricosIndicador,
-  getFirstAvailableProvinciaPeriodo,
   getAvailablePaisYPeriodo,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
@@ -115,30 +114,36 @@ const DimensionDetail = () => {
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedTerritorio, setSelectedTerritorio] = useState("España");
   const [selectedProvincia, setSelectedProvincia] = useState<string>("");
+  const [appliedAno, setAppliedAno] = useState("2024");
+  const [appliedTerritorio, setAppliedTerritorio] = useState("España");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
   const [metodologiaOpen, setMetodologiaOpen] = useState(false);
-  const initialAnoSetRef = useRef(false);
+  const [indicadoresOpen, setIndicadoresOpen] = useState(false);
 
-  const dimensionNombreNormEarly = (dimensionNombre || "").trim().toLowerCase();
-  const isEmpresaDimension = dimensionNombreNormEarly === "transformación digital empresarial";
-  const provinciasCV = ["Valencia", "Alicante", "Castellón"] as const;
-  const territorioEfectivo = isEmpresaDimension && selectedProvincia ? selectedProvincia : selectedTerritorio;
+  const provinciasCV = ["Valencia", "Castellón", "Alicante"] as const;
+  const isSpain = selectedTerritorio === "España" || selectedTerritorio === "Spain";
+  const showProvinciaSelector = isSpain;
+  const territorioEfectivo = appliedTerritorio;
 
-  const { data: firstAvailable } = useQuery({
-    queryKey: ["first-available-provincia-periodo"],
-    queryFn: getFirstAvailableProvinciaPeriodo,
-  });
+  const handlePaisChange = (pais: string) => {
+    setSelectedTerritorio(pais);
+    if (pais !== "España" && pais !== "Spain") setSelectedProvincia("");
+  };
+
+  const handleMostrarDimension = () => {
+    setAppliedAno(selectedAno);
+    setAppliedTerritorio(
+      showProvinciaSelector && selectedProvincia && selectedProvincia !== "_"
+        ? selectedProvincia
+        : selectedTerritorio
+    );
+  };
+
   const { data: availablePaisPeriodo } = useQuery({
     queryKey: ["available-pais-periodo"],
     queryFn: getAvailablePaisYPeriodo,
   });
-
-  useEffect(() => {
-    if (firstAvailable && !initialAnoSetRef.current) {
-      initialAnoSetRef.current = true;
-      setSelectedAno(String(firstAvailable.periodo));
-    }
-  }, [firstAvailable]);
+  // Sin efecto que cambie año/país al cargar: selectores y datos deben coincidir (España · 2024 por defecto)
 
   const handleSignOut = async () => {
     await signOut();
@@ -165,26 +170,28 @@ const DimensionDetail = () => {
   const Icon = dimensionInfo.icon;
 
   // Obtener score global de la dimensión (nombre acepta mayúsculas/minúsculas)
-  const { data: dimensionScore } = useQuery({
-    queryKey: ["dimension-score", canonicalDimensionNombre, territorioEfectivo, selectedAno],
-    queryFn: () => getDimensionScore(canonicalDimensionNombre, territorioEfectivo, Number(selectedAno)),
+  const { data: dimensionScore, isFetching: scoreFetching } = useQuery({
+    queryKey: ["dimension-score", canonicalDimensionNombre, territorioEfectivo, appliedAno],
+    queryFn: () => getDimensionScore(canonicalDimensionNombre, territorioEfectivo, Number(appliedAno)),
     enabled: !!canonicalDimensionNombre,
   });
   // #region agent log
   useEffect(() => {
     if (!canonicalDimensionNombre) return;
-    const payload = { location: "DimensionDetail.tsx:dimensionScore", message: "dimension score query result", data: { canonicalDimensionNombre, territorioEfectivo, selectedAno, dimensionScoreRaw: dimensionScore, dimensionScoreType: typeof dimensionScore, isNull: dimensionScore == null }, timestamp: Date.now(), hypothesisId: "H4" };
+    const payload = { location: "DimensionDetail.tsx:dimensionScore", message: "dimension score query result", data: { canonicalDimensionNombre, territorioEfectivo, appliedAno, dimensionScoreRaw: dimensionScore, dimensionScoreType: typeof dimensionScore, isNull: dimensionScore == null }, timestamp: Date.now(), hypothesisId: "H4" };
     console.warn("[DEBUG]", JSON.stringify(payload));
     fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
-  }, [canonicalDimensionNombre, territorioEfectivo, selectedAno, dimensionScore]);
+  }, [canonicalDimensionNombre, territorioEfectivo, appliedAno, dimensionScore]);
   // #endregion
 
   // Obtener subdimensiones con scores
-  const { data: subdimensiones } = useQuery({
-    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, territorioEfectivo, selectedAno],
-    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, territorioEfectivo, Number(selectedAno)),
+  const { data: subdimensiones, isFetching: subdimensionesFetching } = useQuery({
+    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, territorioEfectivo, appliedAno],
+    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, territorioEfectivo, Number(appliedAno)),
     enabled: !!canonicalDimensionNombre,
   });
+
+  const mostrandoDatos = scoreFetching || subdimensionesFetching;
 
   // Obtener todos los indicadores de la dimensión
   const { data: indicadores } = useQuery({
@@ -202,7 +209,7 @@ const DimensionDetail = () => {
 
   // Obtener datos históricos para todos los indicadores
   const { data: historicoData } = useQuery({
-    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre), territorioEfectivo],
+    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre), territorioEfectivo, appliedAno],
     queryFn: async () => {
       if (!indicadores) return {};
       const data: Record<string, Array<{ periodo: number; valor: number }>> = {};
@@ -367,7 +374,7 @@ const DimensionDetail = () => {
                 className="text-[#0c6c8b] hover:text-[#0a5a73] font-medium flex items-center space-x-2"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span>← Volver a Dimensiones</span>
+                <span>Volver a Dimensiones</span>
               </button>
             </div>
             
@@ -422,23 +429,24 @@ const DimensionDetail = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
+                  <Select value={selectedTerritorio} onValueChange={handlePaisChange}>
                     <SelectTrigger className="w-[200px]">
                       <SelectValue placeholder="País" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(availablePaisPeriodo?.paises?.length
-                        ? availablePaisPeriodo.paises
-                        : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
+                      {(
+                        availablePaisPeriodo?.paises?.length
+                          ? [...new Set(["España", ...(availablePaisPeriodo.paises || [])])]
+                          : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
                       ).map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {isEmpresaDimension && (
+                  {showProvinciaSelector && (
                     <Select value={selectedProvincia || "_"} onValueChange={(v) => setSelectedProvincia(v === "_" ? "" : v)}>
                       <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Provincia" />
+                        <SelectValue placeholder="Provincia (Castellón, Valencia, Alicante)" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="_">— Provincia —</SelectItem>
@@ -448,6 +456,13 @@ const DimensionDetail = () => {
                       </SelectContent>
                     </Select>
                   )}
+                  <Button
+                    onClick={handleMostrarDimension}
+                    disabled={mostrandoDatos}
+                    className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
+                  >
+                    {mostrandoDatos ? "CALCULANDO..." : "MOSTRAR"}
+                  </Button>
                 </div>
               </div>
               <p className="text-lg text-gray-600 mt-4 max-w-4xl">
@@ -468,7 +483,7 @@ const DimensionDetail = () => {
                     {dimensionScore != null ? Math.round(dimensionScore) : "—"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {territorioEfectivo} · {selectedAno} (promedio de subdimensiones)
+                    {territorioEfectivo} · {appliedAno} (promedio de subdimensiones)
                   </div>
                 </CardContent>
               </Card>
@@ -647,18 +662,27 @@ const DimensionDetail = () => {
               </Card>
             </div>
 
-            {/* Indicadores de esta dimensión (datos desde BD: importancia, fórmula, fuente) */}
+            {/* Indicadores de esta dimensión: plegado por defecto */}
             {indicadores && indicadores.length > 0 && (
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xl text-[#0c6c8b]">
-                    <Info className="h-5 w-5" />
-                    Indicadores de esta dimensión ({indicadores.length})
-                  </CardTitle>
-                  <p className="text-sm text-gray-600">
-                    Importancia usada en el cálculo: Alta (peso 3), Media (peso 2), Baja (peso 1). Datos desde la base de datos.
-                  </p>
-                </CardHeader>
+              <Collapsible open={indicadoresOpen} onOpenChange={setIndicadoresOpen} defaultOpen={false}>
+                <Card className="bg-white">
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-gray-50/80 transition-colors rounded-t-lg">
+                      <CardTitle className="flex items-center justify-between gap-2 text-xl text-[#0c6c8b]">
+                        <span className="flex items-center gap-2">
+                          <Info className="h-5 w-5" />
+                          Indicadores de esta dimensión ({indicadores.length})
+                        </span>
+                        <span className="shrink-0 transition-transform duration-200" style={{ transform: indicadoresOpen ? "rotate(90deg)" : "none" }}>
+                          <ChevronRight className="h-5 w-5" />
+                        </span>
+                      </CardTitle>
+                      <p className="text-sm text-gray-600 text-left">
+                        Importancia: Alta (peso 3), Media (peso 2), Baja (peso 1). Clic para desplegar/plegar.
+                      </p>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
                 <CardContent>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
@@ -705,7 +729,9 @@ const DimensionDetail = () => {
                     </table>
                   </div>
                 </CardContent>
+                  </CollapsibleContent>
               </Card>
+            </Collapsible>
             )}
 
             {/* Detalle de Subdimensiones - Solo las que tienen score > 0 */}

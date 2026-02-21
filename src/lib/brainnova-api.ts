@@ -300,7 +300,7 @@ export const getBrainnovaScoresRadar = async (
     tamano_empresa: '',
   });
   const desglose: DesgloseDimension[] = res.desglose_por_dimension ?? [];
-  const clamp = (n: number) => Math.max(0, Math.min(100, Number(n)));
+  const clamp = (n: unknown) => Math.max(0, Math.min(100, Number(n) || 0));
   return desglose.map((d) => ({
     dimension: d.dimension ?? '',
     cv: clamp(d.score_valencia),

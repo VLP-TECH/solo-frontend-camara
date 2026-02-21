@@ -30,7 +30,7 @@ import {
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getDimensiones, getIndicadoresConDatos, getDimensionScore, type IndicadorConDatos } from "@/lib/kpis-data";
+import { getDimensiones, getIndicadoresConDatos, getDimensionScore, getAvailablePaisYPeriodo, type IndicadorConDatos } from "@/lib/kpis-data";
 
 interface DimensionData {
   nombre: string;
@@ -45,10 +45,15 @@ const Dimensiones = () => {
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
-  const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
+  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
   const [expandedDimensions, setExpandedDimensions] = useState<Set<string>>(new Set());
+
+  const { data: availablePaisPeriodo } = useQuery({
+    queryKey: ["available-pais-periodo"],
+    queryFn: getAvailablePaisYPeriodo,
+  });
 
   const handleSignOut = async () => {
     await signOut();
@@ -99,16 +104,18 @@ const Dimensiones = () => {
     },
   };
 
-  // Obtener scores de dimensiones
+  // Obtener scores de dimensiones (mismo país y año que los selectores)
   const { data: dimensionScores } = useQuery({
-    queryKey: ["dimension-scores-all"],
+    queryKey: ["dimension-scores-all", selectedTerritorio, selectedAno],
     queryFn: async () => {
       if (!dimensiones) return {};
+      const pais = selectedTerritorio;
+      const periodo = Number(selectedAno) || 2024;
       const scores: Record<string, number> = {};
       await Promise.all(
         dimensiones.map(async (dim) => {
           try {
-            const score = await getDimensionScore(dim.nombre, "Comunitat Valenciana", 2024);
+            const score = await getDimensionScore(dim.nombre, pais, periodo);
             scores[dim.nombre] = score;
           } catch (error) {
             console.error(`Error obteniendo score para ${dim.nombre}:`, error);
@@ -269,14 +276,46 @@ const Dimensiones = () => {
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
           <div className="max-w-7xl mx-auto">
-            {/* Title Section */}
+            {/* Title Section + Selectores país y año (los scores de las tarjetas usan estos valores) */}
             <div className="mb-8">
-              <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
-                Dimensiones del Sistema BRAINNOVA
-              </h1>
-              <p className="text-lg text-[#0c6c8b]">
-                Explora las siete dimensiones clave que componen el Índice de economía digital de la Comunitat Valenciana
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                <div>
+                  <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
+                    Dimensiones del Sistema BRAINNOVA
+                  </h1>
+                  <p className="text-lg text-[#0c6c8b]">
+                    Explora las siete dimensiones clave que componen el Índice de economía digital. Scores para <strong>{selectedTerritorio}</strong> · {selectedAno}.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Select value={selectedAno} onValueChange={setSelectedAno}>
+                    <SelectTrigger className="w-[120px] bg-white">
+                      <SelectValue placeholder="Año" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(availablePaisPeriodo?.periodos?.length
+                        ? availablePaisPeriodo.periodos
+                        : [2024, 2023, 2022, 2021]
+                      ).map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
+                    <SelectTrigger className="w-[200px] bg-white">
+                      <SelectValue placeholder="País" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(availablePaisPeriodo?.paises?.length
+                        ? availablePaisPeriodo.paises
+                        : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
+                      ).map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             {/* Dimension Cards Grid */}
