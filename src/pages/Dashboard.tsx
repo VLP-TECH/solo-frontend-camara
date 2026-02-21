@@ -51,6 +51,7 @@ const Dashboard = () => {
   const [radarPaisSelect, setRadarPaisSelect] = useState<string>("España");
   const [radarProvinciaSelect, setRadarProvinciaSelect] = useState<string>("");
   const [radarAno, setRadarAno] = useState<string>("2024");
+  const [radarPaisAplicado, setRadarPaisAplicado] = useState<string>("España");
   const [radarProvincia, setRadarProvincia] = useState<string>("España");
 
   const { data: availablePaisPeriodo } = useQuery({
@@ -68,8 +69,12 @@ const Dashboard = () => {
 
   const handleMostrarRadar = () => {
     setRadarAno(radarAnoSelect);
+    setRadarPaisAplicado(radarPaisSelect);
     setRadarProvincia(showRadarProvincia && radarProvinciaSelect && radarProvinciaSelect !== "_" ? radarProvinciaSelect : radarPaisSelect);
   };
+
+  const provinciasCV = ["Valencia", "Alicante", "Castellón"];
+  const isSpainWithProvince = (radarPaisAplicado === "España" || radarPaisAplicado === "Spain") && provinciasCV.includes(radarProvincia);
 
   const handleSignOut = async () => {
     await signOut();
@@ -105,20 +110,44 @@ const Dashboard = () => {
   ).map(String);
 
   const { data: radarData, isLoading: radarLoading, isFetching: radarFetching } = useQuery({
-    queryKey: ["dashboard-radar-7dim", radarProvincia, radarAno],
+    queryKey: ["dashboard-radar-7dim", radarAno, radarPaisAplicado, radarProvincia],
     queryFn: async () => {
       const periodo = Number(radarAno) || 2024;
+      const tresSeries = (radarPaisAplicado === "España" || radarPaisAplicado === "Spain") && provinciasCV.includes(radarProvincia);
       try {
         const data = await getBrainnovaScoresRadar(periodo);
-        if (data?.length) return data;
+        if (data?.length && !tresSeries) return data;
       } catch (e) {
         console.warn("Radar: backend no disponible, usando fallback Supabase", e);
       }
       if (!dimensiones?.length) return [];
+      const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+      if (tresSeries) {
+        const allSubsEspania = await Promise.all(
+          dimensiones.map((dim) => getSubdimensionesConScores(dim.nombre, "España", periodo))
+        );
+        const allSubsProvincia = await Promise.all(
+          dimensiones.map((dim) => getSubdimensionesConScores(dim.nombre, radarProvincia, periodo))
+        );
+        return dimensiones.map((dim, i) => {
+          const subsE = allSubsEspania[i] || [];
+          const subsP = allSubsProvincia[i] || [];
+          const espania = subsE.length ? subsE.reduce((a, s) => a + s.score, 0) / subsE.length : 0;
+          const provincia = subsP.length ? subsP.reduce((a, s) => a + s.score, 0) / subsP.length : 0;
+          const ue = subsE.length ? subsE.reduce((a, s) => a + s.ue, 0) / subsE.length : 0;
+          return {
+            dimension: dim.nombre,
+            ue: clamp(ue),
+            espania: clamp(espania),
+            provincia: clamp(provincia),
+          };
+        });
+      }
+
       const allSubs = await Promise.all(
         dimensiones.map((dim) => getSubdimensionesConScores(dim.nombre, radarProvincia, periodo))
       );
-      const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
       return dimensiones.map((dim, i) => {
         const subs = allSubs[i] || [];
         const cv = subs.length ? subs.reduce((a, s) => a + s.score, 0) / subs.length : 0;
@@ -131,14 +160,17 @@ const Dashboard = () => {
 
   const radarDataDisplay = radarData ?? [];
 
-  // Escala dinámica para resaltar la diferencia España vs Media UE (en lugar de 0–100 fijo)
+  // Escala dinámica para resaltar diferencias (incluye cv/ue o espania/provincia/ue)
   const { radarDomain, radarTicks } = useMemo(() => {
     if (!radarDataDisplay.length) return { radarDomain: [0, 100] as [number, number], radarTicks: [0, 25, 50, 75, 100] };
     let min = Infinity;
     let max = -Infinity;
-    radarDataDisplay.forEach((d: { cv?: number; ue?: number }) => {
-      if (typeof d.cv === "number") { min = Math.min(min, d.cv); max = Math.max(max, d.cv); }
-      if (typeof d.ue === "number") { min = Math.min(min, d.ue); max = Math.max(max, d.ue); }
+    const keys = ["cv", "ue", "espania", "provincia"] as const;
+    radarDataDisplay.forEach((d: Record<string, unknown>) => {
+      keys.forEach((k) => {
+        const v = d[k];
+        if (typeof v === "number") { min = Math.min(min, v); max = Math.max(max, v); }
+      });
     });
     const margin = Math.max(15, (max - min) * 0.4);
     const domainMin = Math.max(0, Math.floor(min - margin));
@@ -308,7 +340,11 @@ const Dashboard = () => {
                     Análisis por Dimensiones
                   </h2>
                   <p className="text-sm text-gray-600">
-                    Índice BRAINNOVA por las 7 dimensiones para <strong>{radarProvincia}</strong> ({radarAno}).
+                    Índice BRAINNOVA por las 7 dimensiones
+                    {isSpainWithProvince
+                      ? <> para <strong>Media UE</strong>, <strong>España</strong> y <strong>{radarProvincia}</strong></>
+                      : <> para <strong>{radarProvincia}</strong></>
+                    } ({radarAno}).
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -375,33 +411,38 @@ const Dashboard = () => {
                     <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
-                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number };
+                        const row = payload[0]?.payload as { dimension: string; cv?: number; ue: number; espania?: number; provincia?: number };
                         return (
                           <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
                             <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
-                            <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
-                            <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                            {isSpainWithProvince ? (
+                              <>
+                                <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                                <p className="text-[#0c6c8b]">España: {row?.espania ?? 0}</p>
+                                <p className="text-[#059669]">{radarProvincia}: {row?.provincia ?? 0}</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
+                                <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                              </>
+                            )}
                           </div>
                         );
                       }}
                     />
-                    <Radar
-                      name={radarProvincia}
-                      dataKey="cv"
-                      stroke="#0c6c8b"
-                      fill="#0c6c8b"
-                      fillOpacity={0.5}
-                      strokeWidth={2}
-                    />
-                    <Radar
-                      name="Media UE"
-                      dataKey="ue"
-                      stroke="#2563eb"
-                      fill="#3B82F6"
-                      fillOpacity={0.35}
-                      strokeDasharray="5 5"
-                      strokeWidth={2}
-                    />
+                    {isSpainWithProvince ? (
+                      <>
+                        <Radar name="Media UE" dataKey="ue" stroke="#2563eb" fill="#3B82F6" fillOpacity={0.35} strokeDasharray="5 5" strokeWidth={2} />
+                        <Radar name="España" dataKey="espania" stroke="#0c6c8b" fill="#0c6c8b" fillOpacity={0.5} strokeWidth={2} />
+                        <Radar name={radarProvincia} dataKey="provincia" stroke="#059669" fill="#10b981" fillOpacity={0.4} strokeWidth={2} />
+                      </>
+                    ) : (
+                      <>
+                        <Radar name={radarProvincia} dataKey="cv" stroke="#0c6c8b" fill="#0c6c8b" fillOpacity={0.5} strokeWidth={2} />
+                        <Radar name="Media UE" dataKey="ue" stroke="#2563eb" fill="#3B82F6" fillOpacity={0.35} strokeDasharray="5 5" strokeWidth={2} />
+                      </>
+                    )}
                   </RadarChart>
                 </ResponsiveContainer>
                 )}
@@ -409,13 +450,26 @@ const Dashboard = () => {
               
               <div className="flex items-center justify-center flex-wrap gap-x-6 gap-y-2 mt-4">
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
-                  <span className="text-sm text-gray-600">{radarProvincia}</span>
-                </div>
-                <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 rounded-full bg-[#3B82F6]" />
                   <span className="text-sm text-gray-600">Media UE</span>
                 </div>
+                {isSpainWithProvince ? (
+                  <>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
+                      <span className="text-sm text-gray-600">España</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 rounded-full bg-[#10b981]" />
+                      <span className="text-sm text-gray-600">{radarProvincia}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
+                    <span className="text-sm text-gray-600">{radarProvincia}</span>
+                  </div>
+                )}
               </div>
             </Card>
 
