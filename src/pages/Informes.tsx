@@ -215,6 +215,10 @@ const Informes = () => {
   }, [showPreview, selectedInforme?.id, selectedInforme?.pdfUrl]);
 
   /** URL absoluta del PDF para iframe y descarga (evita rutas relativas que no cargan bien) */
+  /** Misma URL que usa "Ver PDF": informe.pdfUrl o fallback para BRAINNOVA 2025 */
+  const getInformePdfUrl = (informe: Informe): string | undefined =>
+    informe.pdfUrl || (informe.id === 'brainnova-2025' ? BRAINNOVA_2025_PDF_URL : undefined);
+
   const getAbsolutePdfUrl = (pdfUrl?: string | null): string => {
     if (!pdfUrl) return '';
     if (pdfUrl.startsWith('http://') || pdfUrl.startsWith('https://')) return pdfUrl;
@@ -228,6 +232,7 @@ const Informes = () => {
       const link = document.createElement('a');
       link.href = getAbsolutePdfUrl(pdfUrl);
       link.download = pdfUrl.split('/').pop() || 'informe.pdf';
+      link.rel = 'noopener noreferrer';
       link.click();
     }
   };
@@ -559,8 +564,10 @@ const Informes = () => {
                           className="px-3"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDownload(informe.pdfUrl);
+                            handleDownload(getInformePdfUrl(informe));
                           }}
+                          title={getInformePdfUrl(informe) ? 'Descargar PDF' : 'No hay PDF disponible'}
+                          disabled={!getInformePdfUrl(informe)}
                         >
                           <Download className="h-4 w-4" />
                         </Button>
@@ -609,7 +616,7 @@ const Informes = () => {
                 
                 <TabsContent value="html" className="mt-4">
                   <div className="border rounded-lg bg-gray-50 max-h-[70vh] overflow-y-auto p-6">
-                    <InformeContent />
+                    <InformeContent pdfUrl={selectedInforme?.pdfUrl} />
                   </div>
                 </TabsContent>
                 

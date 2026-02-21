@@ -168,7 +168,10 @@ const InformeBrainnova2025 = () => {
 };
 
 // Componente con el contenido del informe en formato web
-const InformeContent = () => {
+const InformeContent = ({ pdfUrl }: { pdfUrl?: string | null }) => {
+  const downloadPdfUrl = pdfUrl && pdfUrl.startsWith('http') ? pdfUrl : '/informes/InformeBrainnova_2025.pdf';
+  const downloadFileName = pdfUrl && pdfUrl.includes('/') ? pdfUrl.split('/').pop() || 'InformeBrainnova_2025.pdf' : 'InformeBrainnova_2025.pdf';
+
   return (
     <div className="prose prose-sm max-w-none text-gray-800">
       {/* Portada */}
@@ -445,8 +448,9 @@ const InformeContent = () => {
               size="sm"
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = '/informes/InformeBrainnova_2025.pdf';
-                link.download = 'InformeBrainnova_2025.pdf';
+                link.href = downloadPdfUrl;
+                link.download = downloadFileName;
+                link.rel = 'noopener noreferrer';
                 link.click();
               }}
               className="bg-white text-[#0c6c8b] hover:bg-gray-100"
