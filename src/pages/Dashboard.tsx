@@ -47,9 +47,12 @@ const Dashboard = () => {
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
 
-  // Análisis por dimensiones: siempre las 7 dimensiones Brainnova; selector país por defecto España
-  const [radarProvincia, setRadarProvincia] = useState<string>("España");
+  // Análisis por dimensiones: selectores (año, país, provincia) + botón MOSTRAR aplica y recrea la gráfica
+  const [radarAnoSelect, setRadarAnoSelect] = useState<string>("2024");
+  const [radarPaisSelect, setRadarPaisSelect] = useState<string>("España");
+  const [radarProvinciaSelect, setRadarProvinciaSelect] = useState<string>("");
   const [radarAno, setRadarAno] = useState<string>("2024");
+  const [radarProvincia, setRadarProvincia] = useState<string>("España");
   const initialRadarSetRef = useRef(false);
 
   const { data: firstAvailable } = useQuery({
@@ -64,9 +67,15 @@ const Dashboard = () => {
   useEffect(() => {
     if (firstAvailable && !initialRadarSetRef.current) {
       initialRadarSetRef.current = true;
+      setRadarAnoSelect(String(firstAvailable.periodo));
       setRadarAno(String(firstAvailable.periodo));
     }
   }, [firstAvailable]);
+
+  const handleMostrarRadar = () => {
+    setRadarAno(radarAnoSelect);
+    setRadarProvincia(radarProvinciaSelect && radarProvinciaSelect !== "_" ? radarProvinciaSelect : radarPaisSelect);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -84,12 +93,13 @@ const Dashboard = () => {
     queryFn: () => getFiltrosGlobales(),
   });
   // Opciones de filtro: API (filtros-globales) > valores que existen en la BD > estáticos
-  const provinciasOpciones = (filtrosGlobales?.provincias?.length
+  const paisesOpciones = (filtrosGlobales?.provincias?.length
     ? filtrosGlobales.provincias
     : availablePaisPeriodo?.paises?.length
       ? availablePaisPeriodo.paises
-      : ["España", "Valencia", "Alicante", "Castellón"]
+      : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
   ) as string[];
+  const provinciasCVOpciones = ["Valencia", "Alicante", "Castellón"] as const;
   const aniosOpciones = (filtrosGlobales?.anios?.length
     ? [...filtrosGlobales.anios].sort((a, b) => b - a)
     : availablePaisPeriodo?.periodos?.length
@@ -289,7 +299,7 @@ const Dashboard = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Select value={radarAno} onValueChange={setRadarAno}>
+                  <Select value={radarAnoSelect} onValueChange={setRadarAnoSelect}>
                     <SelectTrigger className="w-28 bg-white">
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
@@ -299,16 +309,30 @@ const Dashboard = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={radarProvincia} onValueChange={setRadarProvincia}>
+                  <Select value={radarPaisSelect} onValueChange={setRadarPaisSelect}>
                     <SelectTrigger className="w-44 bg-white">
                       <SelectValue placeholder="País" />
                     </SelectTrigger>
                     <SelectContent>
-                      {provinciasOpciones.map((p) => (
+                      {paisesOpciones.map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select value={radarProvinciaSelect || "_"} onValueChange={(v) => setRadarProvinciaSelect(v === "_" ? "" : v)}>
+                    <SelectTrigger className="w-44 bg-white">
+                      <SelectValue placeholder="Provincia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">— Provincia —</SelectItem>
+                      {provinciasCVOpciones.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={handleMostrarRadar} className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white">
+                    MOSTRAR
+                  </Button>
                 </div>
               </div>
               
