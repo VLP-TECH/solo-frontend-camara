@@ -45,8 +45,10 @@ const Dimensiones = () => {
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
-  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
   const [selectedAno, setSelectedAno] = useState("2024");
+  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
+  const [appliedAno, setAppliedAno] = useState("2024");
+  const [appliedTerritorio, setAppliedTerritorio] = useState("España");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
   const [expandedDimensions, setExpandedDimensions] = useState<Set<string>>(new Set());
 
@@ -54,6 +56,11 @@ const Dimensiones = () => {
     queryKey: ["available-pais-periodo"],
     queryFn: getAvailablePaisYPeriodo,
   });
+
+  const handleMostrarDimensiones = () => {
+    setAppliedAno(selectedAno);
+    setAppliedTerritorio(selectedTerritorio);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -104,13 +111,13 @@ const Dimensiones = () => {
     },
   };
 
-  // Obtener scores de dimensiones (mismo país y año que los selectores)
-  const { data: dimensionScores } = useQuery({
-    queryKey: ["dimension-scores-all", selectedTerritorio, selectedAno],
+  // Obtener scores de dimensiones (país y año aplicados al pulsar MOSTRAR)
+  const { data: dimensionScores, isFetching: dimensionScoresFetching } = useQuery({
+    queryKey: ["dimension-scores-all", appliedTerritorio, appliedAno],
     queryFn: async () => {
       if (!dimensiones) return {};
-      const pais = selectedTerritorio;
-      const periodo = Number(selectedAno) || 2024;
+      const pais = appliedTerritorio;
+      const periodo = Number(appliedAno) || 2024;
       const scores: Record<string, number> = {};
       await Promise.all(
         dimensiones.map(async (dim) => {
@@ -276,7 +283,7 @@ const Dimensiones = () => {
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
           <div className="max-w-7xl mx-auto">
-            {/* Title Section + Selectores país y año (los scores de las tarjetas usan estos valores) */}
+            {/* Title Section + Selectores Año, País y MOSTRAR (scores = valores aplicados) */}
             <div className="mb-8">
               <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                 <div>
@@ -284,7 +291,7 @@ const Dimensiones = () => {
                     Dimensiones del Sistema BRAINNOVA
                   </h1>
                   <p className="text-lg text-[#0c6c8b]">
-                    Explora las siete dimensiones clave que componen el Índice de economía digital. Scores para <strong>{selectedTerritorio}</strong> · {selectedAno}.
+                    Explora las siete dimensiones clave. Scores para <strong>{appliedTerritorio}</strong> · {appliedAno}.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -306,14 +313,22 @@ const Dimensiones = () => {
                       <SelectValue placeholder="País" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(availablePaisPeriodo?.paises?.length
-                        ? availablePaisPeriodo.paises
-                        : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
+                      {(
+                        availablePaisPeriodo?.paises?.length
+                          ? [...new Set(["España", ...(availablePaisPeriodo.paises || [])])]
+                          : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
                       ).map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <Button
+                    onClick={handleMostrarDimensiones}
+                    disabled={dimensionScoresFetching}
+                    className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
+                  >
+                    {dimensionScoresFetching ? "CALCULANDO..." : "MOSTRAR"}
+                  </Button>
                 </div>
               </div>
             </div>

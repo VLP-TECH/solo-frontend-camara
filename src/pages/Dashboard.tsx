@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +25,7 @@ import {
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo, getAvailablePaisYPeriodo } from "@/lib/kpis-data";
+import { getDimensiones, getSubdimensionesConScores, getAvailablePaisYPeriodo } from "@/lib/kpis-data";
 import { getBrainnovaScoresRadar, getFiltrosGlobales } from "@/lib/brainnova-api";
 import {
   RadarChart,
@@ -52,24 +52,11 @@ const Dashboard = () => {
   const [radarProvinciaSelect, setRadarProvinciaSelect] = useState<string>("");
   const [radarAno, setRadarAno] = useState<string>("2024");
   const [radarProvincia, setRadarProvincia] = useState<string>("España");
-  const initialRadarSetRef = useRef(false);
 
-  const { data: firstAvailable } = useQuery({
-    queryKey: ["first-available-provincia-periodo"],
-    queryFn: getFirstAvailableProvinciaPeriodo,
-  });
   const { data: availablePaisPeriodo } = useQuery({
     queryKey: ["available-pais-periodo"],
     queryFn: getAvailablePaisYPeriodo,
   });
-
-  useEffect(() => {
-    if (firstAvailable && !initialRadarSetRef.current) {
-      initialRadarSetRef.current = true;
-      setRadarAnoSelect(String(firstAvailable.periodo));
-      setRadarAno(String(firstAvailable.periodo));
-    }
-  }, [firstAvailable]);
 
   const isRadarSpain = radarPaisSelect === "España" || radarPaisSelect === "Spain";
   const showRadarProvincia = isRadarSpain;
@@ -99,13 +86,16 @@ const Dashboard = () => {
     queryKey: ["filtros-globales-radar"],
     queryFn: () => getFiltrosGlobales(),
   });
-  // Opciones de filtro: API (filtros-globales) > valores que existen en la BD > estáticos
-  const paisesOpciones = (filtrosGlobales?.provincias?.length
-    ? filtrosGlobales.provincias
-    : availablePaisPeriodo?.paises?.length
-      ? availablePaisPeriodo.paises
-      : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
-  ) as string[];
+  // Opciones de filtro: API (filtros-globales) > BD > estáticos; España siempre presente
+  const paisesOpciones = [...new Set([
+    "España",
+    ...(filtrosGlobales?.provincias?.length
+      ? filtrosGlobales.provincias
+      : availablePaisPeriodo?.paises?.length
+        ? availablePaisPeriodo.paises
+        : ["Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
+    ) as string[]
+  ])];
   const provinciasCVOpciones = ["Valencia", "Alicante", "Castellón"] as const;
   const aniosOpciones = (filtrosGlobales?.anios?.length
     ? [...filtrosGlobales.anios].sort((a, b) => b - a)
@@ -133,14 +123,30 @@ const Dashboard = () => {
         const subs = allSubs[i] || [];
         const cv = subs.length ? subs.reduce((a, s) => a + s.score, 0) / subs.length : 0;
         const ue = subs.length ? subs.reduce((a, s) => a + s.ue, 0) / subs.length : 0;
-        const topEu = 100;
-        return { dimension: dim.nombre, cv: clamp(cv), ue: clamp(ue), topEu };
+        return { dimension: dim.nombre, cv: clamp(cv), ue: clamp(ue) };
       });
     },
     enabled: true,
   });
 
   const radarDataDisplay = radarData ?? [];
+
+  // Escala dinámica para resaltar la diferencia España vs Media UE (en lugar de 0–100 fijo)
+  const { radarDomain, radarTicks } = useMemo(() => {
+    if (!radarDataDisplay.length) return { radarDomain: [0, 100] as [number, number], radarTicks: [0, 25, 50, 75, 100] };
+    let min = Infinity;
+    let max = -Infinity;
+    radarDataDisplay.forEach((d: { cv?: number; ue?: number }) => {
+      if (typeof d.cv === "number") { min = Math.min(min, d.cv); max = Math.max(max, d.cv); }
+      if (typeof d.ue === "number") { min = Math.min(min, d.ue); max = Math.max(max, d.ue); }
+    });
+    const margin = Math.max(15, (max - min) * 0.4);
+    const domainMin = Math.max(0, Math.floor(min - margin));
+    const domainMax = Math.min(100, Math.ceil(max + margin));
+    const step = (domainMax - domainMin) / 4;
+    const ticks = [domainMin, domainMin + step, domainMin + step * 2, domainMin + step * 3, domainMax].map((v) => Math.round(v));
+    return { radarDomain: [domainMin, domainMax], radarTicks: ticks };
+  }, [radarDataDisplay]);
 
   const menuItems = useAppMenuItems();
 
@@ -235,7 +241,7 @@ const Dashboard = () => {
                 Índice Global de Economía Digital BRAINNOVA
               </h1>
               <p className="text-lg text-gray-600">
-                Análisis integral del desarrollo de la economía digital en <strong>{radarProvincia}</strong>
+                Análisis integral del desarrollo de la economía digital. Datos para <strong>{radarProvincia}</strong> · {radarAno}.
               </p>
             </div>
 
@@ -361,21 +367,20 @@ const Dashboard = () => {
                     <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                     <PolarRadiusAxis
                       angle={90}
-                      domain={[0, 100]}
-                      ticks={[0, 25, 50, 75, 100]}
+                      domain={radarDomain}
+                      ticks={radarTicks}
                       tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                       tickFormatter={(v) => String(v)}
                     />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
-                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number; topEu?: number };
+                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number };
                         return (
                           <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
                             <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
                             <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
                             <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
-                            {row?.topEu != null && <p className="text-emerald-600">Top Europa: {row.topEu}</p>}
                           </div>
                         );
                       }}
@@ -397,15 +402,6 @@ const Dashboard = () => {
                       strokeDasharray="5 5"
                       strokeWidth={2}
                     />
-                    <Radar
-                      name="Top Europa"
-                      dataKey="topEu"
-                      stroke="#059669"
-                      fill="#10b981"
-                      fillOpacity={0.2}
-                      strokeDasharray="4 4"
-                      strokeWidth={1.5}
-                    />
                   </RadarChart>
                 </ResponsiveContainer>
                 )}
@@ -419,10 +415,6 @@ const Dashboard = () => {
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 rounded-full bg-[#3B82F6]" />
                   <span className="text-sm text-gray-600">Media UE</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#10b981]" />
-                  <span className="text-sm text-gray-600">Top Europa</span>
                 </div>
               </div>
             </Card>
