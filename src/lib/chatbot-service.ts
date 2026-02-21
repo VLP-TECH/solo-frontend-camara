@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getSubdimensionesConScores } from "@/lib/kpis-data";
+import { getSubdimensionesConScores, getIndiceGlobalTerritorio } from "@/lib/kpis-data";
 
 /** Datos de índice BRAINNOVA por provincia (alineado con /comparacion y dashboard) */
 const INDICE_POR_PROVINCIA: Record<string, { indice: number; ranking: number; dimensionDestacada: string; puntosDimension: number }> = {
@@ -364,6 +364,20 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   // Limpiar la consulta
   const cleanQuery = userQuery.replace(/[¿?¡!]/g, '').trim();
   const lowerQuery = cleanQuery.toLowerCase();
+
+  // --- Puntuación / índice global de la Comunitat Valenciana (desde Supabase) ---
+  const preguntaPuntuacionGlobal =
+    (lowerQuery.includes("puntuación global") || lowerQuery.includes("puntuacion global") ||
+     lowerQuery.includes("índice global") || lowerQuery.includes("indice global") ||
+     ((lowerQuery.includes("puntuación") || lowerQuery.includes("puntuacion")) && (lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") || lowerQuery.includes("valenciana"))));
+
+  if (preguntaPuntuacionGlobal) {
+    const valor = await getIndiceGlobalTerritorio("Comunitat Valenciana", 2024);
+    if (valor != null) {
+      return `La **puntuación global** de la **Comunitat Valenciana** en el índice BRAINNOVA es de **${valor}** puntos sobre 100. Este valor se obtiene a partir de los datos en Supabase (scores de las 7 dimensiones del territorio). Puedes ver el detalle por dimensiones en *Comparación Territorial* y en el *Dashboard*.`;
+    }
+    return `No he podido obtener la puntuación global de la Comunitat Valenciana desde la base de datos en este momento. Puedes consultar el **Dashboard** o la sección **Comparación Territorial** para ver el índice por provincia y la media regional.`;
+  }
 
   // --- Índice BRAINNOVA por provincia (Alicante, Castellón, Valencia) ---
   const provinciaKey = Object.keys(NOMBRES_PROVINCIAS).find(

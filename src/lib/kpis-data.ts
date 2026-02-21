@@ -647,6 +647,55 @@ export async function getDimensionScore(
 }
 
 /**
+ * Obtiene el índice global BRAINNOVA para un territorio y periodo (consultando Supabase).
+ * Es la media ponderada de los scores de las 7 dimensiones; si no hay pesos, usa media simple.
+ * Para "Comunitat Valenciana", si no hay datos directos, usa la media de los índices de Valencia, Alicante y Castellón.
+ */
+export async function getIndiceGlobalTerritorio(
+  pais: string = "Comunitat Valenciana",
+  periodo: number = 2024
+): Promise<number | null> {
+  try {
+    const dimensiones = await getDimensiones();
+    if (!dimensiones?.length) return null;
+    const scores = await Promise.all(
+      dimensiones.map((dim) => getDimensionScore(dim.nombre, pais, periodo))
+    );
+    const totalScore = scores.reduce((a, b) => a + b, 0);
+    const pesos = dimensiones.map((d) => (d.peso != null && Number(d.peso) > 0 ? Number(d.peso) : 1));
+    const sumPesos = pesos.reduce((a, b) => a + b, 0);
+    let ponderado = sumPesos > 0
+      ? scores.reduce((acc, s, i) => acc + s * pesos[i], 0) / sumPesos
+      : totalScore / dimensiones.length;
+    // Si no hay datos para el territorio (ej. CV), usar media regional (media de las 3 provincias)
+    if (ponderado === 0 && (pais === "Comunitat Valenciana" || pais === "Comunidad Valenciana" || pais === "CV")) {
+      const provincias = ["Valencia", "Alicante", "Castellón"] as const;
+      let sumaIndices = 0;
+      let count = 0;
+      for (const prov of provincias) {
+        const s = await Promise.all(
+          dimensiones.map((dim) => getDimensionScore(dim.nombre, prov, periodo))
+        );
+        const total = s.reduce((a, b) => a + b, 0);
+        if (total > 0) {
+          const idx = sumPesos > 0
+            ? s.reduce((acc, v, i) => acc + v * pesos[i], 0) / sumPesos
+            : total / dimensiones.length;
+          sumaIndices += idx;
+          count++;
+        }
+      }
+      ponderado = count > 0 ? sumaIndices / count : 0;
+    }
+    if (ponderado === 0) return null;
+    return Math.round(ponderado * 10) / 10;
+  } catch (error) {
+    console.error("Error fetching indice global territorio:", error);
+    return null;
+  }
+}
+
+/**
  * Obtiene los indicadores de una subdimensión específica
  */
 export async function getIndicadoresPorSubdimension(

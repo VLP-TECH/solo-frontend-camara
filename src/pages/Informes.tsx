@@ -38,7 +38,9 @@ interface Informe {
   pdfUrl?: string;
 }
 
-// Sin pdfUrl por defecto: el PDF se sube desde la app a Supabase Storage y se guarda la URL en la tabla informes.
+// URL pública del PDF en Supabase Storage (bucket informes, público). Si la BD/Storage no devuelven URL, se usa esta para visualizar.
+const BRAINNOVA_2025_PDF_URL = "https://aoykpiievtadhwssugvs.supabase.co/storage/v1/object/public/informes/brainnova-2025-1771591990981.pdf";
+
 const DEFAULT_INFORMES: Informe[] = [
   {
     id: "brainnova-2025",
@@ -48,7 +50,7 @@ const DEFAULT_INFORMES: Informe[] = [
     pages: 14,
     category: "Informes anuales",
     format: "PDF + HTML",
-    pdfUrl: undefined
+    pdfUrl: BRAINNOVA_2025_PDF_URL
   }
 ];
 
@@ -105,8 +107,11 @@ const Informes = () => {
         }
       }
       if (rootError) console.warn('[Informes] Storage list error:', rootError.message);
+      // Fallback: si es el informe BRAINNOVA 2025 y no se encontró en el listado, usar la URL pública conocida
+      if (informeId === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
     } catch (e) {
       console.warn('[Informes] No se pudo listar Storage para', informeId, e);
+      if (informeId === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
     }
     return undefined;
   };
