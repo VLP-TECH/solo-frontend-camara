@@ -108,10 +108,10 @@ const Informes = () => {
       }
       if (rootError) console.warn('[Informes] Storage list error:', rootError.message);
       // Fallback: si es el informe BRAINNOVA 2025 y no se encontró en el listado, usar la URL pública conocida
-      if (informeId === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
+      if (informeId.toLowerCase() === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
     } catch (e) {
       console.warn('[Informes] No se pudo listar Storage para', informeId, e);
-      if (informeId === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
+      if (informeId.toLowerCase() === "brainnova-2025") return BRAINNOVA_2025_PDF_URL;
     }
     return undefined;
   };
@@ -132,16 +132,20 @@ const Informes = () => {
         if (error || !data || data.length === 0) {
           list = [...DEFAULT_INFORMES];
         } else {
-          list = data.map((row: any) => ({
-            id: String(row.id ?? ''),
-            title: String(row.title ?? row.titulo ?? ''),
-            description: String(row.description ?? row.descripcion ?? ''),
-            date: String(row.date ?? row.fecha ?? ''),
-            pages: Number(row.pages ?? row.paginas) || 0,
-            category: String(row.category ?? row.categoria ?? ''),
-            format: String(row.format ?? row.formato ?? 'PDF'),
-            pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
-          }));
+          list = data.map((row: any) => {
+            const rawId = String(row.id ?? '').trim();
+            const id = rawId.toLowerCase() === 'brainnova-2025' ? 'brainnova-2025' : rawId;
+            return {
+              id,
+              title: String(row.title ?? row.titulo ?? ''),
+              description: String(row.description ?? row.descripcion ?? ''),
+              date: String(row.date ?? row.fecha ?? ''),
+              pages: Number(row.pages ?? row.paginas) || 0,
+              category: String(row.category ?? row.categoria ?? ''),
+              format: String(row.format ?? row.formato ?? 'PDF'),
+              pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
+            };
+          });
         }
 
         // Para cada informe sin pdfUrl, buscar en Storage (así al cerrar sesión y volver se recupera el link)
@@ -157,7 +161,14 @@ const Informes = () => {
           })
         );
 
-        if (!cancelled) setInformes(enriched);
+        // En producción: asegurar siempre URL del PDF para Informe BRAINNOVA 2025 aunque falle Storage/BD
+        const final = enriched.map((inf) =>
+          inf.id === 'brainnova-2025' && !inf.pdfUrl
+            ? { ...inf, pdfUrl: BRAINNOVA_2025_PDF_URL }
+            : inf
+        );
+
+        if (!cancelled) setInformes(final);
       } catch (e) {
         if (!cancelled) {
           console.warn('Error cargando informes:', e);
@@ -179,7 +190,10 @@ const Informes = () => {
   const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);
 
   const handleInformeClick = (informe: Informe) => {
-    setSelectedInforme(informe);
+    const withPdf = informe.id === 'brainnova-2025' && !informe.pdfUrl
+      ? { ...informe, pdfUrl: BRAINNOVA_2025_PDF_URL }
+      : informe;
+    setSelectedInforme(withPdf);
     setShowPreview(true);
     setPdfLoadError(false);
     setPdfCacheBuster(Date.now());
