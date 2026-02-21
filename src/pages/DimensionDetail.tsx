@@ -1,10 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -30,7 +35,8 @@ import {
   GraduationCap,
   TrendingUp,
   Calculator,
-  Info
+  Info,
+  ChevronRight
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
@@ -42,6 +48,8 @@ import {
   getIndicadoresConDatos,
   getDistribucionPorSubdimension,
   getDatosHistoricosIndicador,
+  getFirstAvailableProvinciaPeriodo,
+  getAvailablePaisYPeriodo,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
 import {
@@ -104,9 +112,33 @@ const DimensionDetail = () => {
   const [searchParams] = useSearchParams();
   const dimensionNombre = (searchParams.get("dimension") || "").trim();
   
-  const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
   const [selectedAno, setSelectedAno] = useState("2024");
+  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
+  const [selectedProvincia, setSelectedProvincia] = useState<string>("");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
+  const [metodologiaOpen, setMetodologiaOpen] = useState(false);
+  const initialAnoSetRef = useRef(false);
+
+  const dimensionNombreNormEarly = (dimensionNombre || "").trim().toLowerCase();
+  const isEmpresaDimension = dimensionNombreNormEarly === "transformación digital empresarial";
+  const provinciasCV = ["Valencia", "Alicante", "Castellón"] as const;
+  const territorioEfectivo = isEmpresaDimension && selectedProvincia ? selectedProvincia : selectedTerritorio;
+
+  const { data: firstAvailable } = useQuery({
+    queryKey: ["first-available-provincia-periodo"],
+    queryFn: getFirstAvailableProvinciaPeriodo,
+  });
+  const { data: availablePaisPeriodo } = useQuery({
+    queryKey: ["available-pais-periodo"],
+    queryFn: getAvailablePaisYPeriodo,
+  });
+
+  useEffect(() => {
+    if (firstAvailable && !initialAnoSetRef.current) {
+      initialAnoSetRef.current = true;
+      setSelectedAno(String(firstAvailable.periodo));
+    }
+  }, [firstAvailable]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -134,15 +166,23 @@ const DimensionDetail = () => {
 
   // Obtener score global de la dimensión (nombre acepta mayúsculas/minúsculas)
   const { data: dimensionScore } = useQuery({
-    queryKey: ["dimension-score", canonicalDimensionNombre, selectedTerritorio, selectedAno],
-    queryFn: () => getDimensionScore(canonicalDimensionNombre, selectedTerritorio, Number(selectedAno)),
+    queryKey: ["dimension-score", canonicalDimensionNombre, territorioEfectivo, selectedAno],
+    queryFn: () => getDimensionScore(canonicalDimensionNombre, territorioEfectivo, Number(selectedAno)),
     enabled: !!canonicalDimensionNombre,
   });
+  // #region agent log
+  useEffect(() => {
+    if (!canonicalDimensionNombre) return;
+    const payload = { location: "DimensionDetail.tsx:dimensionScore", message: "dimension score query result", data: { canonicalDimensionNombre, territorioEfectivo, selectedAno, dimensionScoreRaw: dimensionScore, dimensionScoreType: typeof dimensionScore, isNull: dimensionScore == null }, timestamp: Date.now(), hypothesisId: "H4" };
+    console.warn("[DEBUG]", JSON.stringify(payload));
+    fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+  }, [canonicalDimensionNombre, territorioEfectivo, selectedAno, dimensionScore]);
+  // #endregion
 
   // Obtener subdimensiones con scores
   const { data: subdimensiones } = useQuery({
-    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, selectedTerritorio, selectedAno],
-    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, selectedTerritorio, Number(selectedAno)),
+    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, territorioEfectivo, selectedAno],
+    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, territorioEfectivo, Number(selectedAno)),
     enabled: !!canonicalDimensionNombre,
   });
 
@@ -162,14 +202,14 @@ const DimensionDetail = () => {
 
   // Obtener datos históricos para todos los indicadores
   const { data: historicoData } = useQuery({
-    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre)],
+    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre), territorioEfectivo],
     queryFn: async () => {
       if (!indicadores) return {};
       const data: Record<string, Array<{ periodo: number; valor: number }>> = {};
       await Promise.all(
         indicadores.slice(0, 5).map(async (ind) => {
           if (ind.ultimoValor !== undefined) {
-            const historico = await getDatosHistoricosIndicador(ind.nombre, selectedTerritorio, 10);
+            const historico = await getDatosHistoricosIndicador(ind.nombre, territorioEfectivo, 10);
             data[ind.nombre] = historico;
           }
         })
@@ -179,12 +219,22 @@ const DimensionDetail = () => {
     enabled: !!indicadores && indicadores.length > 0,
   });
 
-  // Preparar datos para el gráfico de pastel
-  const pieData = distribucion?.map(sub => ({
-    name: sub.nombre,
-    value: sub.porcentaje,
-    totalIndicadores: sub.totalIndicadores
-  })) || [];
+  // Preparar datos para el gráfico de pastel: solo subdimensiones con valor > 0 (no se muestran ni cuentan las de 0)
+  const pieData = useMemo(() => {
+    const raw = (distribucion ?? [])
+      .filter((sub) => sub != null && typeof sub.porcentaje === "number" && Number(sub.porcentaje) > 0)
+      .map((sub) => ({
+        name: sub!.nombre,
+        value: Number(sub!.porcentaje),
+        totalIndicadores: sub!.totalIndicadores,
+      }));
+    const total = raw.reduce((s, d) => s + d.value, 0);
+    if (total <= 0) return [];
+    return raw.map((d) => ({
+      ...d,
+      value: Math.round((d.value / total) * 1000) / 10,
+    }));
+  }, [distribucion]);
 
   // Mapa subdimensión -> % de indicadores (el mismo % que sale en la página de subdimensión)
   const porcentajePorSubdimension = useMemo(() => {
@@ -359,71 +409,51 @@ const DimensionDetail = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="Territorio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Comunitat Valenciana">Comunitat Valenciana</SelectItem>
-                      <SelectItem value="España">España</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <Select value={selectedAno} onValueChange={setSelectedAno}>
                     <SelectTrigger className="w-[120px]">
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
                     <SelectContent>
-                      {[2024, 2023, 2022, 2021].map((y) => (
+                      {(availablePaisPeriodo?.periodos?.length
+                        ? availablePaisPeriodo.periodos
+                        : [2024, 2023, 2022, 2021]
+                      ).map((y) => (
                         <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="País" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(availablePaisPeriodo?.paises?.length
+                        ? availablePaisPeriodo.paises
+                        : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
+                      ).map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {isEmpresaDimension && (
+                    <Select value={selectedProvincia || "_"} onValueChange={(v) => setSelectedProvincia(v === "_" ? "" : v)}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Provincia" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_">— Provincia —</SelectItem>
+                        {provinciasCV.map((p) => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
               <p className="text-lg text-gray-600 mt-4 max-w-4xl">
                 {dimensionInfo.descripcion}
               </p>
             </div>
-
-            {/* Metodología de cálculo (Documentación técnica Brainnova Score) */}
-            <Card className="bg-white border-[#0c6c8b]/20 mb-6">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-xl text-[#0c6c8b]">
-                  <Calculator className="h-5 w-5" />
-                  Metodología de cálculo (Brainnova Score)
-                </CardTitle>
-                <p className="text-sm text-gray-600">
-                  El Brainnova Score es un indicador compuesto (0-100) que evalúa el rendimiento en un contexto dado. Cálculo en 4 etapas:
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-1">1. Definición del contexto</h4>
-                  <p className="text-gray-700">Se seleccionan todos los indicadores disponibles para el contexto (Periodo, País, Sector, Tamaño).</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-1">2. Normalización dinámica (Min-Max)</h4>
-                  <p className="text-gray-700 mb-1">Para cada indicador, puntuación normalizada comparando con el mínimo y máximo global del indicador en el ecosistema (mismo año):</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
-                    Valor Normalizado = (Valor Real − Mínimo Global) / (Máximo Global − Mínimo Global)  →  resultado entre 0 y 1
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-1">3. Ponderación por importancia (nivel subdimensión)</h4>
-                  <p className="text-gray-700 mb-1">Cada indicador tiene importancia Alta, Media o Baja. Pesos: Alta=3, Media=2, Baja=1. Media ponderada en cada subdimensión:</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
-                    Score Subdimensión = Suma(Valor Normalizado × Peso) / Suma(Pesos)
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-1">4. Agregación (dimensión y global)</h4>
-                  <p className="text-gray-700 mb-1">Score de dimensión = promedio simple de los scores de sus subdimensiones. El índice global es la suma ponderada de los scores de las dimensiones según su peso (ej. {dimensionInfoDB?.peso ?? 0}% para esta dimensión).</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
-                    Score Dimensión = Promedio(Scores Subdimensiones)  ·  Brainnova Score = Suma(Score Dimensión × Peso %)
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
 
             {/* KPI Cards (datos desde BD) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -438,7 +468,7 @@ const DimensionDetail = () => {
                     {dimensionScore != null ? Math.round(dimensionScore) : "—"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {selectedTerritorio} · {selectedAno} (promedio de subdimensiones)
+                    {territorioEfectivo} · {selectedAno} (promedio de subdimensiones)
                   </div>
                 </CardContent>
               </Card>
@@ -678,13 +708,22 @@ const DimensionDetail = () => {
               </Card>
             )}
 
-            {/* Detalle de Subdimensiones - Clickable */}
+            {/* Detalle de Subdimensiones - Solo las que tienen score > 0 */}
+            {(subdimensiones?.filter((sub) => {
+              const scoreNum = Number(sub?.score);
+              return !isNaN(scoreNum) && scoreNum > 0;
+            })?.length ?? 0) > 0 && (
             <div>
               <h2 className="text-2xl font-bold text-[#0c6c8b] mb-6">
                 Detalle de Subdimensiones
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {subdimensiones?.map((subdimension) => {
+                {subdimensiones
+                  ?.filter((subdimension) => {
+                    const scoreNum = Number(subdimension?.score);
+                    return !isNaN(scoreNum) && scoreNum > 0;
+                  })
+                  ?.map((subdimension) => {
                   const nombreSub = subdimension?.nombre ?? "";
                   const porcentajeIndicadores = getPorcentajeIndicadores(nombreSub);
                   const scoreNum = Number(subdimension?.score);
@@ -707,7 +746,7 @@ const DimensionDetail = () => {
                               {tieneScore ? Math.round(scoreNum) : (porcentajeIndicadores != null ? `${porcentajeIndicadores}%` : "—")}
                             </div>
                             <div className="text-sm text-gray-500 mt-1">
-                              {tieneScore ? selectedTerritorio : (porcentajeIndicadores != null ? "de los indicadores de la dimensión" : "Sin datos")}
+                              {tieneScore ? territorioEfectivo : (porcentajeIndicadores != null ? "de los indicadores de la dimensión" : "Sin datos")}
                             </div>
                           </div>
                           <div className="text-right space-y-1">
@@ -736,6 +775,58 @@ const DimensionDetail = () => {
                 })}
               </div>
             </div>
+            )}
+
+            {/* Metodología de cálculo (Brainnova Score) - plegado al final */}
+            <Collapsible open={metodologiaOpen} onOpenChange={setMetodologiaOpen} className="mt-8">
+              <Card className="bg-white border-[#0c6c8b]/20">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="pb-2 cursor-pointer hover:bg-gray-50/80 transition-colors rounded-t-lg">
+                    <CardTitle className="flex items-center justify-between gap-2 text-xl text-[#0c6c8b]">
+                      <span className="flex items-center gap-2">
+                        <Calculator className="h-5 w-5" />
+                        Metodología de cálculo (Brainnova Score)
+                      </span>
+                      <span className="shrink-0 transition-transform duration-200" style={{ transform: metodologiaOpen ? "rotate(90deg)" : "none" }}>
+                        <ChevronRight className="h-5 w-5" />
+                      </span>
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 text-left">
+                      El Brainnova Score es un indicador compuesto (0-100). Cálculo en 4 etapas (clic para ver).
+                    </p>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-4 text-sm pt-0">
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-1">1. Definición del contexto</h4>
+                      <p className="text-gray-700">Se seleccionan todos los indicadores disponibles para el contexto (Periodo, País, Sector, Tamaño).</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-1">2. Normalización dinámica (Min-Max)</h4>
+                      <p className="text-gray-700 mb-1">Para cada indicador, puntuación normalizada comparando con el mínimo y máximo global del indicador en el ecosistema (mismo año):</p>
+                      <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                        Valor Normalizado = (Valor Real − Mínimo Global) / (Máximo Global − Mínimo Global)  →  resultado entre 0 y 1
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-1">3. Ponderación por importancia (nivel subdimensión)</h4>
+                      <p className="text-gray-700 mb-1">Cada indicador tiene importancia Alta, Media o Baja. Pesos: Alta=3, Media=2, Baja=1. Media ponderada en cada subdimensión:</p>
+                      <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                        Score Subdimensión = Suma(Valor Normalizado × Peso) / Suma(Pesos)
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-1">4. Agregación (dimensión y global)</h4>
+                      <p className="text-gray-700 mb-1">Score de dimensión = promedio simple de los scores de sus subdimensiones. El índice global es la suma ponderada de los scores de las dimensiones según su peso (ej. {dimensionInfoDB?.peso ?? 0}% para esta dimensión).</p>
+                      <p className="font-mono text-xs bg-gray-100 p-2 rounded text-[#0c6c8b]">
+                        Score Dimensión = Promedio(Scores Subdimensiones)  ·  Brainnova Score = Suma(Score Dimensión × Peso %)
+                      </p>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           </div>
         </main>
       </div>

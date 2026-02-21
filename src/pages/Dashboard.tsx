@@ -25,7 +25,8 @@ import {
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo } from "@/lib/kpis-data";
+import { getDimensiones, getSubdimensionesConScores, getFirstAvailableProvinciaPeriodo, getAvailablePaisYPeriodo } from "@/lib/kpis-data";
+import { getBrainnovaScoresRadar, getFiltrosGlobales } from "@/lib/brainnova-api";
 import {
   RadarChart,
   Radar,
@@ -42,12 +43,12 @@ const Dashboard = () => {
   const { signOut, user } = useAuth();
   const { profile, loading: profileLoading } = useUserProfile();
   
-  const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
+  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
 
-  // Análisis por dimensiones: siempre las 7 dimensiones Brainnova; filtro por provincia y año
-  const [radarProvincia, setRadarProvincia] = useState<string>("Valencia");
+  // Análisis por dimensiones: siempre las 7 dimensiones Brainnova; selector país por defecto España
+  const [radarProvincia, setRadarProvincia] = useState<string>("España");
   const [radarAno, setRadarAno] = useState<string>("2024");
   const initialRadarSetRef = useRef(false);
 
@@ -55,11 +56,14 @@ const Dashboard = () => {
     queryKey: ["first-available-provincia-periodo"],
     queryFn: getFirstAvailableProvinciaPeriodo,
   });
+  const { data: availablePaisPeriodo } = useQuery({
+    queryKey: ["available-pais-periodo"],
+    queryFn: getAvailablePaisYPeriodo,
+  });
 
   useEffect(() => {
     if (firstAvailable && !initialRadarSetRef.current) {
       initialRadarSetRef.current = true;
-      setRadarProvincia(firstAvailable.provincia);
       setRadarAno(String(firstAvailable.periodo));
     }
   }, [firstAvailable]);
@@ -74,10 +78,35 @@ const Dashboard = () => {
     queryFn: getDimensiones,
   });
 
+  // Filtros reactivos desde el backend (GET /filtros-globales); fallback a listas estáticas
+  const { data: filtrosGlobales } = useQuery({
+    queryKey: ["filtros-globales-radar"],
+    queryFn: () => getFiltrosGlobales(),
+  });
+  // Opciones de filtro: API (filtros-globales) > valores que existen en la BD > estáticos
+  const provinciasOpciones = (filtrosGlobales?.provincias?.length
+    ? filtrosGlobales.provincias
+    : availablePaisPeriodo?.paises?.length
+      ? availablePaisPeriodo.paises
+      : ["España", "Valencia", "Alicante", "Castellón"]
+  ) as string[];
+  const aniosOpciones = (filtrosGlobales?.anios?.length
+    ? [...filtrosGlobales.anios].sort((a, b) => b - a)
+    : availablePaisPeriodo?.periodos?.length
+      ? availablePaisPeriodo.periodos.map(String)
+      : [2024, 2023, 2022, 2021, 2020]
+  ).map(String);
+
   const { data: radarData, isLoading: radarLoading } = useQuery({
-    queryKey: ["dashboard-radar-7dim", radarProvincia, radarAno, dimensiones?.length],
+    queryKey: ["dashboard-radar-7dim", radarProvincia, radarAno],
     queryFn: async () => {
       const periodo = Number(radarAno) || 2024;
+      try {
+        const data = await getBrainnovaScoresRadar(periodo);
+        if (data?.length) return data;
+      } catch (e) {
+        console.warn("Radar: backend no disponible, usando fallback Supabase", e);
+      }
       if (!dimensiones?.length) return [];
       const allSubs = await Promise.all(
         dimensiones.map((dim) => getSubdimensionesConScores(dim.nombre, radarProvincia, periodo))
@@ -87,11 +116,11 @@ const Dashboard = () => {
         const subs = allSubs[i] || [];
         const cv = subs.length ? subs.reduce((a, s) => a + s.score, 0) / subs.length : 0;
         const ue = subs.length ? subs.reduce((a, s) => a + s.ue, 0) / subs.length : 0;
-        const espana = subs.length ? subs.reduce((a, s) => a + s.espana, 0) / subs.length : 0;
-        return { dimension: dim.nombre, cv: clamp(cv), ue: clamp(ue), topUE: clamp(Math.max(ue, espana)) };
+        const topEu = 100;
+        return { dimension: dim.nombre, cv: clamp(cv), ue: clamp(ue), topEu };
       });
     },
-    enabled: !!dimensiones?.length,
+    enabled: true,
   });
 
   const radarDataDisplay = radarData ?? [];
@@ -260,23 +289,23 @@ const Dashboard = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Select value={radarProvincia} onValueChange={setRadarProvincia}>
-                    <SelectTrigger className="w-44 bg-white">
-                      <SelectValue placeholder="Provincia" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Valencia">Valencia</SelectItem>
-                      <SelectItem value="Alicante">Alicante</SelectItem>
-                      <SelectItem value="Castellón">Castellón</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <Select value={radarAno} onValueChange={setRadarAno}>
                     <SelectTrigger className="w-28 bg-white">
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
                     <SelectContent>
-                      {[2024, 2023, 2022, 2021, 2020].map((y) => (
-                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      {aniosOpciones.map((y) => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={radarProvincia} onValueChange={setRadarProvincia}>
+                    <SelectTrigger className="w-44 bg-white">
+                      <SelectValue placeholder="País" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {provinciasOpciones.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -291,18 +320,25 @@ const Dashboard = () => {
                 ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={radarDataDisplay}>
-                    <PolarGrid />
-                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11 }} />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 10 }} />
+                    <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
+                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                    <PolarRadiusAxis
+                      angle={90}
+                      domain={[0, 100]}
+                      ticks={[0, 25, 50, 75, 100]}
+                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                      tickFormatter={(v) => String(v)}
+                    />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
-                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number };
+                        const row = payload[0]?.payload as { dimension: string; cv: number; ue: number; topEu?: number };
                         return (
                           <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
                             <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
                             <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
                             <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                            {row?.topEu != null && <p className="text-emerald-600">Top Europa: {row.topEu}</p>}
                           </div>
                         );
                       }}
@@ -325,19 +361,32 @@ const Dashboard = () => {
                       strokeDasharray="5 5"
                       strokeWidth={2}
                     />
+                    <Radar
+                      name="Top Europa"
+                      dataKey="topEu"
+                      stroke="#059669"
+                      fill="#10b981"
+                      fillOpacity={0.2}
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                    />
                   </RadarChart>
                 </ResponsiveContainer>
                 )}
               </div>
               
-              <div className="flex items-center justify-center space-x-6 mt-4">
+              <div className="flex items-center justify-center flex-wrap gap-x-6 gap-y-2 mt-4">
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#0c6c8b]"></div>
+                  <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
                   <span className="text-sm text-gray-600">{radarProvincia}</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#3B82F6]"></div>
+                  <div className="w-4 h-4 rounded-full bg-[#3B82F6]" />
                   <span className="text-sm text-gray-600">Media UE</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 rounded-full bg-[#10b981]" />
+                  <span className="text-sm text-gray-600">Top Europa</span>
                 </div>
               </div>
             </Card>

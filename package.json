@@ -8,7 +8,22 @@
     "build": "vite build",
     "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}",
     "process-pdf": "node ../backend/scripts/process-pdf-knowledge.js",
-    "load-brainnova": "node ../backend/scripts/process-brainnova-text.js"
+    "load-brainnova": "node ../backend/scripts/process-brainnova-text.js",
+    "upload-processed-datos": "node scripts/upload-processed-datos-crudos.mjs",
+    "upload-processed-datos-macro": "node scripts/upload-processed-datos-macro.mjs",
+    "upload-componentes-resultados": "node scripts/upload-componentes-resultados.mjs",
+    "upload-componentes-indicadores": "node scripts/upload-componentes-indicadores.mjs",
+    "upload-datos-macro": "node scripts/upload-datos-macro.mjs",
+    "upload-datos-crudos": "node scripts/upload-datos-crudos.mjs",
+    "upload-definiciones-indicadores": "node scripts/upload-definiciones-indicadores.mjs",
+    "upload-valores-referencia": "node scripts/upload-valores-referencia.mjs",
+    "upload-subdimensiones": "node scripts/upload-subdimensiones.mjs",
+    "upload-resultados-indicadores": "node scripts/upload-resultados-indicadores.mjs",
+    "upload-resultados-fuente-crudo": "node scripts/upload-resultados-fuente-crudo.mjs",
+    "upload-resultado-fuentes-asociacion": "node scripts/upload-resultado-fuentes-asociacion.mjs",
+    "upload-resultados-fuente-macro": "node scripts/upload-resultados-fuente-macro.mjs",
+    "backfill-resultado-indicadores-nombre": "node scripts/backfill-resultado-indicadores-nombre.mjs",
+    "check-malla-dashboard": "node scripts/check-malla-dashboard.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

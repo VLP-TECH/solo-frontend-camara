@@ -4,7 +4,16 @@ import type {
   ResultadosResponse,
   BrainnovaScoreRequest,
   BrainnovaScoreResponse,
+  DesgloseDimension,
 } from './brainnova-types';
+
+/** Formato de una fila del radar para Recharts (cv = territorio, ue = Media UE, topEu = Top Europa). */
+export interface RadarDataRow {
+  dimension: string;
+  cv: number;
+  ue: number;
+  topEu: number;
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -231,29 +240,72 @@ export const getResultados = async (params: {
 };
 
 /**
+ * Normaliza el body de brainnova-score: solo periodo es obligatorio; el resto como "" (no null).
+ * El backend solo usa periodo; pais/provincia/sector/tamano_empresa se mantienen por compatibilidad.
+ */
+function normalizeBrainnovaScoreBody(
+  request: BrainnovaScoreRequest
+): Record<string, string | number> {
+  return {
+    periodo: request.periodo,
+    pais: request.pais ?? '',
+    provincia: request.provincia ?? '',
+    sector: request.sector ?? '',
+    tamano_empresa: request.tamano_empresa ?? '',
+  };
+}
+
+/**
  * Calcula el Brainnova Score
  * POST /api/v1/brainnova-score
  */
 export const calculateBrainnovaScore = async (
   data: BrainnovaScoreRequest
 ): Promise<BrainnovaScoreResponse> => {
-  try {
-    const response = await fetch(buildUrl('/api/v1/brainnova-score'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    
-    if (!response.ok) {
-      await handleApiError(response);
-    }
-    
-    return response.json();
-  } catch (error) {
-    console.error('Error calculating Brainnova score:', error);
-    throw error;
+  const body = normalizeBrainnovaScoreBody(data);
+  const response = await fetch(buildUrl('/api/v1/brainnova-score'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await handleApiError(response);
   }
+
+  return response.json();
+};
+
+/**
+ * Obtiene datos del radar (telaraña) desde el backend.
+ * POST /api/v1/brainnova-score con solo periodo; devuelve desglose_por_dimension.
+ *
+ * La lógica interna del cálculo (Doc API punto 5) es responsabilidad del backend:
+ * Benchmark Max_i(t), Normalización Score_i = (Valor_i/Max_i)×100, Agregación a
+ * dimensión Score_D, Media europea Score_EU_D, Top Europa = 100. El frontend
+ * solo consume los scores ya calculados (score_valencia, score_media_eu, score_top_eu).
+ *
+ * Mantiene 0.0 como número (no null) para que la línea del radar no se rompa (punto 8).
+ */
+export const getBrainnovaScoresRadar = async (
+  periodo: number
+): Promise<RadarDataRow[]> => {
+  const res = await calculateBrainnovaScore({
+    periodo,
+    pais: '',
+    provincia: '',
+    sector: '',
+    tamano_empresa: '',
+  });
+  const desglose: DesgloseDimension[] = res.desglose_por_dimension ?? [];
+  const clamp = (n: number) => Math.max(0, Math.min(100, Number(n)));
+  return desglose.map((d) => ({
+    dimension: d.dimension ?? '',
+    cv: clamp(d.score_valencia),
+    ue: clamp(d.score_media_eu),
+    topEu: clamp(d.score_top_eu),
+  }));
 };
 

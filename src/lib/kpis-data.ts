@@ -107,8 +107,10 @@ export interface IndicadorConDatos extends Indicador {
 }
 
 /**
- * Obtiene la primera combinación (provincia, periodo) que tenga datos en resultado_indicadores,
+ * Obtiene la primera combinación (pais/provincia, periodo) que tenga datos en resultado_indicadores,
  * para mostrar por defecto en el dashboard (evitar provincia/año sin datos).
+ * Primero prueba Valencia, Alicante, Castellón, Comunitat Valenciana; si no hay datos, devuelve
+ * cualquier (pais, periodo) que exista en la base (ordenado por periodo más reciente).
  */
 export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: string; periodo: number } | null> {
   try {
@@ -123,6 +125,8 @@ export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: 
         .from("resultado_indicadores")
         .select("periodo")
         .eq("pais", key)
+        .not("nombre_indicador", "is", null)
+        .neq("nombre_indicador", "")
         .order("periodo", { ascending: false })
         .limit(1);
       if (error || !data?.length) continue;
@@ -134,15 +138,50 @@ export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: 
       .from("resultado_indicadores")
       .select("periodo")
       .eq("pais", "Comunitat Valenciana")
+      .not("nombre_indicador", "is", null)
+      .neq("nombre_indicador", "")
       .order("periodo", { ascending: false })
       .limit(1);
     if (cv?.length && cv[0]?.periodo != null) {
       return { provincia: "Valencia", periodo: Number(cv[0].periodo) };
     }
+    // Cualquier (pais, periodo) que tenga datos, el más reciente primero
+    const { data: anyRow, error: errAny } = await supabase
+      .from("resultado_indicadores")
+      .select("pais, periodo")
+      .not("nombre_indicador", "is", null)
+      .neq("nombre_indicador", "")
+      .order("periodo", { ascending: false })
+      .limit(1);
+    if (!errAny && anyRow?.length && anyRow[0]?.pais != null && anyRow[0]?.periodo != null) {
+      const periodo = Number(anyRow[0].periodo);
+      if (!Number.isNaN(periodo)) {
+        return { provincia: String(anyRow[0].pais).trim(), periodo };
+      }
+    }
     return null;
   } catch (error) {
     console.error("Error fetching first available provincia/periodo:", error);
     return null;
+  }
+}
+
+/**
+ * Obtiene listas de pais y periodo que existen en resultado_indicadores (con nombre_indicador relleno),
+ * para rellenar los desplegables del dashboard con opciones que tengan datos.
+ */
+export async function getAvailablePaisYPeriodo(): Promise<{ paises: string[]; periodos: number[] }> {
+  try {
+    const [paisRes, periodoRes] = await Promise.all([
+      supabase.from("resultado_indicadores").select("pais").not("nombre_indicador", "is", null).neq("nombre_indicador", ""),
+      supabase.from("resultado_indicadores").select("periodo").not("nombre_indicador", "is", null).neq("nombre_indicador", ""),
+    ]);
+    const paises = [...new Set((paisRes.data || []).map((r) => String(r.pais).trim()).filter(Boolean))].sort();
+    const periodos = [...new Set((periodoRes.data || []).map((r) => Number(r.periodo)).filter((n) => !Number.isNaN(n)))].sort((a, b) => b - a);
+    return { paises, periodos };
+  } catch (error) {
+    console.error("Error fetching available pais/periodo:", error);
+    return { paises: [], periodos: [] };
   }
 }
 
@@ -418,10 +457,21 @@ export async function getSubdimensionesConScores(
 }>> {
   try {
     console.log("getSubdimensionesConScores - nombreDimension:", nombreDimension, "pais:", pais, "periodo:", periodo);
+    // #region agent log
+    const logSub = (msg: string, data: Record<string, unknown>) => {
+      const payload = { location: "kpis-data.ts:getSubdimensionesConScores", message: msg, data, timestamp: Date.now(), hypothesisId: "H2" };
+      console.warn("[DEBUG]", JSON.stringify(payload));
+      fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+    };
+    logSub("entry", { nombreDimension, pais, periodo });
+    // #endregion
     const subdimensiones = await getSubdimensiones();
     const subdimensionesFiltradas = subdimensiones.filter(
       (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
     );
+    // #region agent log
+    logSub("after filter", { totalSubdimensiones: subdimensiones.length, filtradasLength: subdimensionesFiltradas.length, filtradasNombres: subdimensionesFiltradas.map((s) => s.nombre), nombreDimensionEnBD: subdimensiones.slice(0, 5).map((s) => s.nombre_dimension) });
+    // #endregion
     console.log("Subdimensiones filtradas:", subdimensionesFiltradas.length, subdimensionesFiltradas.map(s => s.nombre));
 
     const todosIndicadores = await getIndicadores();
@@ -434,6 +484,9 @@ export async function getSubdimensionesConScores(
         );
 
         if (!indicadores || indicadores.length === 0) {
+          // #region agent log
+          logSub("sub sin indicadores", { subNombre: sub.nombre, nombresSubdimensionEnIndicadores: todosIndicadores.filter((ind) => ind.nombre_subdimension).map((i) => i.nombre_subdimension).slice(0, 10) });
+          // #endregion
           console.log("No hay indicadores para subdimensión:", sub.nombre, "(nombres en BD:", todosIndicadores.filter(ind => ind.nombre_subdimension).map(i => i.nombre_subdimension).slice(0, 5), ")");
           return {
             nombre: sub.nombre,
@@ -605,6 +658,10 @@ export async function getSubdimensionesConScores(
         const espana = Math.min(100, Math.max(0, calcularScorePonderado(valoresEspana)));
         const ue = Math.min(100, Math.max(0, calcularScorePonderado(valoresUE)));
 
+        // #region agent log
+        const nonNullTerritorio = valoresTerritorio.filter((v) => v != null).length;
+        logSub("sub score computed", { subNombre: sub.nombre, indicadoresCount: indicadores.length, valoresTerritorioNonNull: nonNullTerritorio, score, espana, ue });
+        // #endregion
         console.log(`Resultado para ${sub.nombre}: score=${score}, espana=${espana}, ue=${ue} (metodología Min-Max + ponderación importancia)`);
 
         return {
@@ -633,9 +690,20 @@ export async function getDimensionScore(
   pais: string = "Comunitat Valenciana",
   periodo: number = 2024
 ): Promise<number> {
+  // #region agent log
+  const log = (msg: string, data: Record<string, unknown>) => {
+    const payload = { location: "kpis-data.ts:getDimensionScore", message: msg, data, timestamp: Date.now(), hypothesisId: "H1" };
+    console.warn("[DEBUG]", JSON.stringify(payload));
+    fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+  };
+  log("getDimensionScore entry", { nombreDimension, pais, periodo });
+  // #endregion
   try {
     const subdimensiones = await getSubdimensionesConScores(nombreDimension, pais, periodo);
     const conScore = subdimensiones.filter((sub) => sub.score != null && !isNaN(sub.score) && sub.score > 0);
+    // #region agent log
+    log("getDimensionScore after subdimensiones", { totalSubdimensiones: subdimensiones.length, conScoreLength: conScore.length, scores: subdimensiones.map((s) => ({ n: s.nombre, score: s.score })) });
+    // #endregion
     if (conScore.length === 0) return 0;
 
     const promedio = conScore.reduce((sum, sub) => sum + sub.score, 0) / conScore.length;

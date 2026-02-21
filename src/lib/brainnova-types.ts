@@ -16,21 +16,29 @@ export interface ResultadosResponse {
   [key: string]: any;
 }
 
+/** Request POST /api/v1/brainnova-score. Solo periodo afecta al cálculo; resto por compatibilidad. Usar "" no null. */
 export interface BrainnovaScoreRequest {
-  pais: string;
   periodo: number;
-  sector?: string; // Opcional (string vacío si es general)
-  tamano_empresa?: string; // Opcional (string vacío si es general)
-  provincia?: string; // Opcional (null si es nacional)
+  pais?: string;
+  provincia?: string;
+  sector?: string;
+  tamano_empresa?: string;
 }
 
+/** Una dimensión en la respuesta de brainnova-score (7 dimensiones, orden alfabético; sin datos score = 0.0). */
+export interface DesgloseDimension {
+  dimension: string;
+  score_valencia: number;
+  score_media_eu: number;
+  score_top_eu: number;
+  peso_configurado?: number;
+}
+
+/** Response POST /api/v1/brainnova-score. Escala 0–100; no convertir 0.0 en null. */
 export interface BrainnovaScoreResponse {
-  // Estructura de respuesta del endpoint /api/v1/brainnova-score
-  // Ajustar según la respuesta real de la API
-  indice_ponderado: number;
-  desglose?: {
-    [key: string]: number;
-  };
-  [key: string]: any;
+  brainnova_global_score: number;
+  pais: string;
+  periodo: number;
+  desglose_por_dimension: DesgloseDimension[];
 }
 
