@@ -54,5 +54,16 @@
 4. `20250221340000_view_definicion_indicadores_from_definiciones.sql` (solo si no tienes tabla `definicion_indicadores`)
 5. `20250221290000_create_resultado_indicadores_if_not_exists.sql` (+ `20250221300000_drop_resultado_indicadores_nombre_indicador_fkey.sql` si aplica)
 6. **Después de cargar resultado_indicadores y componentes:** `20250221350000_backfill_resultado_indicadores_nombre_indicador.sql` (rellena `nombre_indicador` para que el radar y KPIs dejen de salir a 0).
+7. **Opcional – Servicios Públicos Digitales (España/Valencia):** `20250221400000_seed_resultado_indicadores_servicios_publicos_espana_valencia.sql` inserta filas para el indicador "Personas Servicio Banca Electronica" en España y territorios valencianos si no existen (mismo pipeline que el resto; ver **Pipeline de datos** en `docs/RELACIONES_MALLA_DASHBOARD.md`).
+8. **Opcional – Emprendimiento e Innovación (datos sintéticos):** `20250221410000_seed_resultado_indicadores_emprendimiento_innovacion_sintetico.sql` inserta datos sintéticos (valor_calculado en rango ~30–75) para todos los indicadores de la dimensión Emprendimiento e Innovación (subdimensiones 1–4) en España y territorios valencianos, periodo 2024, para desarrollo/demo.
+9. **Opcional – Resto de dimensiones (datos sintéticos):** `20250221420000_seed_resultado_indicadores_sintetico_resto_dimensiones.sql` inserta datos sintéticos para indicadores de subdimensiones 5–19 (Capital Humano, Ecosistema, Infraestructura, Servicios Públicos, Sostenibilidad, Transformación Digital) en los mismos territorios y 2024, para que todas las dimensiones tengan datos de demo.
 
-Luego ejecutar los scripts de subida de CSV en el mismo orden (dimensiones → subdimensiones → definiciones_indicadores → resultado_indicadores; y componentes_resultados, componentes_indicadores si los tienes). Por último, ejecutar el backfill de `nombre_indicador`.
+Luego ejecutar los scripts de subida de CSV en el mismo orden (dimensiones → subdimensiones → definiciones_indicadores → resultado_indicadores; y componentes_resultados, componentes_indicadores si los tienes). Por último, ejecutar el backfill de `nombre_indicador`. Para que todas las dimensiones (incl. Servicios Públicos Digitales) tengan datos para España/Valencia, incluir esos territorios en el CSV de resultado_indicadores o ejecutar la migración de seed anterior.
+
+## Carga CSV "Latency - Datapoints"
+
+Para cargar el archivo **20260220 Latency - Datapoints** (columnas: nombre_indicador, Periodo, valor_calculado, Pais, Provincia, Sector, Tamaño_empresa, fecha_calculo) en `resultado_indicadores`:
+
+- **Comando:** `npm run upload-latency-datapoints` o `node scripts/upload-latency-datapoints.mjs [ruta/al/archivo.csv]`. Por defecto usa `~/Downloads/20260220 Latency - Datapoints.csv`.
+- Si el archivo está en **XLSX**, exportar a CSV desde Excel (Guardar como → CSV UTF-8) y usar ese CSV.
+- **Importante:** Para que esos indicadores aparezcan en la malla y en el radar del dashboard, los mismos nombres deben existir en **definiciones_indicadores** con `id_subdimension` asignado. Si no existen, las filas se insertan en `resultado_indicadores` pero no se asociarán a ninguna dimensión hasta que se den de alta en definiciones_indicadores.

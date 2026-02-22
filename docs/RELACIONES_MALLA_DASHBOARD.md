@@ -86,3 +86,31 @@ GROUP BY nombre_indicador, pais, periodo;
 ```
 
 Si la primera consulta no devuelve filas, hay que asignar indicadores a esa subdimensión en `definiciones_indicadores` (campo `id_subdimension` = id de la subdimensión “Interacción digital con la administración”). Si la segunda no devuelve filas, hace falta cargar datos en `resultado_indicadores` para esos indicadores, territorio y año.
+
+---
+
+## Pipeline de datos (Plan B: igual que el resto de dimensiones)
+
+Para que cualquier dimensión (incl. **Servicios Públicos Digitales**) tenga score y datos en el detalle, los datos deben estar en **resultado_indicadores** con `nombre_indicador`, `pais`, `periodo` y `valor_calculado`. El flujo estándar es el mismo para todas:
+
+1. **Origen de filas**  
+   Las filas de `resultado_indicadores` se cargan desde el **mismo CSV/ETL** que usa el proyecto:
+   - **CSV:** `scripts/upload-resultados-indicadores.mjs` sube `resultados_indicadores.csv` con columnas: `id`, `valor_calculado`, `fecha_calculo`, `unidad_tipo`, `unidad_display`, `periodo`, `pais`, `provincia`, `sector`, `tamano_empresa`.  
+   - Incluir en ese CSV filas para **España**, **Valencia**, **Comunitat Valenciana**, **Alicante**, **Castellón** (y los años que correspondan) para cada indicador que deba verse en el dashboard.
+
+2. **Vínculo resultado → indicador**  
+   El front filtra por `nombre_indicador`. Ese nombre se rellena con el **backfill** desde:
+   - **Opción A:** `componentes_resultados` (id_resultado = resultado_indicadores.id) → `componentes_indicadores` (id_indicador) → `definiciones_indicadores.nombre`.  
+   - **Opción B:** si no hay componentes, `resultados_fuente_crudo` → `datos_crudos.id_indicador` → `definiciones_indicadores.nombre`.  
+   Por tanto, al añadir filas nuevas al CSV hay que asegurar que existan las filas correspondientes en `componentes_resultados` (y en `componentes_indicadores`) para que el backfill asigne el `nombre_indicador` correcto.
+
+3. **Ejecutar backfill**  
+   Tras subir el CSV (o insertar filas):  
+   - SQL: migración `20250221350000_backfill_resultado_indicadores_nombre_indicador.sql`, o  
+   - Script: `node scripts/backfill-resultado-indicadores-nombre.mjs`.
+
+4. **Indicador "Personas Servicio Banca Electronica" (Servicios Públicos Digitales)**  
+   Si en el CSV/ETL no existen datos para España y territorios valencianos, la migración **`20250221400000_seed_resultado_indicadores_servicios_publicos_espana_valencia.sql`** inserta las combinaciones (pais, periodo 2024) que falten con `valor_calculado = 0`. Los valores reales deben incorporarse después desde la misma fuente que el resto de dimensiones (actualizando `valor_calculado` o reemplazando el CSV y volviendo a subir).
+
+5. **Emprendimiento e Innovación (datos sintéticos)**  
+   La migración **`20250221410000_seed_resultado_indicadores_emprendimiento_innovacion_sintetico.sql`** inserta datos sintéticos (valor_calculado determinista en rango ~30–75) para todos los indicadores con `id_subdimension IN (1, 2, 3, 4)` en España y territorios valencianos, periodo 2024. Sirve para desarrollo/demo; pueden sustituirse por datos reales.

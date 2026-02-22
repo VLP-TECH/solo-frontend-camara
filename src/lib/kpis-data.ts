@@ -46,45 +46,124 @@ function pesoImportancia(importancia: string | null): number {
   return PESO_IMPORTANCIA[importancia.trim()] ?? 1;
 }
 
-/** Obtiene mínimo y máximo global por indicador (todos los territorios, opcionalmente filtrado por periodo) */
+/** Extrae año de periodo (date string o number) para uso en UI */
+function periodoToYear(periodo: unknown): number {
+  if (periodo == null) return 0;
+  if (typeof periodo === "number" && !Number.isNaN(periodo)) return Math.floor(periodo);
+  const s = String(periodo);
+  const y = parseInt(s.slice(0, 4), 10);
+  return Number.isNaN(y) ? 0 : y;
+}
+
+/** Valores de periodo para filtrar: BD puede tener columna integer (2024) o date (2024-01-01). */
+function periodoFilterValues(periodo: number): (number | string)[] {
+  return [periodo, `${periodo}-01-01`];
+}
+
+/**
+ * Obtiene filas de resultado_indicadores para un indicador: primero por nombre_indicador,
+ * si no hay datos y hay idIndicador, por id_indicador (vista definicion_indicadores usa definiciones_indicadores.id).
+ * Acepta periodo como año (2024); filtra por 2024 o por "2024-01-01" por si la columna es date.
+ */
+async function fetchResultadoIndicador(
+  nombresConsulta: string[],
+  idIndicador: number | undefined,
+  filters: { pais?: string; periodo?: number } = {}
+): Promise<{ valor_calculado: unknown; periodo?: number }[]> {
+  const periodos = filters.periodo != null ? periodoFilterValues(filters.periodo) : [null];
+  for (const per of periodos) {
+    let q = supabase
+      .from("resultado_indicadores")
+      .select("valor_calculado, periodo")
+      .in("nombre_indicador", nombresConsulta);
+    if (filters.pais != null) q = q.eq("pais", filters.pais);
+    if (per != null) q = q.eq("periodo", per);
+    const { data: byNombre } = await q.order("periodo", { ascending: false }).limit(10);
+    if (byNombre && byNombre.length > 0) return byNombre;
+  }
+  if (idIndicador == null) return [];
+  for (const per of periodos) {
+    let qId = supabase
+      .from("resultado_indicadores")
+      .select("valor_calculado, periodo")
+      .eq("id_indicador", idIndicador);
+    if (filters.pais != null) qId = qId.eq("pais", filters.pais);
+    if (per != null) qId = qId.eq("periodo", per);
+    const { data: byId } = await qId.order("periodo", { ascending: false }).limit(10);
+    if (byId && byId.length > 0) return byId;
+  }
+  return [];
+}
+
+/** Obtiene mínimo y máximo global por indicador (por nombre_indicador y opcionalmente por id_indicador).
+ * Prueba periodo como entero y como fecha "YYYY-01-01" por si la columna es date. */
 async function getMinMaxPorIndicador(
   nombresIndicadores: string[],
   periodo: number,
-  options?: { fallbackTodosPeriodos?: boolean }
+  options?: { fallbackTodosPeriodos?: boolean; indicadoresConId?: { nombre: string; id: number }[] }
 ): Promise<Map<string, { min: number; max: number }>> {
   const result = new Map<string, { min: number; max: number }>();
-  if (nombresIndicadores.length === 0) return result;
+  const byIndicator = new Map<string, number[]>();
+  const periodosToTry = periodoFilterValues(periodo);
 
-  let { data, error } = await supabase
-    .from("resultado_indicadores")
-    .select("nombre_indicador, valor_calculado")
-    .in("nombre_indicador", nombresIndicadores)
-    .eq("periodo", periodo);
+  const addRows = (data: { nombre_indicador?: string | null; id_indicador?: number | null; valor_calculado: unknown }[] | null, idToNombre?: Map<number, string>) => {
+    if (!data) return;
+    for (const row of data) {
+      const v = Number(row.valor_calculado);
+      if (isNaN(v)) continue;
+      const name = idToNombre ? (row.id_indicador != null ? idToNombre.get(row.id_indicador) : null) : row.nombre_indicador ?? null;
+      if (name) {
+        if (!byIndicator.has(name)) byIndicator.set(name, []);
+        byIndicator.get(name)!.push(v);
+      }
+    }
+  };
 
-  if (error || !data || data.length === 0) {
-    if (options?.fallbackTodosPeriodos) {
+  if (nombresIndicadores.length > 0) {
+    let data: { nombre_indicador: string | null; valor_calculado: unknown }[] | null = null;
+    for (const per of periodosToTry) {
+      const { data: d, error } = await supabase
+        .from("resultado_indicadores")
+        .select("nombre_indicador, valor_calculado")
+        .in("nombre_indicador", nombresIndicadores)
+        .eq("periodo", per);
+      if (!error && d && d.length > 0) {
+        data = d;
+        break;
+      }
+    }
+    if ((!data || data.length === 0) && options?.fallbackTodosPeriodos) {
       const { data: dataAll, error: errAll } = await supabase
         .from("resultado_indicadores")
         .select("nombre_indicador, valor_calculado")
         .in("nombre_indicador", nombresIndicadores);
-      if (!errAll && dataAll && dataAll.length > 0) {
-        data = dataAll;
-      }
-    } else {
-      return result;
+      if (!errAll && dataAll && dataAll.length > 0) data = dataAll;
     }
+    addRows(data ?? null);
   }
 
-  if (!data) return result;
-
-  const byIndicator = new Map<string, number[]>();
-  for (const row of data) {
-    const v = Number(row.valor_calculado);
-    if (isNaN(v)) continue;
-    const name = row.nombre_indicador;
-    if (!byIndicator.has(name)) byIndicator.set(name, []);
-    byIndicator.get(name)!.push(v);
+  if (options?.indicadoresConId?.length) {
+    const ids = options.indicadoresConId.map((i) => i.id);
+    const idToNombre = new Map(options.indicadoresConId.map((i) => [i.id, i.nombre]));
+    let dataById: { id_indicador: number | null; valor_calculado: unknown }[] | null = null;
+    for (const per of periodosToTry) {
+      const res = await supabase
+        .from("resultado_indicadores")
+        .select("id_indicador, valor_calculado")
+        .in("id_indicador", ids)
+        .eq("periodo", per);
+      if (res.data && res.data.length > 0) {
+        dataById = res.data;
+        break;
+      }
+    }
+    if ((!dataById || dataById.length === 0) && options?.fallbackTodosPeriodos) {
+      const res = await supabase.from("resultado_indicadores").select("id_indicador, valor_calculado").in("id_indicador", ids);
+      dataById = res.data ?? null;
+    }
+    addRows(dataById, idToNombre);
   }
+
   byIndicator.forEach((vals, name) => {
     const min = Math.min(...vals);
     const max = Math.max(...vals);
@@ -93,28 +172,44 @@ async function getMinMaxPorIndicador(
   return result;
 }
 
-/** Normalización Min-Max: (valor - min) / (max - min). Si max===min, devuelve 1 si valor>0 sino 0. */
+/** Normalización Min-Max: (valor - min) / (max - min). Usado donde se requiera rango 0-1. */
 function normalizarMinMax(valor: number, min: number, max: number): number {
   if (max === min) return valor > 0 ? 1 : 0;
   const n = (valor - min) / (max - min);
   return Math.max(0, Math.min(1, n));
 }
 
+/**
+ * Score por indicador según doc API Cámara: Score_i = (Valor_i / Max_i) × 100 ("más es mejor").
+ * Max_i = máximo del indicador entre todos los países en ese año. Resultado en [0, 100].
+ */
+function scoreIndicadorPorMax(valor: number, max: number): number {
+  if (max <= 0 || !Number.isFinite(max)) return 0;
+  if (!Number.isFinite(valor) || valor < 0) return 0;
+  return Math.min(100, (valor / max) * 100);
+}
+
 export interface Dimension {
   nombre: string;
   peso: number;
   id: string;
+  /** Id numérico en BD (tabla dimensiones) para filtrar subdimensiones por id_dimension */
+  idDimension?: number;
 }
 
 export interface Subdimension {
+  id?: number;
+  id_dimension?: number;
   nombre: string;
   nombre_dimension: string;
   peso: number;
 }
 
 export interface Indicador {
+  id?: number;
   nombre: string;
   nombre_subdimension: string;
+  id_subdimension?: number | null;
   importancia: string | null;
   formula: string | null;
   fuente: string | null;
@@ -155,8 +250,8 @@ export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: 
         .order("periodo", { ascending: false })
         .limit(1);
       if (error || !data?.length) continue;
-      const periodo = Number(data[0]?.periodo);
-      if (isNaN(periodo)) continue;
+      const periodo = periodoToYear(data[0]?.periodo);
+      if (periodo === 0) continue;
       return { provincia: display, periodo };
     }
     const { data: cv } = await supabase
@@ -168,7 +263,8 @@ export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: 
       .order("periodo", { ascending: false })
       .limit(1);
     if (cv?.length && cv[0]?.periodo != null) {
-      return { provincia: "Valencia", periodo: Number(cv[0].periodo) };
+      const p = periodoToYear(cv[0].periodo);
+      if (p > 0) return { provincia: "Valencia", periodo: p };
     }
     // Cualquier (pais, periodo) que tenga datos, el más reciente primero
     const { data: anyRow, error: errAny } = await supabase
@@ -179,8 +275,8 @@ export async function getFirstAvailableProvinciaPeriodo(): Promise<{ provincia: 
       .order("periodo", { ascending: false })
       .limit(1);
     if (!errAny && anyRow?.length && anyRow[0]?.pais != null && anyRow[0]?.periodo != null) {
-      const periodo = Number(anyRow[0].periodo);
-      if (!Number.isNaN(periodo)) {
+      const periodo = periodoToYear(anyRow[0].periodo);
+      if (periodo > 0) {
         return { provincia: String(anyRow[0].pais).trim(), periodo };
       }
     }
@@ -202,7 +298,7 @@ export async function getAvailablePaisYPeriodo(): Promise<{ paises: string[]; pe
       supabase.from("resultado_indicadores").select("periodo").not("nombre_indicador", "is", null).neq("nombre_indicador", ""),
     ]);
     const paises = [...new Set((paisRes.data || []).map((r) => String(r.pais).trim()).filter(Boolean))].sort();
-    const periodos = [...new Set((periodoRes.data || []).map((r) => Number(r.periodo)).filter((n) => !Number.isNaN(n)))].sort((a, b) => b - a);
+    const periodos = [...new Set((periodoRes.data || []).map((r) => periodoToYear(r.periodo)).filter((n) => n > 0))].sort((a, b) => b - a);
     return { paises, periodos };
   } catch (error) {
     console.error("Error fetching available pais/periodo:", error);
@@ -215,10 +311,27 @@ export async function getAvailablePaisYPeriodo(): Promise<{ paises: string[]; pe
  */
 export async function getDimensiones(): Promise<Dimension[]> {
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("dimensiones")
-      .select("nombre, peso")
+      .select("id, nombre, peso")
       .order("peso", { ascending: false });
+
+    if (error && (error.message?.includes("id") || error.message?.includes("column"))) {
+      const fallback = await supabase
+        .from("dimensiones")
+        .select("nombre, peso")
+        .order("peso", { ascending: false });
+      if (fallback.error) throw fallback.error;
+      data = fallback.data;
+      return (data || []).map((dim) => ({
+        nombre: dim.nombre,
+        peso: dim.peso,
+        id: dim.nombre.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[áéíóú]/g, (m) => ({ á: "a", é: "e", í: "i", ó: "o", ú: "u" }[m] || m)),
+        idDimension: undefined,
+      }));
+    }
 
     if (error) throw error;
 
@@ -228,6 +341,7 @@ export async function getDimensiones(): Promise<Dimension[]> {
       id: dim.nombre.toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[áéíóú]/g, (m) => ({ á: "a", é: "e", í: "i", ó: "o", ú: "u" }[m] || m)),
+      idDimension: (dim as { id?: number }).id,
     }));
   } catch (error) {
     console.error("Error fetching dimensiones:", error);
@@ -236,14 +350,47 @@ export async function getDimensiones(): Promise<Dimension[]> {
 }
 
 /**
+ * Devuelve el id numérico de la dimensión en BD a partir del nombre (para filtrar subdimensiones por id_dimension).
+ */
+async function getDimensionIdByName(nombreDimension: string): Promise<number | undefined> {
+  const dimensiones = await getDimensiones();
+  const dim = dimensiones.find((d) => dimensionMatch(d.nombre, nombreDimension));
+  return dim?.idDimension;
+}
+
+/**
+ * Filtra subdimensiones que pertenecen a la dimensión indicada (por nombre_dimension o id_dimension).
+ */
+function filterSubdimensionesByDimension(
+  subdimensiones: Subdimension[],
+  nombreDimension: string,
+  dimensionId: number | undefined
+): Subdimension[] {
+  return subdimensiones.filter(
+    (sub) =>
+      dimensionMatch(sub.nombre_dimension ?? "", nombreDimension) ||
+      (dimensionId != null && sub.id_dimension != null && sub.id_dimension === dimensionId)
+  );
+}
+
+/**
  * Obtiene todas las subdimensiones desde Supabase
  */
 export async function getSubdimensiones(): Promise<Subdimension[]> {
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("subdimensiones")
-      .select("nombre, nombre_dimension, peso")
+      .select("id, id_dimension, nombre, nombre_dimension, peso")
       .order("nombre_dimension, peso");
+
+    if (error && (error.message?.includes("id_dimension") || error.message?.includes("column"))) {
+      const fallback = await supabase
+        .from("subdimensiones")
+        .select("id, nombre, nombre_dimension, peso")
+        .order("nombre_dimension, peso");
+      if (fallback.error) throw fallback.error;
+      return (fallback.data || []).map((s) => ({ ...s, id_dimension: undefined }));
+    }
 
     if (error) throw error;
     return data || [];
@@ -258,24 +405,31 @@ export async function getSubdimensiones(): Promise<Subdimension[]> {
  */
 export async function getIndicadores(): Promise<Indicador[]> {
   try {
-    // Intentar obtener con el campo activo, pero si falla, obtener sin él
     let { data, error } = await supabase
       .from("definicion_indicadores")
-      .select("nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador, activo")
+      .select("id, id_subdimension, nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador, activo")
       .order("nombre");
 
-    // Si hay error relacionado con el campo activo, intentar sin él
-    if (error && error.message?.includes("activo")) {
-      const { data: dataWithoutActivo, error: errorWithoutActivo } = await supabase
+    if (error) {
+      const fallbackSelect = error.message?.includes("activo")
+        ? "id, id_subdimension, nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador"
+        : "id, nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador, activo";
+      const { data: dataFallback, error: errFallback } = await supabase
         .from("definicion_indicadores")
-        .select("nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador")
+        .select(fallbackSelect)
         .order("nombre");
-      
-      if (errorWithoutActivo) throw errorWithoutActivo;
-      return (dataWithoutActivo || []).map(ind => ({ ...ind, activo: undefined }));
+      if (errFallback) {
+        const lastSelect = "id, nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador";
+        const { data: last, error: lastErr } = await supabase
+          .from("definicion_indicadores")
+          .select(lastSelect)
+          .order("nombre");
+        if (lastErr) throw lastErr;
+        return (last || []).map(ind => ({ ...ind, activo: undefined, id_subdimension: (ind as { id_subdimension?: number }).id_subdimension }));
+      }
+      const hasIdSub = fallbackSelect.includes("id_subdimension");
+      return (dataFallback || []).map(ind => ({ ...ind, id_subdimension: hasIdSub ? (ind as { id_subdimension?: number }).id_subdimension : undefined }));
     }
-
-    if (error) throw error;
     return data || [];
   } catch (error) {
     console.error("Error fetching indicadores:", error);
@@ -293,15 +447,24 @@ export async function getIndicadoresConDatos(
     // Obtener indicadores
     let indicadores = await getIndicadores();
     
-    // Filtrar por dimensión si se especifica
+    // Filtrar por dimensión si se especifica (por nombre de subdimensión o por id_subdimension)
     if (nombreDimension) {
-      const subdimensiones = await getSubdimensiones();
-      const subdimensionesFiltradas = subdimensiones
-        .filter((sub) => dimensionMatch(sub.nombre_dimension, nombreDimension))
-        .map((sub) => sub.nombre);
-      
-      indicadores = indicadores.filter((ind) =>
-        subdimensionesFiltradas.some((s) => subdimensionMatch(s, ind.nombre_subdimension))
+      const [subdimensiones, dimensionId] = await Promise.all([
+        getSubdimensiones(),
+        getDimensionIdByName(nombreDimension),
+      ]);
+      const subdimensionesFiltradas = filterSubdimensionesByDimension(
+        subdimensiones,
+        nombreDimension,
+        dimensionId
+      );
+      const nombresSub = subdimensionesFiltradas.map((s) => s.nombre);
+      const idsSub = new Set(subdimensionesFiltradas.map((s) => s.id).filter((id): id is number => id != null));
+
+      indicadores = indicadores.filter(
+        (ind) =>
+          nombresSub.some((s) => subdimensionMatch(s, ind.nombre_subdimension)) ||
+          (ind.id_subdimension != null && idsSub.has(ind.id_subdimension))
       );
     }
 
@@ -327,31 +490,42 @@ export async function getIndicadoresConDatos(
       subdimensiones.slice(0, 10).map((s) => `${s.nombre} → ${s.nombre_dimension}`)
     );
 
-    // Obtener datos de resultados para cada indicador (usando todos los nombres alias para encontrar datos)
+    // Obtener datos de resultados para cada indicador (por nombre_indicador o por id_indicador si la vista usa definiciones_indicadores)
     const indicadoresConDatos = await Promise.all(
       indicadoresUnicos.map(async (ind) => {
         const nombresConsulta = (ind as { _nombresConsulta?: string[] })._nombresConsulta ?? [ind.nombre];
-        const { data: resultados, error } = await supabase
-          .from("resultado_indicadores")
-          .select("valor_calculado, periodo")
-          .in("nombre_indicador", nombresConsulta)
-          .order("periodo", { ascending: false })
-          .limit(1);
+        const resultadosRows = await fetchResultadoIndicador(nombresConsulta, ind.id, {});
+        const resultados = resultadosRows.length > 0 ? [resultadosRows[0]] : null;
 
-        const { count } = await supabase
+        let count: number | null = null;
+        const { count: countByNombre } = await supabase
           .from("resultado_indicadores")
           .select("id", { count: "exact", head: true })
           .in("nombre_indicador", nombresConsulta);
+        count = countByNombre ?? 0;
+        if (count === 0 && ind.id != null) {
+          const { count: countById } = await supabase
+            .from("resultado_indicadores")
+            .select("id", { count: "exact", head: true })
+            .eq("id_indicador", ind.id);
+          count = countById ?? 0;
+        }
 
-        const ultimoValor = resultados?.[0]?.valor_calculado
+        const ultimoValor = resultados?.[0]?.valor_calculado != null
           ? Number(resultados[0].valor_calculado)
           : undefined;
-        
+        const ultimoPeriodo = resultados?.[0]?.periodo;
+
         const tieneDatos = ultimoValor !== undefined;
         const activo = ind.activo !== undefined ? ind.activo : tieneDatos;
 
-        const dimension = getDimensionForSubdimension(ind.nombre_subdimension);
-        
+        let dimension = getDimensionForSubdimension(ind.nombre_subdimension);
+        if (!dimension && ind.id_subdimension != null) {
+          const sub = subdimensiones.find((s) => s.id === ind.id_subdimension);
+          dimension = sub?.nombre_dimension ?? (nombreDimension ?? "");
+        }
+        if (!dimension && nombreDimension) dimension = nombreDimension;
+
         if (!dimension && ind.nombre_subdimension) {
           console.warn(`⚠️ No se encontró dimensión para subdimensión: "${ind.nombre_subdimension}" (Indicador: ${ind.nombre})`);
         }
@@ -365,7 +539,7 @@ export async function getIndicadoresConDatos(
           dimension,
           subdimension: ind.nombre_subdimension,
           ultimoValor,
-          ultimoPeriodo: resultados?.[0]?.periodo || undefined,
+          ultimoPeriodo: ultimoPeriodo != null ? periodoToYear(ultimoPeriodo) : undefined,
           totalResultados: count || 0,
           activo,
         };
@@ -417,7 +591,7 @@ export async function getDatosHistoricosIndicador(
     if (error) throw error;
 
     return (data || []).map((item) => ({
-      periodo: item.periodo || 0,
+      periodo: periodoToYear(item.periodo),
       valor: Number(item.valor_calculado) || 0,
     }));
   } catch (error) {
@@ -434,9 +608,14 @@ export async function getDatosPorSubdimension(
   pais: string = "España"
 ): Promise<Array<{ subdimension: string; totalIndicadores: number; indicadoresConDatos: number }>> {
   try {
-    const subdimensiones = await getSubdimensiones();
-    const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
+    const [subdimensiones, dimensionId] = await Promise.all([
+      getSubdimensiones(),
+      getDimensionIdByName(nombreDimension),
+    ]);
+    const subdimensionesFiltradas = filterSubdimensionesByDimension(
+      subdimensiones,
+      nombreDimension,
+      dimensionId
     );
 
     const datos = await Promise.all(
@@ -505,21 +684,35 @@ export async function getSubdimensionesConScores(
     };
     logSub("entry", { nombreDimension, pais, periodo });
     // #endregion
-    const subdimensiones = await getSubdimensiones();
-    const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
+    const [subdimensiones, dimensionId] = await Promise.all([
+      getSubdimensiones(),
+      getDimensionIdByName(nombreDimension),
+    ]);
+    const subdimensionesFiltradas = filterSubdimensionesByDimension(
+      subdimensiones,
+      nombreDimension,
+      dimensionId
     );
+    // Unificar duplicados: misma subdimensión (mismo nombre normalizado) → una sola, mismo identificador lógico
+    const seenSub = new Set<string>();
+    const subdimensionesUnicas = subdimensionesFiltradas.filter((sub) => {
+      const key = normalizeName(sub.nombre ?? "");
+      if (seenSub.has(key)) return false;
+      seenSub.add(key);
+      return true;
+    });
     // #region agent log
-    logSub("after filter", { totalSubdimensiones: subdimensiones.length, filtradasLength: subdimensionesFiltradas.length, filtradasNombres: subdimensionesFiltradas.map((s) => s.nombre), nombreDimensionEnBD: subdimensiones.slice(0, 5).map((s) => s.nombre_dimension) });
+    logSub("after filter", { totalSubdimensiones: subdimensiones.length, filtradasLength: subdimensionesFiltradas.length, unicasLength: subdimensionesUnicas.length, filtradasNombres: subdimensionesUnicas.map((s) => s.nombre), nombreDimensionEnBD: subdimensiones.slice(0, 5).map((s) => s.nombre_dimension) });
     // #endregion
-    console.log("Subdimensiones filtradas:", subdimensionesFiltradas.length, subdimensionesFiltradas.map(s => s.nombre));
+    console.log("Subdimensiones filtradas (únicas):", subdimensionesUnicas.length, subdimensionesUnicas.map(s => s.nombre));
 
     const todosIndicadores = await getIndicadores();
 
     const datos = await Promise.all(
-      subdimensionesFiltradas.map(async (sub) => {
-        // Indicadores de esta subdimensión (comparación insensible a mayúsculas)
+      subdimensionesUnicas.map(async (sub) => {
+        // Indicadores de esta subdimensión: por id_subdimension cuando exista, si no por nombre (insensible a mayúsculas)
         let indicadores = todosIndicadores.filter((ind) =>
+          (ind.id_subdimension != null && sub.id != null && ind.id_subdimension === sub.id) ||
           subdimensionMatch(ind.nombre_subdimension, sub.nombre)
         );
 
@@ -547,46 +740,25 @@ export async function getSubdimensionesConScores(
 
         console.log(`Subdimensión ${sub.nombre}: ${indicadores.length} indicadores encontrados`);
 
-        // Obtener valores promedio de los indicadores para el territorio seleccionado (usar alias para encontrar datos)
+        // Obtener valores de los indicadores para el territorio (por nombre_indicador o id_indicador)
+        const paisVariations: Record<string, string[]> = {
+          "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
+          "España": ["España", "Spain", "Esp"],
+          "Valencia": ["Valencia", "Comunitat Valenciana"],
+          "Alicante": ["Alicante"],
+          "Castellón": ["Castellón", "Castellon"],
+        };
+        const variations = paisVariations[pais] || [pais];
         const valoresTerritorio = await Promise.all(
           indicadores.map(async (ind) => {
-            const paisVariations: Record<string, string[]> = {
-              "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
-              "España": ["España", "Spain", "Esp"],
-              "Valencia": ["Valencia", "Comunitat Valenciana"],
-              "Alicante": ["Alicante"],
-              "Castellón": ["Castellón", "Castellon"],
-            };
-            const variations = paisVariations[pais] || [pais];
             const nombresInd = getIndicadorNombresParaConsulta(ind.nombre);
-            let data: { valor_calculado: unknown; periodo?: number }[] | null = null;
-
+            let data: { valor_calculado: unknown; periodo?: number }[] = [];
             for (const paisVar of variations) {
-              let { data: periodData } = await supabase
-                .from("resultado_indicadores")
-                .select("valor_calculado, periodo")
-                .in("nombre_indicador", nombresInd)
-                .eq("pais", paisVar)
-                .eq("periodo", periodo)
-                .limit(1);
-              if (periodData && periodData.length > 0) {
-                data = periodData;
-                break;
-              }
-              const { data: lastData } = await supabase
-                .from("resultado_indicadores")
-                .select("valor_calculado, periodo")
-                .in("nombre_indicador", nombresInd)
-                .eq("pais", paisVar)
-                .order("periodo", { ascending: false })
-                .limit(1);
-              if (lastData && lastData.length > 0) {
-                data = lastData;
-                break;
-              }
+              data = await fetchResultadoIndicador(nombresInd, ind.id, { pais: paisVar, periodo });
+              if (data.length > 0) break;
             }
 
-            if (!data || data.length === 0) {
+            if (data.length === 0) {
               console.log(`⚠️ No se encontraron datos para indicador "${ind.nombre}" en país "${pais}" (variaciones probadas: ${variations.join(", ")})`);
             } else {
               console.log(`✓ Datos encontrados para "${ind.nombre}": valor=${data[0].valor_calculado}, periodo=${data[0].periodo}`);
@@ -605,35 +777,15 @@ export async function getSubdimensionesConScores(
           })
         );
 
-        // Obtener valores promedio para España (usar alias)
+        // Obtener valores para España (por nombre_indicador o id_indicador)
         const espanaVariations = ["España", "Spain", "Esp"];
         const valoresEspana = await Promise.all(
           indicadores.map(async (ind) => {
             const nombresInd = getIndicadorNombresParaConsulta(ind.nombre);
-            let data: { valor_calculado: unknown; periodo?: number }[] | null = null;
+            let data: { valor_calculado: unknown; periodo?: number }[] = [];
             for (const paisVar of espanaVariations) {
-              let { data: periodData } = await supabase
-                .from("resultado_indicadores")
-                .select("valor_calculado, periodo")
-                .in("nombre_indicador", nombresInd)
-                .eq("pais", paisVar)
-                .eq("periodo", periodo)
-                .limit(1);
-              if (periodData && periodData.length > 0) {
-                data = periodData;
-                break;
-              }
-              const { data: lastData } = await supabase
-                .from("resultado_indicadores")
-                .select("valor_calculado, periodo")
-                .in("nombre_indicador", nombresInd)
-                .eq("pais", paisVar)
-                .order("periodo", { ascending: false })
-                .limit(1);
-              if (lastData && lastData.length > 0) {
-                data = lastData;
-                break;
-              }
+              data = await fetchResultadoIndicador(nombresInd, ind.id, { pais: paisVar, periodo });
+              if (data.length > 0) break;
             }
             const valor = data?.[0]?.valor_calculado;
             if (valor !== null && valor !== undefined) {
@@ -645,20 +797,27 @@ export async function getSubdimensionesConScores(
           })
         );
 
-        // Min-Max global por indicador: incluir todos los alias para encontrar datos en BD
+        // Min-Max global por indicador (por nombre y por id_indicador para vista definicion_indicadores)
         const todosNombresMinMax = [...new Set(indicadores.flatMap((i) => getIndicadorNombresParaConsulta(i.nombre)))];
-        let minMaxRaw = await getMinMaxPorIndicador(todosNombresMinMax, periodo, { fallbackTodosPeriodos: true });
+        const indicadoresConId = indicadores.filter((i): i is typeof i & { id: number } => i.id != null).map((i) => ({ nombre: i.nombre, id: i.id! }));
+        let minMaxRaw = await getMinMaxPorIndicador(todosNombresMinMax, periodo, {
+          fallbackTodosPeriodos: true,
+          indicadoresConId: indicadoresConId.length > 0 ? indicadoresConId : undefined,
+        });
         const minMaxGlobal = new Map<string, { min: number; max: number }>();
         for (const ind of indicadores) {
           const aliases = getIndicadorNombresParaConsulta(ind.nombre);
-          const mm = aliases.map((n) => minMaxRaw.get(n)).find(Boolean);
+          const mm = aliases.map((n) => minMaxRaw.get(n)).find(Boolean) ?? minMaxRaw.get(ind.nombre);
           if (mm) minMaxGlobal.set(ind.nombre, mm);
         }
         const conValorSinMinMax = indicadores
           .map((ind, idx) => (valoresTerritorio[idx] != null && !minMaxGlobal.has(ind.nombre) ? getIndicadorNombresParaConsulta(ind.nombre) : []))
           .flat();
         if (conValorSinMinMax.length > 0) {
-          const minMaxFallback = await getMinMaxPorIndicador(conValorSinMinMax, periodo, { fallbackTodosPeriodos: true });
+          const minMaxFallback = await getMinMaxPorIndicador(conValorSinMinMax, periodo, {
+            fallbackTodosPeriodos: true,
+            indicadoresConId: indicadoresConId.length > 0 ? indicadoresConId : undefined,
+          });
           for (const ind of indicadores) {
             const aliases = getIndicadorNombresParaConsulta(ind.nombre);
             const mm = aliases.map((n) => minMaxFallback.get(n)).find(Boolean);
@@ -666,24 +825,24 @@ export async function getSubdimensionesConScores(
           }
         }
 
-        /** Score según metodología Brainnova: normalización Min-Max + ponderación por importancia.
-         * Solo se cuentan indicadores con valor calculable y distinto de cero; los que no se pueden calcular o son 0 no entran en el promedio.
+        /** Score según doc API Cámara: Score_i = (Valor_i / Max_i)×100; Score_D = Σ(Score_i × peso_i) / Σ(peso).
+         * Indicadores sin datos se excluyen. Si no hay Max_i (solo un territorio), se usa valor como max → Score_i=100.
          */
         const calcularScorePonderado = (valores: (number | null)[]): number => {
           let sumaPonderada = 0;
           let sumaPesos = 0;
           indicadores.forEach((ind, idx) => {
             const valor = valores[idx];
-            if (valor === null || valor === undefined || isNaN(valor) || valor === 0) return;
+            if (valor === null || valor === undefined || isNaN(valor)) return;
             const mm = minMaxGlobal.get(ind.nombre);
-            if (!mm) return;
-            const norm = normalizarMinMax(valor, mm.min, mm.max);
+            const max = mm ? mm.max : (valor > 0 ? valor : 1);
+            const scoreI = scoreIndicadorPorMax(valor, max);
             const peso = pesoImportancia(ind.importancia);
-            sumaPonderada += norm * peso;
+            sumaPonderada += scoreI * peso;
             sumaPesos += peso;
           });
           if (sumaPesos === 0) return 0;
-          return Math.round((sumaPonderada / sumaPesos) * 100);
+          return Math.round(sumaPonderada / sumaPesos);
         };
 
         const score = Math.min(100, Math.max(0, calcularScorePonderado(valoresTerritorio)));
@@ -702,30 +861,10 @@ export async function getSubdimensionesConScores(
           const valoresPais = await Promise.all(
             indicadores.map(async (ind) => {
               const nombresInd = getIndicadorNombresParaConsulta(ind.nombre);
-              let data: { valor_calculado: unknown }[] | null = null;
+              let data: { valor_calculado: unknown }[] = [];
               for (const paisVar of variaciones) {
-                let { data: periodData } = await supabase
-                  .from("resultado_indicadores")
-                  .select("valor_calculado")
-                  .in("nombre_indicador", nombresInd)
-                  .eq("pais", paisVar)
-                  .eq("periodo", periodo)
-                  .limit(1);
-                if (periodData && periodData.length > 0) {
-                  data = periodData;
-                  break;
-                }
-                const { data: lastData } = await supabase
-                  .from("resultado_indicadores")
-                  .select("valor_calculado")
-                  .in("nombre_indicador", nombresInd)
-                  .eq("pais", paisVar)
-                  .order("periodo", { ascending: false })
-                  .limit(1);
-                if (lastData && lastData.length > 0) {
-                  data = lastData;
-                  break;
-                }
+                data = await fetchResultadoIndicador(nombresInd, ind.id, { pais: paisVar, periodo });
+                if (data.length > 0) break;
               }
               const valor = data?.[0]?.valor_calculado;
               if (valor !== null && valor !== undefined) {
@@ -878,16 +1017,34 @@ export async function getDistribucionPorSubdimension(
   totalIndicadores: number;
 }>> {
   try {
-    const subdimensiones = await getSubdimensiones();
-    const subdimensionesFiltradas = subdimensiones.filter(
-      (sub) => dimensionMatch(sub.nombre_dimension, nombreDimension)
+    const [subdimensiones, dimensionId] = await Promise.all([
+      getSubdimensiones(),
+      getDimensionIdByName(nombreDimension),
+    ]);
+    const subdimensionesFiltradas = filterSubdimensionesByDimension(
+      subdimensiones,
+      nombreDimension,
+      dimensionId
     );
+    // Unificar duplicados por nombre normalizado (ej. "Acceso a Infraestructuras" y "Acceso a infraestructuras" → una)
+    const seenKey = new Set<string>();
+    const subdimensionesUnicas = subdimensionesFiltradas.filter((sub) => {
+      const key = normalizeName(sub.nombre ?? "");
+      if (seenKey.has(key)) return false;
+      seenKey.add(key);
+      return true;
+    });
 
     const indicadores = await getIndicadoresConDatos();
-    
+    // Para cada subdimensión única, contar indicadores que coincidan con cualquiera de sus variantes (duplicados)
     const distribucion = await Promise.all(
-      subdimensionesFiltradas.map(async (sub) => {
-        const indicadoresSub = indicadores.filter(ind => subdimensionMatch(ind.subdimension, sub.nombre));
+      subdimensionesUnicas.map(async (sub) => {
+        const nombresVariantes = subdimensionesFiltradas
+          .filter((s) => normalizeName(s.nombre ?? "") === normalizeName(sub.nombre ?? ""))
+          .map((s) => s.nombre);
+        const indicadoresSub = indicadores.filter((ind) =>
+          nombresVariantes.some((nom) => subdimensionMatch(ind.subdimension, nom))
+        );
         return {
           nombre: sub.nombre,
           totalIndicadores: indicadoresSub.length,

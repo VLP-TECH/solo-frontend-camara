@@ -73,6 +73,15 @@ const Dimensiones = () => {
     queryFn: getDimensiones,
   });
 
+  // Deduplicar por nombre normalizado (evita dos tarjetas "Infraestructura Digital" / "Infraestructura digital")
+  const dimensionesUnicas =
+    dimensiones?.filter(
+      (dim, idx, arr) =>
+        arr.findIndex(
+          (d) => (d.nombre || "").trim().toLowerCase() === (dim.nombre || "").trim().toLowerCase()
+        ) === idx
+    ) ?? [];
+
   // Obtener todos los indicadores
   const { data: indicadores } = useQuery({
     queryKey: ["todos-indicadores"],
@@ -115,12 +124,12 @@ const Dimensiones = () => {
   const { data: dimensionScores, isFetching: dimensionScoresFetching } = useQuery({
     queryKey: ["dimension-scores-all", appliedTerritorio, appliedAno],
     queryFn: async () => {
-      if (!dimensiones) return {};
+      if (!dimensionesUnicas.length) return {};
       const pais = appliedTerritorio;
       const periodo = Number(appliedAno) || 2024;
       const scores: Record<string, number> = {};
       await Promise.all(
-        dimensiones.map(async (dim) => {
+        dimensionesUnicas.map(async (dim) => {
           try {
             const score = await getDimensionScore(dim.nombre, pais, periodo);
             scores[dim.nombre] = score;
@@ -132,11 +141,11 @@ const Dimensiones = () => {
       );
       return scores;
     },
-    enabled: !!dimensiones && dimensiones.length > 0,
+    enabled: dimensionesUnicas.length > 0,
   });
 
-  // Construir dimensiones con datos desde Supabase
-  const dimensionesConIndicadores = dimensiones?.map(dim => {
+  // Construir dimensiones con datos desde Supabase (solo dimensiones únicas por nombre)
+  const dimensionesConIndicadores = dimensionesUnicas.map(dim => {
     const info = dimensionesInfo[dim.nombre] || dimensionesInfo[Object.keys(dimensionesInfo).find(k => k.toLowerCase() === dim.nombre.toLowerCase()) || ""] || {
       icon: Layers,
       descripcion: "Información detallada de la dimensión."

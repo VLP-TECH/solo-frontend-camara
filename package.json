@@ -19,6 +19,7 @@
     "upload-valores-referencia": "node scripts/upload-valores-referencia.mjs",
     "upload-subdimensiones": "node scripts/upload-subdimensiones.mjs",
     "upload-resultados-indicadores": "node scripts/upload-resultados-indicadores.mjs",
+    "upload-latency-datapoints": "node scripts/upload-latency-datapoints.mjs",
     "upload-resultados-fuente-crudo": "node scripts/upload-resultados-fuente-crudo.mjs",
     "upload-resultado-fuentes-asociacion": "node scripts/upload-resultado-fuentes-asociacion.mjs",
     "upload-resultados-fuente-macro": "node scripts/upload-resultados-fuente-macro.mjs",

@@ -226,21 +226,25 @@ const DimensionDetail = () => {
     enabled: !!indicadores && indicadores.length > 0,
   });
 
-  // Preparar datos para el gráfico de pastel: solo subdimensiones con valor > 0 (no se muestran ni cuentan las de 0)
+  // Preparar datos para el gráfico de pastel: incluir todas las subdimensiones (también con 0 % para que se vean en la distribución)
   const pieData = useMemo(() => {
     const raw = (distribucion ?? [])
-      .filter((sub) => sub != null && typeof sub.porcentaje === "number" && Number(sub.porcentaje) > 0)
+      .filter((sub) => sub != null && sub.nombre != null)
       .map((sub) => ({
         name: sub!.nombre,
-        value: Number(sub!.porcentaje),
-        totalIndicadores: sub!.totalIndicadores,
+        value: typeof sub!.porcentaje === "number" ? Number(sub!.porcentaje) : 0,
+        totalIndicadores: sub!.totalIndicadores ?? 0,
       }));
     const total = raw.reduce((s, d) => s + d.value, 0);
-    if (total <= 0) return [];
-    return raw.map((d) => ({
-      ...d,
-      value: Math.round((d.value / total) * 1000) / 10,
-    }));
+    if (total > 0) {
+      return raw.map((d) => ({
+        ...d,
+        value: Math.round((d.value / total) * 1000) / 10,
+      }));
+    }
+    // Si todas tienen 0 %, mostrar por igual para que las subdimensiones se vean en el gráfico
+    const equalShare = raw.length > 0 ? Math.round((1000 / raw.length)) / 10 : 0;
+    return raw.map((d) => ({ ...d, value: equalShare }));
   }, [distribucion]);
 
   // Mapa subdimensión -> % de indicadores (el mismo % que sale en la página de subdimensión)
@@ -734,22 +738,14 @@ const DimensionDetail = () => {
             </Collapsible>
             )}
 
-            {/* Detalle de Subdimensiones - Solo las que tienen score > 0 */}
-            {(subdimensiones?.filter((sub) => {
-              const scoreNum = Number(sub?.score);
-              return !isNaN(scoreNum) && scoreNum > 0;
-            })?.length ?? 0) > 0 && (
+            {/* Detalle de Subdimensiones - Todas las subdimensiones (con o sin score, como en Servicios Públicos Digitales) */}
+            {(subdimensiones?.length ?? 0) > 0 && (
             <div>
               <h2 className="text-2xl font-bold text-[#0c6c8b] mb-6">
                 Detalle de Subdimensiones
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {subdimensiones
-                  ?.filter((subdimension) => {
-                    const scoreNum = Number(subdimension?.score);
-                    return !isNaN(scoreNum) && scoreNum > 0;
-                  })
-                  ?.map((subdimension) => {
+                {subdimensiones?.map((subdimension) => {
                   const nombreSub = subdimension?.nombre ?? "";
                   const porcentajeIndicadores = getPorcentajeIndicadores(nombreSub);
                   const scoreNum = Number(subdimension?.score);
