@@ -91,7 +91,7 @@ const Surveys = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/");
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Solo admin y superadmin pueden crear encuestas

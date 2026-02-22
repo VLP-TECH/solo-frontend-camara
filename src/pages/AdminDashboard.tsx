@@ -69,7 +69,7 @@ const AdminDashboard = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Verificar directamente el rol del perfil además de isAdmin

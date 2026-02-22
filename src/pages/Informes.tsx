@@ -184,7 +184,7 @@ const Informes = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);

@@ -147,7 +147,7 @@ const DimensionDetail = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Obtener información de la dimensión desde Supabase

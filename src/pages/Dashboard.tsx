@@ -35,7 +35,43 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Tooltip,
+  Customized,
 } from "recharts";
+
+const RADAR_TICKS_ALL_AXES = [20, 40, 60, 80, 100];
+
+function RadarTicksAllAxes({ cx, cy, startAngle, innerRadius, outerRadius }: {
+  cx?: number; cy?: number; startAngle?: number; innerRadius?: number; outerRadius?: number;
+  [key: string]: unknown;
+}) {
+  if (!cx || !cy || outerRadius == null) return null;
+  const numAxes = 7;
+  const labels: JSX.Element[] = [];
+  for (let axis = 0; axis < numAxes; axis++) {
+    const angleDeg = (startAngle ?? 90) - (360 / numAxes) * axis;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    for (const tick of RADAR_TICKS_ALL_AXES) {
+      const r = (innerRadius ?? 0) + ((outerRadius - (innerRadius ?? 0)) * tick) / 100;
+      const x = cx + r * Math.cos(angleRad);
+      const y = cy - r * Math.sin(angleRad);
+      labels.push(
+        <text
+          key={`${axis}-${tick}`}
+          x={x}
+          y={y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={8}
+          fill="#9ca3af"
+          style={{ pointerEvents: "none" }}
+        >
+          {tick}
+        </text>
+      );
+    }
+  }
+  return <g>{labels}</g>;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -78,7 +114,7 @@ const Dashboard = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   const { data: dimensiones } = useQuery({
@@ -160,25 +196,9 @@ const Dashboard = () => {
 
   const radarDataDisplay = radarData ?? [];
 
-  // Escala dinámica para resaltar diferencias (incluye cv/ue o espania/provincia/ue)
-  const { radarDomain, radarTicks } = useMemo(() => {
-    if (!radarDataDisplay.length) return { radarDomain: [0, 100] as [number, number], radarTicks: [0, 25, 50, 75, 100] };
-    let min = Infinity;
-    let max = -Infinity;
-    const keys = ["cv", "ue", "espania", "provincia"] as const;
-    radarDataDisplay.forEach((d: Record<string, unknown>) => {
-      keys.forEach((k) => {
-        const v = d[k];
-        if (typeof v === "number") { min = Math.min(min, v); max = Math.max(max, v); }
-      });
-    });
-    const margin = Math.max(15, (max - min) * 0.4);
-    const domainMin = Math.max(0, Math.floor(min - margin));
-    const domainMax = Math.min(100, Math.ceil(max + margin));
-    const step = (domainMax - domainMin) / 4;
-    const ticks = [domainMin, domainMin + step, domainMin + step * 2, domainMin + step * 3, domainMax].map((v) => Math.round(v));
-    return { radarDomain: [domainMin, domainMax], radarTicks: ticks };
-  }, [radarDataDisplay]);
+  // Escala fija 0–100 según doc API Cámara (Top Europa = 100)
+  const radarDomain: [number, number] = [0, 100];
+  const radarTicks = [0, 20, 40, 60, 80, 100];
 
   const menuItems = useAppMenuItems();
 
@@ -399,15 +419,17 @@ const Dashboard = () => {
                 ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={radarDataDisplay}>
-                    <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
+                    <PolarGrid stroke="#d1d5db" strokeOpacity={0.8} gridType="polygon" />
                     <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
                     <PolarRadiusAxis
                       angle={90}
                       domain={radarDomain}
                       ticks={radarTicks}
-                      tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                      tickFormatter={(v) => String(v)}
+                      tick={{ fontSize: 9, fill: "#6b7280" }}
+                      tickFormatter={(v) => `${v}%`}
+                      axisLine={false}
                     />
+                    <Customized component={RadarTicksAllAxes} />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
@@ -417,14 +439,14 @@ const Dashboard = () => {
                             <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
                             {isSpainWithProvince ? (
                               <>
-                                <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
-                                <p className="text-[#0c6c8b]">España: {row?.espania ?? 0}</p>
+                                <p className="text-[#F97316]">Media UE: {row?.ue ?? 0}</p>
+                                <p className="text-[#1E3A5F]">España: {row?.espania ?? 0}</p>
                                 <p className="text-[#059669]">{radarProvincia}: {row?.provincia ?? 0}</p>
                               </>
                             ) : (
                               <>
-                                <p className="text-[#0c6c8b]">{radarProvincia}: {row?.cv ?? 0}</p>
-                                <p className="text-[#2563eb]">Media UE: {row?.ue ?? 0}</p>
+                                <p className="text-[#1E3A5F]">{radarProvincia}: {row?.cv ?? 0}</p>
+                                <p className="text-[#F97316]">Media UE: {row?.ue ?? 0}</p>
                               </>
                             )}
                           </div>
@@ -433,14 +455,14 @@ const Dashboard = () => {
                     />
                     {isSpainWithProvince ? (
                       <>
-                        <Radar name="Media UE" dataKey="ue" stroke="#2563eb" fill="#3B82F6" fillOpacity={0.35} strokeDasharray="5 5" strokeWidth={2} />
-                        <Radar name="España" dataKey="espania" stroke="#0c6c8b" fill="#0c6c8b" fillOpacity={0.5} strokeWidth={2} />
-                        <Radar name={radarProvincia} dataKey="provincia" stroke="#059669" fill="#10b981" fillOpacity={0.4} strokeWidth={2} />
+                        <Radar name="Media UE" dataKey="ue" stroke="#F97316" fill="#FB923C" fillOpacity={0.2} strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4, fill: "#F97316" }} />
+                        <Radar name="España" dataKey="espania" stroke="#1E3A5F" fill="#1E3A5F" fillOpacity={0.15} strokeWidth={2} dot={{ r: 4, fill: "#1E3A5F" }} />
+                        <Radar name={radarProvincia} dataKey="provincia" stroke="#059669" fill="#10B981" fillOpacity={0.2} strokeWidth={2} dot={{ r: 4, fill: "#059669" }} />
                       </>
                     ) : (
                       <>
-                        <Radar name={radarProvincia} dataKey="cv" stroke="#0c6c8b" fill="#0c6c8b" fillOpacity={0.5} strokeWidth={2} />
-                        <Radar name="Media UE" dataKey="ue" stroke="#2563eb" fill="#3B82F6" fillOpacity={0.35} strokeDasharray="5 5" strokeWidth={2} />
+                        <Radar name={radarProvincia} dataKey="cv" stroke="#1E3A5F" fill="#1E3A5F" fillOpacity={0.15} strokeWidth={2} dot={{ r: 4, fill: "#1E3A5F" }} />
+                        <Radar name="Media UE" dataKey="ue" stroke="#F97316" fill="#FB923C" fillOpacity={0.2} strokeDasharray="5 5" strokeWidth={2} dot={{ r: 4, fill: "#F97316" }} />
                       </>
                     )}
                   </RadarChart>
@@ -450,23 +472,23 @@ const Dashboard = () => {
               
               <div className="flex items-center justify-center flex-wrap gap-x-6 gap-y-2 mt-4">
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 rounded-full bg-[#3B82F6]" />
+                  <div className="w-4 h-4 rounded-full bg-[#F97316]" />
                   <span className="text-sm text-gray-600">Media UE</span>
                 </div>
                 {isSpainWithProvince ? (
                   <>
                     <div className="flex items-center space-x-2">
-                      <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
+                      <div className="w-4 h-4 rounded-full bg-[#1E3A5F]" />
                       <span className="text-sm text-gray-600">España</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className="w-4 h-4 rounded-full bg-[#10b981]" />
+                      <div className="w-4 h-4 rounded-full bg-[#059669]" />
                       <span className="text-sm text-gray-600">{radarProvincia}</span>
                     </div>
                   </>
                 ) : (
                   <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-[#0c6c8b]" />
+                    <div className="w-4 h-4 rounded-full bg-[#1E3A5F]" />
                     <span className="text-sm text-gray-600">{radarProvincia}</span>
                   </div>
                 )}

@@ -52,7 +52,7 @@ const SubdimensionDashboard = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Obtener información de la subdimensión

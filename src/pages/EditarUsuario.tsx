@@ -79,7 +79,7 @@ const EditarUsuario = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/");
+    window.location.href = 'https://brainnova.info/';
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {

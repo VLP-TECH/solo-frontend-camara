@@ -46,7 +46,7 @@ const EvolucionTemporal = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Datos para el gráfico de evolución por dimensiones

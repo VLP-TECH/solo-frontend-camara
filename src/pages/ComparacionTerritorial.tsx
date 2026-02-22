@@ -117,7 +117,7 @@ const ComparacionTerritorial = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   const getColorForIndex = (indice: number) => {

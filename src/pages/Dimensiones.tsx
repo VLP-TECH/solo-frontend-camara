@@ -64,7 +64,7 @@ const Dimensiones = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/');
+    window.location.href = 'https://brainnova.info/';
   };
 
   // Obtener dimensiones desde Supabase

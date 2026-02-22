@@ -32,11 +32,7 @@ const NavigationHeader = () => {
         title: "Sesión cerrada",
         description: "Has cerrado sesión exitosamente"
       });
-      // Force complete page reload to clear all state
-      window.location.replace('/');
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
+      window.location.href = 'https://brainnova.info/';
     } catch (error) {
       toast({
         title: "Error",
