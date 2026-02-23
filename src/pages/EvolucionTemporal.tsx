@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -15,12 +16,15 @@ import {
 import { 
   TrendingUp,
   AlertTriangle,
-  ArrowUpRight,
   LogOut
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
+import {
+  getIndicadores,
+  getDatosHistoricosIndicador,
+} from "@/lib/kpis-data";
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -39,17 +43,52 @@ const EvolucionTemporal = () => {
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
-  const [selectedTerritorio, setSelectedTerritorio] = useState("Comunitat Valenciana");
-  const [selectedAno, setSelectedAno] = useState("2024");
-  const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
-  const [selectedIndicador, setSelectedIndicador] = useState("Empresas con análisis Big Data - Transformación Digital");
+  const [selectedIndicador, setSelectedIndicador] = useState<string>("");
 
   const handleSignOut = async () => {
     await signOut();
     window.location.href = 'https://brainnova.info/';
   };
 
-  // Datos para el gráfico de evolución por dimensiones
+  // Indicadores disponibles desde BD
+  const { data: todosIndicadores } = useQuery({
+    queryKey: ["indicadores-evolucion"],
+    queryFn: getIndicadores,
+  });
+
+  const indicadorActual = selectedIndicador || todosIndicadores?.[0]?.nombre || "";
+
+  // Datos históricos del indicador seleccionado (España + Comunitat Valenciana + Alemania como ref UE)
+  const { data: historicoCVRaw } = useQuery({
+    queryKey: ["historico-cv", indicadorActual],
+    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "Comunitat Valenciana", 20),
+    enabled: !!indicadorActual,
+  });
+  const { data: historicoEspRaw } = useQuery({
+    queryKey: ["historico-esp", indicadorActual],
+    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "España", 20),
+    enabled: !!indicadorActual,
+  });
+  const { data: historicoUERaw } = useQuery({
+    queryKey: ["historico-ue", indicadorActual],
+    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "Alemania", 20),
+    enabled: !!indicadorActual,
+  });
+
+  const indicadorData = useMemo(() => {
+    const cvMap = new Map((historicoCVRaw || []).map(d => [d.periodo, d.valor]));
+    const espMap = new Map((historicoEspRaw || []).map(d => [d.periodo, d.valor]));
+    const ueMap = new Map((historicoUERaw || []).map(d => [d.periodo, d.valor]));
+    const allYears = [...new Set([...cvMap.keys(), ...espMap.keys(), ...ueMap.keys()])].sort();
+    return allYears.map(year => ({
+      year,
+      "Comunitat Valenciana": cvMap.get(year) ?? null,
+      "España": espMap.get(year) ?? null,
+      "Ref. UE (Alemania)": ueMap.get(year) ?? null,
+    }));
+  }, [historicoCVRaw, historicoEspRaw, historicoUERaw]);
+
+  // Datos estáticos para evolución por dimensiones e índice global (se mantienen como referencia)
   const dimensionesData = [
     { year: 2020, "Capital Humano": 62, "Ecosistema": 58, "Emprendimiento": 50, "Infraestructura": 65, "Servicios Públicos": 60, "Sostenibilidad": 55, "Transformación Digital": 58 },
     { year: 2021, "Capital Humano": 64, "Ecosistema": 60, "Emprendimiento": 52, "Infraestructura": 68, "Servicios Públicos": 62, "Sostenibilidad": 57, "Transformación Digital": 60 },
@@ -58,22 +97,12 @@ const EvolucionTemporal = () => {
     { year: 2024, "Capital Humano": 70, "Ecosistema": 66, "Emprendimiento": 58, "Infraestructura": 75, "Servicios Públicos": 68, "Sostenibilidad": 63, "Transformación Digital": 66 },
   ];
 
-  // Datos para el gráfico del índice global
   const indiceGlobalData = [
     { year: 2020, valor: 58.3, cambio: null },
     { year: 2021, valor: 61.2, cambio: "+2.9" },
     { year: 2022, valor: 63.8, cambio: "+2.6" },
     { year: 2023, valor: 65.5, cambio: "+1.7" },
     { year: 2024, valor: 67.2, cambio: "+1.7" },
-  ];
-
-  // Datos para el gráfico de indicador específico
-  const indicadorData = [
-    { year: 2020, "Comunitat Valenciana": 10.0, "Media España": 9.2, "Media UE": 18.5 },
-    { year: 2021, "Comunitat Valenciana": 11.2, "Media España": 10.1, "Media UE": 19.8 },
-    { year: 2022, "Comunitat Valenciana": 12.5, "Media España": 11.0, "Media UE": 21.0 },
-    { year: 2023, "Comunitat Valenciana": 13.6, "Media España": 12.0, "Media UE": 22.8 },
-    { year: 2024, "Comunitat Valenciana": 14.2, "Media España": 12.8, "Media UE": 24.5 },
   ];
 
   // Verificar si el usuario es admin o superadmin
@@ -379,92 +408,98 @@ const EvolucionTemporal = () => {
                       Evolución de Indicadores Específicos
                     </CardTitle>
                   </div>
-                  <Select value={selectedIndicador} onValueChange={setSelectedIndicador}>
-                    <SelectTrigger className="w-80 bg-white">
-                      <SelectValue />
+                  <Select value={indicadorActual} onValueChange={setSelectedIndicador}>
+                    <SelectTrigger className="w-96 bg-white">
+                      <SelectValue placeholder="Seleccionar indicador..." />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Empresas con análisis Big Data - Transformación Digital">
-                        Empresas con análisis Big Data - Transformación Digital
-                      </SelectItem>
-                      <SelectItem value="Especialistas TIC - Capital Humano">
-                        Especialistas TIC - Capital Humano
-                      </SelectItem>
-                      <SelectItem value="Cobertura de fibra óptica - Infraestructura">
-                        Cobertura de fibra óptica - Infraestructura
-                      </SelectItem>
+                    <SelectContent className="max-h-72">
+                      {(todosIndicadores || []).map((ind) => (
+                        <SelectItem key={ind.id ?? ind.nombre} value={ind.nombre}>
+                          {ind.nombre}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <Card className="bg-blue-50 border-blue-200">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-gray-600 mb-1">Crecimiento CV</p>
-                      <h3 className="text-2xl font-bold text-gray-900">+39.2%</h3>
-                      <p className="text-xs text-gray-600 mt-1">2020-2024</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-blue-50 border-blue-200">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-gray-600 mb-1">Crecimiento España</p>
-                      <h3 className="text-2xl font-bold text-gray-900">+30.6%</h3>
-                      <p className="text-xs text-gray-600 mt-1">2020-2024</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-green-50 border-green-200">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-gray-600 mb-1">Crecimiento UE</p>
-                      <h3 className="text-2xl font-bold text-gray-900">+32.4%</h3>
-                      <p className="text-xs text-gray-600 mt-1">2020-2024</p>
-                    </CardContent>
-                  </Card>
-                </div>
-                
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLineChart data={indicadorData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="year" 
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <YAxis 
-                        domain={[0, 28]}
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Comunitat Valenciana" 
-                        stroke="#0c6c8b" 
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Media España" 
-                        stroke="#3B82F6" 
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Media UE" 
-                        stroke="#10B981" 
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ r: 4 }}
-                      />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
-                </div>
+                {indicadorData.length === 0 ? (
+                  <div className="h-80 flex items-center justify-center text-gray-500">
+                    <p>{indicadorActual ? "No hay datos históricos para este indicador." : "Selecciona un indicador para ver su evolución."}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      {(["Comunitat Valenciana", "España", "Ref. UE (Alemania)"] as const).map((serie, idx) => {
+                        const values = indicadorData.map(d => d[serie]).filter((v): v is number => v !== null && v !== undefined);
+                        const first = values[0];
+                        const last = values[values.length - 1];
+                        const growth = first && last && first !== 0
+                          ? (((last - first) / Math.abs(first)) * 100).toFixed(1)
+                          : null;
+                        const bgColors = ["bg-blue-50 border-blue-200", "bg-blue-50 border-blue-200", "bg-green-50 border-green-200"];
+                        const years = indicadorData.map(d => d.year);
+                        return (
+                          <Card key={serie} className={bgColors[idx]}>
+                            <CardContent className="p-4">
+                              <p className="text-sm text-gray-600 mb-1">{serie}</p>
+                              <h3 className="text-2xl font-bold text-gray-900">
+                                {growth !== null ? `${Number(growth) >= 0 ? '+' : ''}${growth}%` : "—"}
+                              </h3>
+                              <p className="text-xs text-gray-600 mt-1">
+                                {years.length >= 2 ? `${years[0]}-${years[years.length - 1]}` : ""}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                    
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLineChart data={indicadorData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis 
+                            dataKey="year" 
+                            stroke="#6b7280"
+                            tick={{ fill: '#6b7280' }}
+                          />
+                          <YAxis 
+                            stroke="#6b7280"
+                            tick={{ fill: '#6b7280' }}
+                          />
+                          <Tooltip />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="Comunitat Valenciana" 
+                            stroke="#0c6c8b" 
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            connectNulls
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="España" 
+                            stroke="#3B82F6" 
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            connectNulls
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="Ref. UE (Alemania)" 
+                            stroke="#10B981" 
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={{ r: 4 }}
+                            connectNulls
+                          />
+                        </RechartsLineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
