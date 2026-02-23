@@ -12,7 +12,6 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { ArrowLeft, Send, Loader2 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
-import { BRAINNOVA_LOGO_SRC, CAMARA_VALENCIA_LOGO_SRC } from "@/lib/logo-assets";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { toast } from "sonner";
 
@@ -140,14 +139,6 @@ const SurveyForm = () => {
         {/* Sidebar */}
         <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
           <div className="p-6">
-            <div className="flex items-center space-x-3 mb-8">
-              <img
-                src={BRAINNOVA_LOGO_SRC}
-                alt="Brainnova"
-                className="h-40 w-auto object-contain"
-              />
-            </div>
-            
             <nav className="space-y-2">
               {menuItems.map((item) => {
                 const Icon = item.icon;
@@ -171,9 +162,6 @@ const SurveyForm = () => {
           </div>
           
           <div className="mt-auto p-6">
-            <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
-              <img src={CAMARA_VALENCIA_LOGO_SRC} alt="Cámara Valencia" className="h-40 w-auto object-contain" />
-            </a>
             <p className="text-xs text-blue-200">Versión 2026</p>
             <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
           </div>
@@ -207,14 +195,6 @@ const SurveyForm = () => {
       {/* Sidebar */}
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
-          <div className="flex items-center space-x-3 mb-8">
-            <img
-              src={BRAINNOVA_LOGO_SRC}
-              alt="Brainnova"
-              className="h-40 w-auto object-contain"
-            />
-          </div>
-          
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -249,9 +229,6 @@ const SurveyForm = () => {
         </div>
         
         <div className="mt-auto p-6">
-          <a href="https://www.camaravalencia.com" target="_blank" rel="noopener noreferrer" className="block mb-4">
-            <img src={CAMARA_VALENCIA_LOGO_SRC} alt="Cámara Valencia" className="h-40 w-auto object-contain" />
-          </a>
           <p className="text-xs text-blue-200">Versión 2026</p>
           <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
         </div>

@@ -1,5 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getSubdimensionesConScores, getIndiceGlobalTerritorio } from "@/lib/kpis-data";
+import {
+  getSubdimensionesConScores,
+  getIndiceGlobalTerritorio,
+  getDimensiones,
+  getDimensionScore,
+  getIndicadores,
+  getDatosHistoricosIndicador,
+} from "@/lib/kpis-data";
 
 /** Datos de índice BRAINNOVA por provincia (alineado con /comparacion y dashboard) */
 const INDICE_POR_PROVINCIA: Record<string, { indice: number; ranking: number; dimensionDestacada: string; puntosDimension: number }> = {
@@ -576,6 +583,131 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
 
+  // --- Mejor/peor dimensión de un territorio ---
+  const preguntaMejorPeorDimension =
+    (lowerQuery.includes("mejor resultado") || lowerQuery.includes("peor resultado") ||
+     lowerQuery.includes("mejor dimensión") || lowerQuery.includes("mejor dimension") ||
+     lowerQuery.includes("peor dimensión") || lowerQuery.includes("peor dimension") ||
+     lowerQuery.includes("destaca") || lowerQuery.includes("más fuerte") || lowerQuery.includes("más débil") ||
+     lowerQuery.includes("punto fuerte") || lowerQuery.includes("punto débil")) &&
+    (lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") || lowerQuery.includes("valenciana") ||
+     provinciaKey != null || lowerQuery.includes("valencia") || lowerQuery.includes("alicante") ||
+     lowerQuery.includes("castellón") || lowerQuery.includes("castellon"));
+
+  if (preguntaMejorPeorDimension) {
+    try {
+      const esPeor = lowerQuery.includes("peor") || lowerQuery.includes("más débil") || lowerQuery.includes("punto débil");
+      let territorio = "Comunitat Valenciana";
+      if (provinciaKey) {
+        territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      } else if (lowerQuery.includes("valencia") && !lowerQuery.includes("comunitat") && !lowerQuery.includes("comunidad")) {
+        territorio = "Valencia";
+      } else if (lowerQuery.includes("alicante")) {
+        territorio = "Alicante";
+      } else if (lowerQuery.includes("castellón") || lowerQuery.includes("castellon")) {
+        territorio = "Castellón";
+      }
+
+      const dimensiones = await getDimensiones();
+      if (dimensiones && dimensiones.length > 0) {
+        const scorePairs = await Promise.all(
+          dimensiones.map(async (dim) => ({
+            nombre: dim.nombre,
+            score: await getDimensionScore(dim.nombre, territorio, 2024),
+          }))
+        );
+        const conDatos = scorePairs.filter(s => s.score > 0);
+        if (conDatos.length > 0) {
+          conDatos.sort((a, b) => b.score - a.score);
+          const target = esPeor ? conDatos[conDatos.length - 1] : conDatos[0];
+          const ranking = conDatos.map((s, i) => `${i + 1}. **${s.nombre}**: ${s.score} puntos`).join("\n");
+          return `${esPeor ? "La dimensión con peor resultado" : "La dimensión con mejor resultado"} en **${territorio}** es **${target.nombre}** con **${target.score}** puntos sobre 100.\n\n**Ranking completo de dimensiones (${territorio}):**\n\n${ranking}`;
+        }
+        return `No tengo datos suficientes para determinar la ${esPeor ? "peor" : "mejor"} dimensión de ${territorio} en este momento. Lo siento.`;
+      }
+    } catch (error) {
+      console.error("Error fetching best/worst dimension:", error);
+    }
+  }
+
+  // --- Evolución del índice en los últimos años ---
+  const preguntaEvolucion =
+    (lowerQuery.includes("evolucion") || lowerQuery.includes("evolución") || lowerQuery.includes("evolucionado") ||
+     lowerQuery.includes("tendencia") || lowerQuery.includes("últimos") || lowerQuery.includes("ultimos")) &&
+    (lowerQuery.includes("índice") || lowerQuery.includes("indice") || lowerQuery.includes("brainnova") ||
+     lowerQuery.includes("año") || lowerQuery.includes("años") || lowerQuery.includes("anual"));
+
+  if (preguntaEvolucion) {
+    try {
+      const periodos = [2023, 2024, 2025];
+      const territorio = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : "Comunitat Valenciana";
+      const resultados: { periodo: number; valor: number | null }[] = [];
+      for (const p of periodos) {
+        const val = await getIndiceGlobalTerritorio(territorio, p);
+        resultados.push({ periodo: p, valor: val });
+      }
+      const conDatos = resultados.filter(r => r.valor != null && r.valor > 0);
+      if (conDatos.length >= 2) {
+        const lineas = conDatos.map(r => `• **${r.periodo}**: ${r.valor} puntos`).join("\n");
+        const primero = conDatos[0];
+        const ultimo = conDatos[conDatos.length - 1];
+        const diff = (ultimo.valor! - primero.valor!).toFixed(1);
+        const signo = Number(diff) >= 0 ? "+" : "";
+        return `**Evolución del índice BRAINNOVA en ${territorio}:**\n\n${lineas}\n\nVariación ${primero.periodo}–${ultimo.periodo}: **${signo}${diff} puntos**.\n\nPuedes ver más detalles en la sección *Evolución Temporal* del menú.`;
+      }
+      if (conDatos.length === 1) {
+        return `Solo tengo datos del índice BRAINNOVA de **${territorio}** para el año **${conDatos[0].periodo}**: **${conDatos[0].valor}** puntos. No dispongo de datos históricos suficientes para mostrar la evolución. Lo siento.`;
+      }
+      return `No tengo datos históricos del índice BRAINNOVA para ${territorio} en este momento. Puedes consultar la sección *Evolución Temporal* del menú para más información.`;
+    } catch (error) {
+      console.error("Error fetching evolution:", error);
+    }
+  }
+
+  // --- Preguntas sobre cobertura, 5G, fibra u otros indicadores específicos por territorio ---
+  const preguntaCobertura =
+    lowerQuery.includes("cobertura") || lowerQuery.includes("5g") || lowerQuery.includes("fibra") ||
+    lowerQuery.includes("banda ancha") || lowerQuery.includes("conectividad");
+
+  if (preguntaCobertura) {
+    try {
+      const terminos = ["5g", "fibra", "banda ancha", "cobertura", "conectividad"].filter(t => lowerQuery.includes(t));
+      const busqueda = terminos.join(" ");
+      const indicadores = await searchIndicators(busqueda);
+      if (indicadores.length > 0) {
+        let territorio: string | undefined;
+        if (provinciaKey) territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+        else if (lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") || lowerQuery.includes("valenciana")) territorio = "Comunitat Valenciana";
+        else if (lowerQuery.includes("españa") || lowerQuery.includes("spain")) territorio = "España";
+
+        const detalle = await getIndicatorDetails(indicadores[0].nombre, {
+          pais: territorio,
+          periodo: 2024,
+        });
+        if (detalle) {
+          let respuesta = `**${detalle.nombre}**\n\n`;
+          if (detalle.dimension) respuesta += `📊 Dimensión: ${detalle.dimension}\n`;
+          if (detalle.subdimension) respuesta += `📈 Subdimensión: ${detalle.subdimension}\n`;
+          if (detalle.importancia) respuesta += `⭐ Importancia: ${detalle.importancia}\n`;
+          if (detalle.ultimoValor !== undefined && detalle.ultimoValor !== null) {
+            respuesta += `\n📊 ${territorio ? `Valor en **${territorio}**` : "Último valor disponible"}: **${detalle.ultimoValor}**`;
+            if (detalle.ultimoPeriodo) respuesta += ` (período ${detalle.ultimoPeriodo})`;
+            if (detalle.ultimoPais && !territorio) respuesta += ` - ${detalle.ultimoPais}`;
+          } else {
+            respuesta += `\nNo tengo un valor registrado para este indicador${territorio ? ` en ${territorio}` : ""}. Lo siento.`;
+          }
+          if (indicadores.length > 1) {
+            respuesta += `\n\nTambién hay ${indicadores.length - 1} indicador(es) más relacionados con ${busqueda}. ¿Quieres el detalle de otro?`;
+          }
+          return respuesta;
+        }
+      }
+      return `No he encontrado datos de ${busqueda} en la base de datos. Lo siento. Puedes consultar la sección *Dimensiones* > *Infraestructura Digital* para ver indicadores de conectividad.`;
+    } catch (error) {
+      console.error("Error fetching coverage:", error);
+    }
+  }
+
   // Detectar si pregunta sobre encuestas
   if (lowerQuery.includes('encuesta') || lowerQuery.includes('survey') || lowerQuery.includes('cuestionario')) {
     const surveys = await getSurveyInfo();
@@ -587,9 +719,60 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
   
-  // Detectar preguntas sobre dimensiones específicas
-  const dimensionesKeywords = ['dimensión', 'dimension', 'dimensiones'];
-  if (dimensionesKeywords.some(keyword => lowerQuery.includes(keyword))) {
+  // --- Preguntas sobre peso / importancia de dimensiones en el índice ---
+  // Nombres de dimensiones conocidos para matching flexible (sin depender de la keyword "dimensión")
+  const NOMBRES_DIMENSIONES_CONOCIDAS = [
+    "transformación digital empresarial",
+    "capital humano",
+    "infraestructura digital",
+    "ecosistema y colaboración",
+    "emprendimiento e innovación",
+    "servicios públicos digitales",
+    "sostenibilidad digital",
+  ];
+  const dimensionMencionada = NOMBRES_DIMENSIONES_CONOCIDAS.find(d => lowerQuery.includes(d));
+
+  const preguntaPesoDimension =
+    (lowerQuery.includes("peso") || lowerQuery.includes("ponderación") || lowerQuery.includes("ponderacion") ||
+     lowerQuery.includes("importancia") || lowerQuery.includes("porcentaje")) &&
+    (lowerQuery.includes("índice") || lowerQuery.includes("indice") ||
+     lowerQuery.includes("dimensión") || lowerQuery.includes("dimension") ||
+     dimensionMencionada != null);
+
+  if (preguntaPesoDimension) {
+    try {
+      const { data: dimensiones } = await supabase
+        .from('dimensiones')
+        .select('nombre, peso')
+        .order('peso', { ascending: false });
+
+      if (dimensiones && dimensiones.length > 0) {
+        const dimMatch = dimensiones.find(dim => lowerQuery.includes(dim.nombre.toLowerCase()));
+        if (dimMatch) {
+          const pesoPercent = dimMatch.peso != null ? `${dimMatch.peso}%` : "no especificado";
+          const indicadores = await getIndicatorsByDimension(dimMatch.nombre);
+          let respuesta = `La dimensión **${dimMatch.nombre}** tiene un peso de **${pesoPercent}** en el índice BRAINNOVA.\n\n`;
+          respuesta += `**Distribución de pesos de todas las dimensiones:**\n\n`;
+          respuesta += dimensiones.map(d => `• **${d.nombre}**: ${d.peso != null ? d.peso + "%" : "N/D"}`).join("\n");
+          if (indicadores.length > 0) {
+            respuesta += `\n\nEsta dimensión tiene **${indicadores.length} indicador(es)**. Puedes preguntar "¿Qué indicadores tiene ${dimMatch.nombre}?" para ver el listado.`;
+          }
+          return respuesta;
+        }
+        const lista = dimensiones.map(d => `• **${d.nombre}**: ${d.peso != null ? d.peso + "%" : "N/D"}`).join("\n");
+        return `**Pesos de las dimensiones en el índice BRAINNOVA:**\n\n${lista}\n\n¿Sobre qué dimensión te gustaría saber más?`;
+      }
+    } catch (error) {
+      console.error('Error fetching dimension weights:', error);
+    }
+  }
+
+  // Detectar preguntas sobre dimensiones específicas (por nombre o por keyword "dimensión")
+  const preguntaDimension =
+    lowerQuery.includes('dimensión') || lowerQuery.includes('dimension') || lowerQuery.includes('dimensiones') ||
+    dimensionMencionada != null;
+
+  if (preguntaDimension) {
     try {
       const { data: dimensiones } = await supabase
         .from('dimensiones')
@@ -597,26 +780,24 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
         .order('peso', { ascending: false });
       
       if (dimensiones && dimensiones.length > 0) {
-        // Buscar si pregunta por una dimensión específica
         const dimensionMatch = dimensiones.find(dim => 
           lowerQuery.includes(dim.nombre.toLowerCase())
         );
         
         if (dimensionMatch) {
-          // Mostrar indicadores de esa dimensión
           const indicadores = await getIndicatorsByDimension(dimensionMatch.nombre);
+          const pesoStr = dimensionMatch.peso != null ? ` (peso: ${dimensionMatch.peso}%)` : '';
           if (indicadores.length > 0) {
             const lista = indicadores.slice(0, 10).map((ind, idx) => 
               `${idx + 1}. **${ind.nombre}**${ind.importancia ? ` (${ind.importancia})` : ''}`
             ).join('\n');
-            return `La dimensión **${dimensionMatch.nombre}** tiene ${indicadores.length} indicador(es):\n\n${lista}${indicadores.length > 10 ? `\n\n... y ${indicadores.length - 10} más.` : ''}\n\n¿Sobre cuál indicador te gustaría saber más detalles?`;
+            return `La dimensión **${dimensionMatch.nombre}**${pesoStr} tiene ${indicadores.length} indicador(es):\n\n${lista}${indicadores.length > 10 ? `\n\n... y ${indicadores.length - 10} más.` : ''}\n\n¿Sobre cuál indicador te gustaría saber más detalles?`;
           } else {
-            return `La dimensión **${dimensionMatch.nombre}** no tiene indicadores disponibles en este momento.`;
+            return `La dimensión **${dimensionMatch.nombre}**${pesoStr} no tiene indicadores disponibles en este momento.`;
           }
         }
         
-        // Si no pregunta por una específica, listar todas
-        const lista = dimensiones.map((dim, idx) => `${idx + 1}. **${dim.nombre}**`).join('\n');
+        const lista = dimensiones.map((dim, idx) => `${idx + 1}. **${dim.nombre}**${dim.peso != null ? ` (${dim.peso}%)` : ''}`).join('\n');
         return `Tenemos ${dimensiones.length} dimensiones en el sistema:\n\n${lista}\n\n¿Sobre qué dimensión te gustaría saber más? Puedo mostrarte los indicadores de cada una.`;
       }
     } catch (error) {
@@ -743,16 +924,7 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
   
-  // Respuesta por defecto si no encuentra nada
-  return `No encontré información específica sobre "${cleanQuery}" en la base de conocimiento. 
-
-Puedo ayudarte con:
-• **Índice BRAINNOVA por provincia**: "¿Cuál es el índice Brainnova de Alicante?" o "¿Cuál es el índice de Valencia?"
-• **Digitalización de empresas por provincia**: "¿Cuál es el nivel de digitalización de las empresas de Castellón?"
-• **Indicadores concretos**: "Digitalización básica", "personas con habilidades digitales básicas", o el nombre de cualquier indicador
-• **Dimensiones y KPIs**: "¿Qué dimensiones hay?", "¿Qué indicadores hay en Capital Humano?", valores de indicadores
-• **Encuestas**: Información sobre encuestas disponibles
-
-¿Podrías reformular tu pregunta o ser más específico?`;
+  // Respuesta por defecto
+  return `No tengo esa información, lo siento. Puedo ayudarte con preguntas sobre dimensiones, indicadores, pesos, evolución del índice, comparación entre provincias o encuestas. ¿Puedes reformular tu pregunta?`;
 }
 

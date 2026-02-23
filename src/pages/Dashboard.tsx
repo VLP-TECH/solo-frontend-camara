@@ -23,7 +23,7 @@ import {
   LogOut
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
-import { BRAINNOVA_LOGO_SRC } from "@/lib/logo-assets";
+
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getDimensiones, getSubdimensionesConScores, getAvailablePaisYPeriodo } from "@/lib/kpis-data";
 import { getBrainnovaScoresRadar, getFiltrosGlobales } from "@/lib/brainnova-api";
@@ -209,14 +209,6 @@ const Dashboard = () => {
         {/* Sidebar */}
       <aside className="w-64 bg-[#0c6c8b] text-white flex flex-col">
         <div className="p-6">
-          <div className="flex items-center space-x-3 mb-8">
-            <img
-              src={BRAINNOVA_LOGO_SRC}
-              alt="Brainnova"
-              className="h-40 w-auto object-contain"
-            />
-          </div>
-          
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
