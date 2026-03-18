@@ -197,61 +197,23 @@ const AdminDashboard = () => {
       return;
     }
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: newUser.password,
-        options: {
-          data: {
-            first_name: newUser.firstName,
-            last_name: newUser.lastName
-          }
-        }
-      });
-      if (error) throw error;
-
-      if (data.user) {
-        // Build update object with only essential fields first
-        // We'll try to add optional fields, but handle errors gracefully
-        const updateData: any = {
+      // Crear usuario vía Edge Function (auth.admin.createUser) para no cambiar la sesión del admin
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUser.email,
+          password: newUser.password,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName || undefined,
+          razonSocial: newUser.razonSocial,
+          cif: newUser.cif,
           role: newUser.role,
-          active: true
-        };
-        
-        // Razón social y CIF son obligatorios
-        updateData.razon_social = newUser.razonSocial;
-        updateData.cif = newUser.cif;
-        
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update(updateData)
-          .eq('user_id', data.user.id);
-        
-        if (profileError) {
-          // If error is about missing columns (cif or razon_social), retry with only basic fields
-          const errorMsg = profileError.message || '';
-          if (errorMsg.includes('cif') || errorMsg.includes('razon_social')) {
-            console.warn('Some columns may not exist, updating with basic fields only:', errorMsg);
-            // Try update with only essential fields
-            const basicUpdate: any = {
-              role: newUser.role,
-              active: true
-            };
-            
-            const { error: retryError } = await supabase
-              .from('profiles')
-              .update(basicUpdate)
-              .eq('user_id', data.user.id);
-            
-            if (retryError) {
-              // If even basic update fails, log but don't fail user creation
-              console.warn('Could not update all profile fields, but user was created:', retryError.message);
-            }
-          } else {
-            // For other errors, still throw to show the error
-            throw profileError;
-          }
-        }
-      }
+        },
+      });
+
+      if (error) throw error;
+      const result = data as { error?: string; ok?: boolean } | null;
+      if (result?.error) throw new Error(result.error);
+
       toast({
         title: "Éxito",
         description: "Usuario creado correctamente"
@@ -267,8 +229,6 @@ const AdminDashboard = () => {
         role: 'user'
       });
       await fetchProfiles();
-      // No navegar, ya estamos en admin-usuarios
-      // El fetchProfiles actualizará la lista automáticamente
     } catch (error: any) {
       toast({
         title: "Error",
