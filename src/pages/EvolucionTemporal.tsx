@@ -159,7 +159,7 @@ const EvolucionTemporal = () => {
         <header className="bg-blue-100 text-[#0c6c8b] px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold">Plataforma de Economía Digital</h2>
+              <h2 className="text-lg font-semibold">Panel de Economía Digital</h2>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -252,7 +252,7 @@ const EvolucionTemporal = () => {
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="text-xl font-bold text-gray-900">
-                  Evolución por Dimensiones (2020-2024)
+                  Evolución del Índice Global BRAINNOVA
                 </CardTitle>
                 <p className="text-sm text-gray-600">
                   Trayectoria de las siete dimensiones del Índice BRAINNOVA

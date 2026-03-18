@@ -258,7 +258,7 @@ const Dimensiones = () => {
         <header className="bg-blue-100 text-[#0c6c8b] px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold">Plataforma de Economía Digital</h2>
+              <h2 className="text-lg font-semibold">Panel de Economía Digital</h2>
             </div>
             
             <div className="flex items-center space-x-2">
