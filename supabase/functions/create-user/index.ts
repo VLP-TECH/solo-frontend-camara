@@ -50,9 +50,12 @@ function buildEmailHtml(payload: Omit<CreateUserPayload, "password">): string {
 }
 
 async function sendNotificationEmail(payload: Omit<CreateUserPayload, "password">): Promise<void> {
-  if (!RESEND_API_KEY) return;
+  if (!RESEND_API_KEY) {
+    console.error("RESEND_API_KEY not configured");
+    return;
+  }
   const html = buildEmailHtml(payload);
-  await fetch("https://api.resend.com/emails", {
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -65,6 +68,21 @@ async function sendNotificationEmail(payload: Omit<CreateUserPayload, "password"
       html,
     }),
   });
+
+  // Resend puede responder con JSON o texto; capturamos ambos para depurar.
+  const responseText = await res.text().catch(() => "");
+  if (!res.ok) {
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = responseText;
+    }
+    console.error("Resend API error:", {
+      status: res.status,
+      body: responseJson,
+    });
+  }
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -185,14 +203,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Enviar correo de notificación (fire-and-forget)
-  sendNotificationEmail({
+  try {
+    await sendNotificationEmail({
     email: payload.email,
     firstName: payload.firstName,
     lastName: payload.lastName,
     razonSocial: payload.razonSocial,
     cif: payload.cif,
     role: payload.role || "user",
-  }).catch((err) => console.error("Email notification error:", err));
+    });
+  } catch (err) {
+    console.error("Email notification error:", err);
+  }
 
   return new Response(
     JSON.stringify({
