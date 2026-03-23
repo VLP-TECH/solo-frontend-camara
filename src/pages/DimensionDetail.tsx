@@ -66,6 +66,7 @@ import {
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
 
 const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
+const UE_REFERENCE_COUNTRIES = ["Alemania", "Francia", "Italia", "Países Bajos"] as const;
 
 // Pesos de importancia según documentación técnica Brainnova Score (Alta=3, Media=2, Baja=1)
 const PESO_IMPORTANCIA: Record<string, number> = { Alta: 3, Media: 2, Baja: 1 };
@@ -200,7 +201,41 @@ const DimensionDetail = () => {
     enabled: !!canonicalDimensionNombre,
   });
 
+  const { data: topUESubdimensionMap = {}, isFetching: topUEFetching } = useQuery({
+    queryKey: ["subdimensiones-top-ue", canonicalDimensionNombre, appliedAno],
+    queryFn: async () => {
+      const byCountry = await Promise.all(
+        UE_REFERENCE_COUNTRIES.map((country) =>
+          getSubdimensionesConScores(canonicalDimensionNombre, country, Number(appliedAno))
+        )
+      );
+
+      const normalize = (s: string) => (s || "").trim().toLowerCase();
+      const map: Record<string, number> = {};
+      for (const rows of byCountry) {
+        for (const row of rows || []) {
+          const key = normalize(row?.nombre || "");
+          const score = Number(row?.score);
+          if (!key || !Number.isFinite(score)) continue;
+          if (map[key] == null || score > map[key]) map[key] = score;
+        }
+      }
+      return map;
+    },
+    enabled: !!canonicalDimensionNombre,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const mostrandoDatos = scoreFetching || subdimensionesFetching;
+  const normalizeSubName = (s: string) => (s || "").trim().toLowerCase();
+  const topUEDimensionScore = useMemo(() => {
+    if (!subdimensiones?.length) return null;
+    const topScores = subdimensiones
+      .map((sub) => topUESubdimensionMap[normalizeSubName(sub?.nombre || "")])
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+    if (!topScores.length) return null;
+    return topScores.reduce((acc, n) => acc + n, 0) / topScores.length;
+  }, [subdimensiones, topUESubdimensionMap]);
 
   // Obtener todos los indicadores de la dimensión
   const { data: indicadores } = useQuery({
@@ -493,14 +528,20 @@ const DimensionDetail = () => {
                       {dimensionScoreEspana != null ? Math.round(dimensionScoreEspana) : "—"}
                     </span>
                     <span className="ml-3">
-                      TOP UE: <span className="font-semibold">100</span>
+                      TOP UE:{" "}
+                      <span className="font-semibold">
+                        {topUEDimensionScore != null ? Math.round(topUEDimensionScore) : "—"}
+                      </span>
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
                     Referencia del valor para {isValenciaSelected ? "Valencia" : territorioEfectivo}: escala 0–100. El TOP UE
-                    (máximo desempeño en la UE) se normaliza a 100, así que valores cercanos a 100 indican mejor
+                    se calcula con el máximo observado en países de referencia de la UE para el mismo período, así que valores altos indican mejor
                     posicionamiento relativo.
                   </p>
+                  {topUEFetching && (
+                    <p className="text-xs text-gray-400 mt-1">Calculando TOP UE…</p>
+                  )}
                 </CardContent>
               </Card>
               {/* Total Indicadores Card */}
@@ -793,7 +834,13 @@ const DimensionDetail = () => {
                                   Media UE: <span className="font-semibold">{Math.round(subdimension.ue)}</span>
                                 </div>
                                 <div className="text-sm text-gray-600">
-                                  TOP UE: <span className="font-semibold">100</span>
+                                  TOP UE:{" "}
+                                  <span className="font-semibold">
+                                    {(() => {
+                                      const v = topUESubdimensionMap[normalizeSubName(subdimension?.nombre || "")];
+                                      return v != null ? Math.round(v) : "—";
+                                    })()}
+                                  </span>
                                 </div>
                               </>
                             )}
