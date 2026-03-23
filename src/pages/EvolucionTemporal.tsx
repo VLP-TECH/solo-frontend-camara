@@ -23,12 +23,11 @@ import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
   getIndicadores,
   getDatosHistoricosIndicador,
+  getIndiceGlobalHistoricoComparativo,
 } from "@/lib/kpis-data";
 import {
   LineChart as RechartsLineChart,
   Line,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -96,13 +95,45 @@ const EvolucionTemporal = () => {
     { year: 2024, "Capital Humano": 70, "Ecosistema": 66, "Emprendimiento": 58, "Infraestructura": 75, "Servicios Públicos": 68, "Sostenibilidad": 63, "Transformación Digital": 66 },
   ];
 
-  const indiceGlobalData = [
-    { year: 2020, valor: 58.3, cambio: null },
-    { year: 2021, valor: 61.2, cambio: "+2.9" },
-    { year: 2022, valor: 63.8, cambio: "+2.6" },
-    { year: 2023, valor: 65.5, cambio: "+1.7" },
-    { year: 2024, valor: 67.2, cambio: "+1.7" },
-  ];
+  /** Años a mostrar (3–6 años suele bastar; ampliar aquí si hay más periodos en BD). */
+  const yearsIndiceGlobal = useMemo(
+    () => [2022, 2023, 2024, 2025],
+    []
+  );
+
+  const {
+    data: indiceGlobalHistorico = [],
+    isPending: indiceGlobalLoading,
+    isError: indiceGlobalError,
+    error: indiceGlobalErrorDetail,
+  } = useQuery({
+    queryKey: ["indice-global-historico-comparativo", yearsIndiceGlobal],
+    queryFn: () => getIndiceGlobalHistoricoComparativo(yearsIndiceGlobal),
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const indiceGlobalData = useMemo(() => {
+    return indiceGlobalHistorico.map((row, i, arr) => {
+      const prev = i > 0 ? arr[i - 1] : null;
+      const ref = row.valencia ?? row.espana ?? row.europa;
+      const prevRef = prev
+        ? (prev.valencia ?? prev.espana ?? prev.europa)
+        : null;
+      let cambio: string | null = null;
+      if (ref != null && prevRef != null && prevRef !== 0) {
+        const delta = ref - prevRef;
+        cambio = `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}`;
+      }
+      return {
+        year: row.year,
+        valor: row.valencia,
+        cambio,
+        espana: row.espana,
+        europa: row.europa,
+      };
+    });
+  }, [indiceGlobalHistorico]);
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
@@ -252,10 +283,10 @@ const EvolucionTemporal = () => {
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="text-xl font-bold text-gray-900">
-                  Evolución del Índice Global BRAINNOVA
+                  Evolución por dimensiones BRAINNOVA
                 </CardTitle>
                 <p className="text-sm text-gray-600">
-                  Trayectoria de las siete dimensiones del Índice BRAINNOVA
+                  Trayectoria de las siete dimensiones del Índice BRAINNOVA (referencia)
                 </p>
               </CardHeader>
               <CardContent>
@@ -337,53 +368,102 @@ const EvolucionTemporal = () => {
                   Evolución del Índice Global BRAINNOVA
                 </CardTitle>
                 <p className="text-sm text-gray-600">
-                  Progresión del Índice global agregado
+                  Comparativa de Valencia frente a España y referencia europea
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={indiceGlobalData}>
-                      <defs>
-                        <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="year" 
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <YAxis 
-                        domain={[50, 75]}
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <Tooltip />
-                      <Area 
-                        type="monotone" 
-                        dataKey="valor" 
-                        stroke="#3B82F6" 
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorValor)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex justify-around mt-4 pt-4 border-t border-gray-200">
-                  {indiceGlobalData.map((item) => (
-                    <div key={item.year} className="text-center">
-                      <p className="text-sm font-semibold text-gray-900">{item.year}</p>
-                      <p className="text-lg font-bold text-[#0c6c8b]">{item.valor}</p>
-                      {item.cambio && (
-                        <p className="text-xs text-green-600">{item.cambio}</p>
-                      )}
+                {indiceGlobalError ? (
+                  <div className="h-80 flex flex-col items-center justify-center gap-2 text-center px-4">
+                    <p className="text-red-600 font-medium">No se pudo cargar el índice global.</p>
+                    <p className="text-sm text-gray-600">
+                      {indiceGlobalErrorDetail instanceof Error
+                        ? indiceGlobalErrorDetail.message
+                        : String(indiceGlobalErrorDetail ?? "Error desconocido")}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Revisa la consola del navegador y la conexión con Supabase.
+                    </p>
+                  </div>
+                ) : indiceGlobalLoading ? (
+                  <div className="h-80 flex items-center justify-center text-gray-500">
+                    Cargando índice global desde la base de datos… (puede tardar unos segundos la primera vez)
+                  </div>
+                ) : indiceGlobalData.length === 0 ||
+                  indiceGlobalData.every(
+                    (d) => d.valor == null && d.espana == null && d.europa == null
+                  ) ? (
+                  <div className="h-80 flex items-center justify-center text-gray-500">
+                    No hay datos suficientes en la base para calcular el índice global en estos años.
+                  </div>
+                ) : (
+                  <>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsLineChart data={indiceGlobalData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="year"
+                            stroke="#6b7280"
+                            tick={{ fill: "#6b7280" }}
+                          />
+                          <YAxis
+                            domain={[0, 100]}
+                            stroke="#6b7280"
+                            tick={{ fill: "#6b7280" }}
+                          />
+                          <Tooltip />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="valor"
+                            name="Valencia"
+                            stroke="#14B8A6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="espana"
+                            name="España"
+                            stroke="#3B82F6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="europa"
+                            name="Europa (UE / ref.)"
+                            stroke="#F97316"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                          />
+                        </RechartsLineChart>
+                      </ResponsiveContainer>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex flex-wrap justify-around gap-2 mt-4 pt-4 border-t border-gray-200">
+                      {indiceGlobalData.map((item) => (
+                        <div key={item.year} className="text-center min-w-[5rem]">
+                          <p className="text-sm font-semibold text-gray-900">{item.year}</p>
+                          <p className="text-xs text-teal-600">
+                            Valencia: {item.valor != null ? item.valor : "—"}
+                          </p>
+                          <p className="text-xs text-blue-600">
+                            ES: {item.espana != null ? item.espana : "—"}
+                          </p>
+                          <p className="text-xs text-orange-600">
+                            EU: {item.europa != null ? item.europa : "—"}
+                          </p>
+                          {item.cambio && item.valor != null && (
+                            <p className="text-xs text-green-600 mt-0.5">Δ Valencia {item.cambio}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 

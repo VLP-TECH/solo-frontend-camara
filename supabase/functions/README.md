@@ -10,14 +10,14 @@ Envía un correo a **contacto@brainnova.info** y **chaume@vlptech.es** cuando se
 
 ### Configuración
 
-1. **Resend**: Crear cuenta en [resend.com](https://resend.com) y obtener una API Key.
+1. **Postmark**: Crear cuenta en [postmarkapp.com](https://postmarkapp.com) y obtener un Server Token.
 2. **Supabase Secrets**: Configurar el secreto en el proyecto:
    ```bash
-   supabase secrets set RESEND_API_KEY=re_xxxxxxxx
+   supabase secrets set POSTMARK_SERVER_TOKEN=xxxxxxxx
    ```
-3. **Dominio (opcional)**: Para usar `noreply@brainnova.info` como remitente, verificar el dominio en Resend. Si no, se puede usar `FROM_EMAIL`:
+3. **Dominio (opcional)**: Para usar `noreply@brainnova.info` como remitente, verificar el sender signature/dominio en Postmark. Si no, se puede usar `FROM_EMAIL`:
    ```bash
-   supabase secrets set FROM_EMAIL="Brainnova <onboarding@resend.dev>"
+   supabase secrets set FROM_EMAIL="Brainnova <tu-remitente-verificado@tudominio.com>"
    ```
 
 ### Despliegue

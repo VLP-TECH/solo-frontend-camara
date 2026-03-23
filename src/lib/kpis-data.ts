@@ -226,6 +226,19 @@ export interface IndicadorConDatos extends Indicador {
   activo?: boolean;
 }
 
+/** Caché en memoria (sesión) para dimensiones / subdimensiones / definición de indicadores.
+ * Evita miles de lecturas repetidas al calcular el índice global por varios años y territorios. */
+let _cacheDimensiones: Dimension[] | undefined;
+let _cacheSubdimensiones: Subdimension[] | undefined;
+let _cacheIndicadores: Indicador[] | undefined;
+
+/** Invalida caché de metadatos (p. ej. tras editar dimensiones en admin). */
+export function clearKpisMetadataCache(): void {
+  _cacheDimensiones = undefined;
+  _cacheSubdimensiones = undefined;
+  _cacheIndicadores = undefined;
+}
+
 /**
  * Obtiene la primera combinación (pais/provincia, periodo) que tenga datos en resultado_indicadores,
  * para mostrar por defecto en el dashboard (evitar provincia/año sin datos).
@@ -310,6 +323,7 @@ export async function getAvailablePaisYPeriodo(): Promise<{ paises: string[]; pe
  * Obtiene todas las dimensiones desde Supabase
  */
 export async function getDimensiones(): Promise<Dimension[]> {
+  if (_cacheDimensiones !== undefined) return _cacheDimensiones;
   try {
     let { data, error } = await supabase
       .from("dimensiones")
@@ -323,7 +337,7 @@ export async function getDimensiones(): Promise<Dimension[]> {
         .order("peso", { ascending: false });
       if (fallback.error) throw fallback.error;
       data = fallback.data;
-      return (data || []).map((dim) => ({
+      const out = (data || []).map((dim) => ({
         nombre: dim.nombre,
         peso: dim.peso,
         id: dim.nombre.toLowerCase()
@@ -331,11 +345,13 @@ export async function getDimensiones(): Promise<Dimension[]> {
           .replace(/[áéíóú]/g, (m) => ({ á: "a", é: "e", í: "i", ó: "o", ú: "u" }[m] || m)),
         idDimension: undefined,
       }));
+      _cacheDimensiones = out;
+      return out;
     }
 
     if (error) throw error;
 
-    return (data || []).map((dim) => ({
+    const out = (data || []).map((dim) => ({
       nombre: dim.nombre,
       peso: dim.peso,
       id: dim.nombre.toLowerCase()
@@ -343,6 +359,8 @@ export async function getDimensiones(): Promise<Dimension[]> {
         .replace(/[áéíóú]/g, (m) => ({ á: "a", é: "e", í: "i", ó: "o", ú: "u" }[m] || m)),
       idDimension: (dim as { id?: number }).id,
     }));
+    _cacheDimensiones = out;
+    return out;
   } catch (error) {
     console.error("Error fetching dimensiones:", error);
     return [];
@@ -377,6 +395,7 @@ function filterSubdimensionesByDimension(
  * Obtiene todas las subdimensiones desde Supabase
  */
 export async function getSubdimensiones(): Promise<Subdimension[]> {
+  if (_cacheSubdimensiones !== undefined) return _cacheSubdimensiones;
   try {
     let { data, error } = await supabase
       .from("subdimensiones")
@@ -389,11 +408,15 @@ export async function getSubdimensiones(): Promise<Subdimension[]> {
         .select("id, nombre, nombre_dimension, peso")
         .order("nombre_dimension, peso");
       if (fallback.error) throw fallback.error;
-      return (fallback.data || []).map((s) => ({ ...s, id_dimension: undefined }));
+      const out = (fallback.data || []).map((s) => ({ ...s, id_dimension: undefined }));
+      _cacheSubdimensiones = out;
+      return out;
     }
 
     if (error) throw error;
-    return data || [];
+    const out = data || [];
+    _cacheSubdimensiones = out;
+    return out;
   } catch (error) {
     console.error("Error fetching subdimensiones:", error);
     return [];
@@ -404,11 +427,14 @@ export async function getSubdimensiones(): Promise<Subdimension[]> {
  * Obtiene todos los indicadores desde Supabase
  */
 export async function getIndicadores(): Promise<Indicador[]> {
+  if (_cacheIndicadores !== undefined) return _cacheIndicadores;
   try {
     let { data, error } = await supabase
       .from("definicion_indicadores")
       .select("id, id_subdimension, nombre, nombre_subdimension, importancia, formula, fuente, origen_indicador, activo")
       .order("nombre");
+
+    let out: Indicador[];
 
     if (error) {
       const fallbackSelect = error.message?.includes("activo")
@@ -425,12 +451,16 @@ export async function getIndicadores(): Promise<Indicador[]> {
           .select(lastSelect)
           .order("nombre");
         if (lastErr) throw lastErr;
-        return (last || []).map(ind => ({ ...ind, activo: undefined, id_subdimension: (ind as { id_subdimension?: number }).id_subdimension }));
+        out = (last || []).map(ind => ({ ...ind, activo: undefined, id_subdimension: (ind as { id_subdimension?: number }).id_subdimension }));
+      } else {
+        const hasIdSub = fallbackSelect.includes("id_subdimension");
+        out = (dataFallback || []).map(ind => ({ ...ind, id_subdimension: hasIdSub ? (ind as { id_subdimension?: number }).id_subdimension : undefined }));
       }
-      const hasIdSub = fallbackSelect.includes("id_subdimension");
-      return (dataFallback || []).map(ind => ({ ...ind, id_subdimension: hasIdSub ? (ind as { id_subdimension?: number }).id_subdimension : undefined }));
+    } else {
+      out = data || [];
     }
-    return data || [];
+    _cacheIndicadores = out;
+    return out;
   } catch (error) {
     console.error("Error fetching indicadores:", error);
     return [];
@@ -985,6 +1015,83 @@ export async function getIndiceGlobalTerritorio(
     console.error("Error fetching indice global territorio:", error);
     return null;
   }
+}
+
+/** Fila para gráfico de evolución: Comunitat Valenciana vs España vs referencia europea (Unión Europea). */
+export type IndiceGlobalHistoricoComparativoRow = {
+  year: number;
+  /** Índice global para Comunitat Valenciana */
+  comunitatValenciana: number | null;
+  /** Índice global para provincia de Valencia */
+  valencia: number | null;
+  /** Índice global para España */
+  espana: number | null;
+  /** Índice global para Unión Europea (si no hay dato, se intenta Alemania como proxy UE) */
+  europa: number | null;
+};
+
+async function getIndiceGlobalPromedioPorPais(
+  pais: string,
+  years: number[]
+): Promise<Map<number, number>> {
+  const targetYears = new Set(years);
+  const { data, error } = await supabase
+    .from("resultado_indicadores")
+    .select("periodo, valor_calculado")
+    .eq("pais", pais)
+    .not("nombre_indicador", "is", null)
+    .neq("nombre_indicador", "");
+
+  if (error) {
+    console.error(`Error fetching indice global promedio para ${pais}:`, error);
+    return new Map();
+  }
+
+  const agg = new Map<number, { sum: number; count: number }>();
+  for (const row of data || []) {
+    const y = periodoToYear(row.periodo);
+    if (!targetYears.has(y)) continue;
+    const v = Number(row.valor_calculado);
+    if (!Number.isFinite(v)) continue;
+    const prev = agg.get(y) ?? { sum: 0, count: 0 };
+    prev.sum += v;
+    prev.count += 1;
+    agg.set(y, prev);
+  }
+
+  const out = new Map<number, number>();
+  agg.forEach((v, y) => {
+    if (v.count > 0) out.set(y, Math.round((v.sum / v.count) * 10) / 10);
+  });
+  return out;
+}
+
+/**
+ * Serie temporal del índice global BRAINNOVA para tres territorios (desde resultado_indicadores vía dimensiones).
+ * @param years Años a consultar (ej. 2020–2025)
+ */
+export async function getIndiceGlobalHistoricoComparativo(
+  years: number[]
+): Promise<IndiceGlobalHistoricoComparativoRow[]> {
+  const uniqueYears = [...new Set(years)].sort((a, b) => a - b);
+  if (uniqueYears.length === 0) return [];
+
+  // Versión optimizada: pocas consultas agregadas para evitar bucles/red saturada.
+  const [cvMap, valenciaMap, espMap, ueMap, deMap] = await Promise.all([
+    getIndiceGlobalPromedioPorPais("Comunitat Valenciana", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Valencia", uniqueYears),
+    getIndiceGlobalPromedioPorPais("España", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Unión Europea", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Alemania", uniqueYears),
+  ]);
+
+  return uniqueYears.map((year) => ({
+    year,
+    comunitatValenciana: cvMap.get(year) ?? null,
+    valencia: valenciaMap.get(year) ?? null,
+    espana: espMap.get(year) ?? null,
+    europa: ueMap.get(year) ?? deMap.get(year) ?? null,
+  }));
 }
 
 /**

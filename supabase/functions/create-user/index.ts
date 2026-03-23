@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const POSTMARK_SERVER_TOKEN = Deno.env.get("POSTMARK_SERVER_TOKEN");
 const DESTINATARIOS = ["contacto@brainnova.info", "chaume@vlptech.es"];
 const FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "Brainnova <noreply@brainnova.info>";
 
@@ -50,26 +50,28 @@ function buildEmailHtml(payload: Omit<CreateUserPayload, "password">): string {
 }
 
 async function sendNotificationEmail(payload: Omit<CreateUserPayload, "password">): Promise<void> {
-  if (!RESEND_API_KEY) {
-    console.error("RESEND_API_KEY not configured");
+  if (!POSTMARK_SERVER_TOKEN) {
+    console.error("POSTMARK_SERVER_TOKEN not configured");
     return;
   }
   const html = buildEmailHtml(payload);
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetch("https://api.postmarkapp.com/email", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      Accept: "application/json",
+      "X-Postmark-Server-Token": POSTMARK_SERVER_TOKEN,
     },
     body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: DESTINATARIOS,
-      subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
-      html,
+      From: FROM_EMAIL,
+      To: DESTINATARIOS.join(","),
+      Subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
+      HtmlBody: html,
+      MessageStream: "outbound",
     }),
   });
 
-  // Resend puede responder con JSON o texto; capturamos ambos para depurar.
+  // Postmark puede responder con JSON o texto; capturamos ambos para depurar.
   const responseText = await res.text().catch(() => "");
   if (!res.ok) {
     let responseJson: unknown = null;
@@ -78,7 +80,7 @@ async function sendNotificationEmail(payload: Omit<CreateUserPayload, "password"
     } catch {
       responseJson = responseText;
     }
-    console.error("Resend API error:", {
+    console.error("Postmark API error:", {
       status: res.status,
       body: responseJson,
     });

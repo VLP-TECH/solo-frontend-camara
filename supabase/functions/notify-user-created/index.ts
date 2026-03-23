@@ -1,8 +1,8 @@
 // Supabase Edge Function: envía correo cuando se crea un usuario desde admin-usuarios
 // Destinatarios: contacto@brainnova.info, chaume@vlptech.es
-// Requiere: RESEND_API_KEY en Supabase Edge Function Secrets
+// Requiere: POSTMARK_SERVER_TOKEN en Supabase Edge Function Secrets
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const POSTMARK_SERVER_TOKEN = Deno.env.get("POSTMARK_SERVER_TOKEN");
 const DESTINATARIOS = ["contacto@brainnova.info", "chaume@vlptech.es"];
 const FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "Brainnova <noreply@brainnova.info>";
 
@@ -49,8 +49,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  if (!RESEND_API_KEY) {
-    console.error("RESEND_API_KEY not configured");
+  if (!POSTMARK_SERVER_TOKEN) {
+    console.error("POSTMARK_SERVER_TOKEN not configured");
     return new Response(
       JSON.stringify({ error: "Email service not configured", ok: false }),
       { status: 500, headers: { "Content-Type": "application/json" } }
@@ -77,31 +77,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const html = buildEmailHtml(payload);
 
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetch("https://api.postmarkapp.com/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${RESEND_API_KEY}`,
+        Accept: "application/json",
+        "X-Postmark-Server-Token": POSTMARK_SERVER_TOKEN,
       },
       body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: DESTINATARIOS,
-        subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
-        html,
+        From: FROM_EMAIL,
+        To: DESTINATARIOS.join(","),
+        Subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
+        HtmlBody: html,
+        MessageStream: "outbound",
       }),
     });
 
-    const data = await res.json();
+    const responseText = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { raw: responseText };
+    }
 
     if (!res.ok) {
-      console.error("Resend API error:", data);
+      console.error("Postmark API error:", data);
       return new Response(
-        JSON.stringify({ error: data.message || "Failed to send email", ok: false }),
+        JSON.stringify({ error: String(data.Message || "Failed to send email"), ok: false }),
         { status: 502, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    return new Response(JSON.stringify({ ok: true, id: data.id }), {
+    return new Response(JSON.stringify({ ok: true, id: data.MessageID }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
