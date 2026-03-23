@@ -38,6 +38,7 @@ import {
   getDimensiones,
   getIndicadoresConDatos,
   getDatosHistoricosIndicador,
+  getComparativaIndicadoresKPIs,
   type IndicadorConDatos,
 } from "@/lib/kpis-data";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
@@ -107,6 +108,28 @@ const KPIsDashboard = () => {
     },
     enabled: filteredIndicadores && filteredIndicadores.length > 0,
   });
+
+  const { data: comparativaIndicadores = {} } = useQuery({
+    queryKey: ["comparativa-indicadores-kpis", filteredIndicadores?.map((i) => i.nombre)],
+    queryFn: () => getComparativaIndicadoresKPIs((filteredIndicadores || []).map((i) => i.nombre)),
+    enabled: !!filteredIndicadores && filteredIndicadores.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const orderedIndicadores = useMemo(() => {
+    if (!filteredIndicadores?.length) return [];
+    const hasComparativaData = (nombre: string): boolean => {
+      const c = comparativaIndicadores?.[nombre];
+      return c?.valencia != null || c?.espana != null;
+    };
+    return [...filteredIndicadores].sort((a, b) => {
+      const aCmp = hasComparativaData(a.nombre);
+      const bCmp = hasComparativaData(b.nombre);
+      if (aCmp && !bCmp) return -1;
+      if (!aCmp && bCmp) return 1;
+      return 0;
+    });
+  }, [filteredIndicadores, comparativaIndicadores]);
 
   const handleExport = () => {
     if (filteredIndicadores) {
@@ -205,6 +228,11 @@ const KPIsDashboard = () => {
               <p className="text-gray-600">
                 Repositorio completo de todos los indicadores del Sistema BRAINNOVA. Filtra por dimensión o busca por nombre para encontrar métricas específicas.
               </p>
+              {import.meta.env.DEV && (
+                <p className="text-xs text-gray-500 mt-2">
+                  http://localhost:8080/kpis
+                </p>
+              )}
             </div>
 
             {/* Search and Filter Bar */}
@@ -249,7 +277,7 @@ const KPIsDashboard = () => {
             {/* Indicator Count */}
             <div className="mb-4">
               <p className="text-sm text-gray-600">
-                Mostrando {filteredIndicadores.length} de {indicadores?.length || 0} indicadores
+                Mostrando {orderedIndicadores.length} de {indicadores?.length || 0} indicadores
               </p>
             </div>
 
@@ -268,13 +296,15 @@ const KPIsDashboard = () => {
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Normalizado</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Comparativa</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Tendencia</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredIndicadores.map((indicador, index) => {
+                      {orderedIndicadores.map((indicador, index) => {
                         const normalized = getNormalizedValue(indicador.ultimoValor);
                         const historico = historicoData?.[indicador.nombre] || [];
+                        const comparativa = comparativaIndicadores?.[indicador.nombre];
                         const hasData = indicador.activo || indicador.ultimoValor !== undefined;
                         const hasTrend = indicador.ultimoValor !== undefined;
                         
@@ -322,6 +352,28 @@ const KPIsDashboard = () => {
                                     className={`h-2 ${hasData ? "" : "opacity-30"}`} 
                                   />
                                 </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className={`text-xs space-y-1 ${hasData ? "text-gray-700" : "text-gray-400"}`}>
+                                <p>
+                                  Valencia:{" "}
+                                  <span className="font-semibold">
+                                    {comparativa?.valencia != null ? Number(comparativa.valencia).toFixed(1) : "—"}
+                                  </span>
+                                </p>
+                                <p>
+                                  España:{" "}
+                                  <span className="font-semibold">
+                                    {comparativa?.espana != null ? Number(comparativa.espana).toFixed(1) : "—"}
+                                  </span>
+                                </p>
+                                <p>
+                                  TOP UE:{" "}
+                                  <span className="font-semibold">
+                                    {comparativa?.topUE != null ? Number(comparativa.topUE).toFixed(1) : "—"}
+                                  </span>
+                                </p>
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center">

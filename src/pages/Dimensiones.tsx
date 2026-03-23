@@ -330,6 +330,17 @@ const Dimensiones = () => {
               </div>
             </div>
 
+            {/* Referencia de interpretación del score */}
+            <Card className="bg-white border-[#0c6c8b]/20 mb-6">
+              <CardContent className="p-5">
+                <p className="text-sm text-gray-700">
+                  <span className="font-semibold">Referencia del valor para España:</span> escala 0–100.
+                  El <span className="font-semibold">TOP UE</span> (máximo desempeño en la UE) se normaliza a 100,
+                  así que valores cercanos a 100 indican mejor posicionamiento relativo.
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Dimension Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {dimensionesConIndicadores.map((dimension) => {

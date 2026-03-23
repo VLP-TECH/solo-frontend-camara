@@ -123,6 +123,10 @@ const DimensionDetail = () => {
   const isSpain = selectedTerritorio === "España" || selectedTerritorio === "Spain";
   const showProvinciaSelector = isSpain;
   const territorioEfectivo = appliedTerritorio;
+  const isValenciaSelected =
+    territorioEfectivo === "Valencia" ||
+    territorioEfectivo === "Comunitat Valenciana" ||
+    territorioEfectivo === "Comunidad Valenciana";
 
   const handlePaisChange = (pais: string) => {
     setSelectedTerritorio(pais);
@@ -172,6 +176,12 @@ const DimensionDetail = () => {
   const { data: dimensionScore, isFetching: scoreFetching } = useQuery({
     queryKey: ["dimension-score", canonicalDimensionNombre, territorioEfectivo, appliedAno],
     queryFn: () => getDimensionScore(canonicalDimensionNombre, territorioEfectivo, Number(appliedAno)),
+    enabled: !!canonicalDimensionNombre,
+  });
+
+  const { data: dimensionScoreEspana } = useQuery({
+    queryKey: ["dimension-score", canonicalDimensionNombre, "España", appliedAno],
+    queryFn: () => getDimensionScore(canonicalDimensionNombre, "España", Number(appliedAno)),
     enabled: !!canonicalDimensionNombre,
   });
   // #region agent log
@@ -477,6 +487,20 @@ const DimensionDetail = () => {
                   <div className="text-xs text-gray-500 mt-1">
                     {territorioEfectivo} · {appliedAno} (promedio de subdimensiones)
                   </div>
+                  <div className="text-sm text-gray-600 mt-3">
+                    España:{" "}
+                    <span className="font-semibold">
+                      {dimensionScoreEspana != null ? Math.round(dimensionScoreEspana) : "—"}
+                    </span>
+                    <span className="ml-3">
+                      TOP UE: <span className="font-semibold">100</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Referencia del valor para {isValenciaSelected ? "Valencia" : territorioEfectivo}: escala 0–100. El TOP UE
+                    (máximo desempeño en la UE) se normaliza a 100, así que valores cercanos a 100 indican mejor
+                    posicionamiento relativo.
+                  </p>
                 </CardContent>
               </Card>
               {/* Total Indicadores Card */}
@@ -762,8 +786,15 @@ const DimensionDetail = () => {
                           <div className="text-right space-y-1">
                             {tieneScore && (
                               <>
-                                <div className="text-sm text-gray-600">España: <span className="font-semibold">{Math.round(subdimension.espana)}</span></div>
-                                <div className="text-sm text-gray-600">UE: <span className="font-semibold">{Math.round(subdimension.ue)}</span></div>
+                                <div className="text-sm text-gray-600">
+                                  España: <span className="font-semibold">{Math.round(subdimension.espana)}</span>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  Media UE: <span className="font-semibold">{Math.round(subdimension.ue)}</span>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  TOP UE: <span className="font-semibold">100</span>
+                                </div>
                               </>
                             )}
                             {porcentajeIndicadores != null && (

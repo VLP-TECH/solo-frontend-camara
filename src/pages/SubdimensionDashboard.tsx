@@ -21,6 +21,7 @@ import {
   getDatosHistoricosIndicador,
   getSubdimensiones,
   getDimensiones,
+  getSubdimensionesConScores,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
 import {
@@ -101,6 +102,27 @@ const SubdimensionDashboard = () => {
     },
     enabled: !!indicadores && indicadores.length > 0,
   });
+
+  const periodoComparativa = useMemo(() => {
+    const periods: number[] = [];
+    if (!historicoData || !indicadores) return 2024;
+    for (const ind of indicadores) {
+      const rows = historicoData?.[ind.nombre] || [];
+      for (const r of rows) {
+        if (typeof r.periodo === "number" && r.periodo > 0) periods.push(r.periodo);
+      }
+    }
+    return periods.length ? Math.max(...periods) : 2024;
+  }, [historicoData, indicadores]);
+
+  const { data: subdimScores, isFetching: subdimScoresFetching } = useQuery({
+    queryKey: ["subdim-scores", dimensionNombreFinal, subdimensionNombre, periodoComparativa],
+    queryFn: () => getSubdimensionesConScores(dimensionNombreFinal, "Valencia", periodoComparativa),
+    enabled: !!dimensionNombreFinal && !!subdimensionNombre && !!periodoComparativa,
+  });
+
+  const normalize = (s: string) => (s || "").trim().toLowerCase();
+  const subdimScore = subdimScores?.find((s) => normalize(s.nombre) === normalize(subdimensionNombre));
 
   // Preparar datos para el gráfico de pastel
   const pieData = distribucion?.map(sub => ({
@@ -251,6 +273,54 @@ const SubdimensionDashboard = () => {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Comparativa de score para Valencia vs España vs TOP UE */}
+              <Card className="bg-white border-[#0c6c8b]/30">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <GraduationCap className="h-5 w-5 text-[#0c6c8b]" />
+                        <span className="text-sm text-gray-600">Comparativa subdimensión</span>
+                      </div>
+                      <div className="text-3xl font-bold text-[#0c6c8b]">
+                        {subdimScore?.score != null && !isNaN(Number(subdimScore.score))
+                          ? Math.round(Number(subdimScore.score))
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Valencia · {periodoComparativa}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mt-3">
+                    <div className="text-sm text-gray-600">
+                      España:{" "}
+                      <span className="font-semibold">
+                        {subdimScore?.espana != null ? Math.round(subdimScore.espana) : "—"}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Media UE:{" "}
+                      <span className="font-semibold">
+                        {subdimScore?.ue != null ? Math.round(subdimScore.ue) : "—"}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      TOP UE: <span className="font-semibold">100</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 mt-2">
+                    Referencia para Valencia: escala 0–100. El TOP UE (máximo desempeño en la UE) se normaliza a 100,
+                    así que el valor de Valencia indica su distancia relativa frente al mejor benchmark europeo.
+                  </p>
+
+                  {subdimScoresFetching && (
+                    <p className="text-xs text-gray-400 mt-2">Calculando comparativa…</p>
+                  )}
+                </CardContent>
+              </Card>
               {/* Total Indicadores Card */}
               <Card className="bg-gray-50 border-gray-200">
                 <CardContent className="p-6">

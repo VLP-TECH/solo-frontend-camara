@@ -630,6 +630,103 @@ export async function getDatosHistoricosIndicador(
   }
 }
 
+export type IndicadorComparativaTerritorial = {
+  valencia: number | null;
+  espana: number | null;
+  topUE: number | null;
+};
+
+/**
+ * Obtiene, para un conjunto de indicadores, el último valor disponible en Valencia y España.
+ * TOP UE se entrega como referencia fija normalizada a 100.
+ */
+export async function getComparativaIndicadoresKPIs(
+  nombresIndicadores: string[]
+): Promise<Record<string, IndicadorComparativaTerritorial>> {
+  const out: Record<string, IndicadorComparativaTerritorial> = {};
+  if (!nombresIndicadores?.length) return out;
+
+  const uniqueNames = [...new Set(nombresIndicadores.filter(Boolean))];
+  const chunkSize = 40; // evita querystrings excesivas en PostgREST
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueNames.length; i += chunkSize) {
+    chunks.push(uniqueNames.slice(i, i + chunkSize));
+  }
+
+  // Países UE (según seed/migraciones del proyecto; no usamos “Unión Europea” agregado).
+  const paisesUE = ["Alemania", "Francia", "Italia", "Países Bajos"] as const;
+  const paisesObjetivo = ["Valencia", "España", ...paisesUE] as const;
+
+  try {
+    const rowsAll = await Promise.all(
+      chunks.map(async (namesChunk) => {
+        const { data, error } = await supabase
+          .from("resultado_indicadores")
+          .select("nombre_indicador, pais, periodo, valor_calculado")
+          .in("nombre_indicador", namesChunk)
+          .in("pais", paisesObjetivo as unknown as string[]);
+        if (error) throw error;
+        return data || [];
+      })
+    );
+
+    const byIndicador = new Map<
+      string,
+      Array<{ pais: string; year: number; value: number }>
+    >();
+    for (const rows of rowsAll) {
+      for (const row of rows) {
+        const indicador = String(row.nombre_indicador || "").trim();
+        const pais = String(row.pais || "").trim();
+        const year = periodoToYear(row.periodo);
+        const value = Number(row.valor_calculado);
+        if (!indicador || !Number.isFinite(value) || year <= 0) continue;
+        const prev = byIndicador.get(indicador) ?? [];
+        prev.push({ pais, year, value });
+        byIndicador.set(indicador, prev);
+      }
+    }
+
+    for (const name of uniqueNames) {
+      const rows = byIndicador.get(name) ?? [];
+      if (!rows.length) {
+        out[name] = { valencia: null, espana: null, topUE: null };
+        continue;
+      }
+
+      // “Período” de referencia del indicador en la comparativa:
+      // tomamos el año máximo entre Valencia/España (para que TOP UE sea el máximo UE
+      // en el mismo período que el que estás comparando).
+      const yearsVE = rows
+        .filter((r) => r.pais === "Valencia" || r.pais === "España")
+        .map((r) => r.year);
+      const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
+      if (chosenYear <= 0) {
+        out[name] = { valencia: null, espana: null, topUE: null };
+        continue;
+      }
+      const valRow = rows.filter((r) => r.pais === "Valencia" && r.year === chosenYear);
+      const espRow = rows.filter((r) => r.pais === "España" && r.year === chosenYear);
+      const ueRows = rows.filter(
+        (r) => (paisesUE as readonly string[]).includes(r.pais) && r.year === chosenYear
+      );
+
+      const valencia = valRow.length ? Math.max(...valRow.map((r) => r.value)) : null;
+      const espana = espRow.length ? Math.max(...espRow.map((r) => r.value)) : null;
+      const topUE = ueRows.length ? Math.max(...ueRows.map((r) => r.value)) : null;
+
+      out[name] = { valencia, espana, topUE };
+    }
+    return out;
+  } catch (error) {
+    console.error("Error fetching comparativa indicadores KPIs:", error);
+    for (const name of uniqueNames) {
+      out[name] = { valencia: null, espana: null, topUE: null };
+    }
+    return out;
+  }
+}
+
 /**
  * Obtiene datos agregados por subdimensión para una dimensión
  */
