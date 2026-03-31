@@ -113,16 +113,12 @@ const DimensionDetail = () => {
   
   const [selectedAno, setSelectedAno] = useState("2024");
   const [selectedTerritorio, setSelectedTerritorio] = useState("España");
-  const [selectedProvincia, setSelectedProvincia] = useState<string>("");
   const [appliedAno, setAppliedAno] = useState("2024");
   const [appliedTerritorio, setAppliedTerritorio] = useState("España");
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
   const [metodologiaOpen, setMetodologiaOpen] = useState(false);
   const [indicadoresOpen, setIndicadoresOpen] = useState(false);
 
-  const provinciasCV = ["Valencia", "Castellón", "Alicante"] as const;
-  const isSpain = selectedTerritorio === "España" || selectedTerritorio === "Spain";
-  const showProvinciaSelector = isSpain;
   const territorioEfectivo = appliedTerritorio;
   const isValenciaSelected =
     territorioEfectivo === "Valencia" ||
@@ -131,16 +127,11 @@ const DimensionDetail = () => {
 
   const handlePaisChange = (pais: string) => {
     setSelectedTerritorio(pais);
-    if (pais !== "España" && pais !== "Spain") setSelectedProvincia("");
   };
 
   const handleMostrarDimension = () => {
     setAppliedAno(selectedAno);
-    setAppliedTerritorio(
-      showProvinciaSelector && selectedProvincia && selectedProvincia !== "_"
-        ? selectedProvincia
-        : selectedTerritorio
-    );
+    setAppliedTerritorio(selectedTerritorio);
   };
 
   const { data: availablePaisPeriodo } = useQuery({
@@ -467,32 +458,15 @@ const DimensionDetail = () => {
                     </SelectContent>
                   </Select>
                   <Select value={selectedTerritorio} onValueChange={handlePaisChange}>
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="País" />
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Territorio" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(
-                        availablePaisPeriodo?.paises?.length
-                          ? [...new Set(["España", ...(availablePaisPeriodo.paises || [])])]
-                          : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
-                      ).map((p) => (
+                      {["Alicante", "Castellón", "Comunidad Valenciana", "España", "Valencia"].map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {showProvinciaSelector && (
-                    <Select value={selectedProvincia || "_"} onValueChange={(v) => setSelectedProvincia(v === "_" ? "" : v)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Provincia (Castellón, Valencia, Alicante)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">— Provincia —</SelectItem>
-                        {provinciasCV.map((p) => (
-                          <SelectItem key={p} value={p}>{p}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
                   <Button
                     onClick={handleMostrarDimension}
                     disabled={mostrandoDatos}

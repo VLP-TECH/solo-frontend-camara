@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,14 +18,18 @@ import {
   Wifi,
   AlertCircle,
   TrendingUp,
-  ArrowUpRight,
   MessageSquare,
   LogOut
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getDimensiones, getSubdimensionesConScores, getAvailablePaisYPeriodo } from "@/lib/kpis-data";
+import {
+  getDimensiones,
+  getSubdimensionesConScores,
+  getAvailablePaisYPeriodo,
+  getIndiceGlobalTerritorio,
+} from "@/lib/kpis-data";
 import { getBrainnovaScoresRadar, getFiltrosGlobales } from "@/lib/brainnova-api";
 import {
   RadarChart,
@@ -127,16 +131,14 @@ const Dashboard = () => {
     queryKey: ["filtros-globales-radar"],
     queryFn: () => getFiltrosGlobales(),
   });
-  // Opciones de filtro: API (filtros-globales) > BD > estáticos; España siempre presente
-  const paisesOpciones = [...new Set([
+  // Selector acotado a los territorios requeridos en dashboard general
+  const paisesOpciones = [
+    "Alicante",
+    "Castellón",
+    "Comunidad Valenciana",
     "España",
-    ...(filtrosGlobales?.provincias?.length
-      ? filtrosGlobales.provincias
-      : availablePaisPeriodo?.paises?.length
-        ? availablePaisPeriodo.paises
-        : ["Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
-    ) as string[]
-  ])];
+    "Valencia",
+  ];
   const provinciasCVOpciones = ["Valencia", "Alicante", "Castellón"] as const;
   const aniosOpciones = (filtrosGlobales?.anios?.length
     ? [...filtrosGlobales.anios].sort((a, b) => b - a)
@@ -196,11 +198,110 @@ const Dashboard = () => {
 
   const radarDataDisplay = radarData ?? [];
 
+  const periodoIndiceGlobal = Number(radarAno) || 2024;
+
+  const { data: indiceGlobalDashboard, isPending: indiceGlobalLoading } = useQuery({
+    queryKey: ["dashboard-indice-global", periodoIndiceGlobal],
+    queryFn: async () => {
+      const [cv, esp, de, alicante, castellon, valencia] = await Promise.all([
+        getIndiceGlobalTerritorio("Comunitat Valenciana", periodoIndiceGlobal),
+        getIndiceGlobalTerritorio("España", periodoIndiceGlobal),
+        getIndiceGlobalTerritorio("Alemania", periodoIndiceGlobal),
+        getIndiceGlobalTerritorio("Alicante", periodoIndiceGlobal),
+        getIndiceGlobalTerritorio("Castellón", periodoIndiceGlobal),
+        getIndiceGlobalTerritorio("Valencia", periodoIndiceGlobal),
+      ]);
+      const relativoTopUE =
+        cv != null && de != null && de > 0 ? (cv / de) * 100 : null;
+      const valsProv = [alicante, castellon, valencia].filter(
+        (v): v is number => v != null && !Number.isNaN(v)
+      );
+      const mediaProvincias =
+        valsProv.length > 0
+          ? valsProv.reduce((a, b) => a + b, 0) / valsProv.length
+          : null;
+      const relativoTerritoriosUE =
+        mediaProvincias != null && de != null && de > 0
+          ? (mediaProvincias / de) * 100
+          : null;
+      return {
+        cv,
+        esp,
+        de,
+        relativoTopUE,
+        alicante,
+        castellon,
+        valencia,
+        relativoTerritoriosUE,
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: dimensionMasDebilCV, isPending: dimensionMasDebilLoading } = useQuery({
+    queryKey: ["dashboard-dimension-mas-debil-cv", periodoIndiceGlobal],
+    queryFn: async () => {
+      if (!dimensiones?.length) return null;
+      const dimensionScores = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const subs = await getSubdimensionesConScores(dim.nombre, "Comunitat Valenciana", periodoIndiceGlobal);
+          const score = subs.length
+            ? subs.reduce((acc, s) => acc + s.score, 0) / subs.length
+            : 0;
+          return { nombre: dim.nombre, score };
+        })
+      );
+      const conDatos = dimensionScores.filter((d) => d.score > 0);
+      if (!conDatos.length) return null;
+      const min = conDatos.reduce((acc, curr) => (curr.score < acc.score ? curr : acc));
+      return { nombre: min.nombre, score: Math.round(min.score * 10) / 10 };
+    },
+    enabled: !!dimensiones?.length,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: dimensionMasFuerteCV, isPending: dimensionMasFuerteLoading } = useQuery({
+    queryKey: ["dashboard-dimension-mas-fuerte-cv", periodoIndiceGlobal],
+    queryFn: async () => {
+      if (!dimensiones?.length) return null;
+      const dimensionScores = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const subs = await getSubdimensionesConScores(dim.nombre, "Comunitat Valenciana", periodoIndiceGlobal);
+          const score = subs.length
+            ? subs.reduce((acc, s) => acc + s.score, 0) / subs.length
+            : 0;
+          return { nombre: dim.nombre, score };
+        })
+      );
+      const conDatos = dimensionScores.filter((d) => d.score > 0);
+      if (!conDatos.length) return null;
+      const max = conDatos.reduce((acc, curr) => (curr.score > acc.score ? curr : acc));
+      return { nombre: max.nombre, score: Math.round(max.score * 10) / 10 };
+    },
+    enabled: !!dimensiones?.length,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const fmtIndice = (v: number | null | undefined) =>
+    v == null || Number.isNaN(v)
+      ? "—"
+      : v.toLocaleString("es-ES", {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        });
+
   // Escala fija 0–100 según doc API Cámara (Top Europa = 100)
   const radarDomain: [number, number] = [0, 100];
   const radarTicks = [0, 20, 40, 60, 80, 100];
 
   const menuItems = useAppMenuItems();
+
+  useEffect(() => {
+    // Limpia bloqueos residuales de Radix en navegación entre rutas.
+    if (document.body.style.pointerEvents === "none") {
+      document.body.style.pointerEvents = "auto";
+    }
+  }, []);
 
   return (
     <>
@@ -285,46 +386,61 @@ const Dashboard = () => {
                 Índice Global de Economía Digital BRAINNOVA
               </h1>
               <p className="text-lg text-gray-600">
-                Análisis integral del desarrollo de la economía digital. Datos para <strong>{radarProvincia}</strong> · {radarAno}.
+                Análisis integral del desarrollo de la economía digital.
               </p>
             </div>
 
             {/* Key Metrics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <Card className="p-6 bg-white">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Índice Global</p>
-                    <h3 className="text-3xl font-bold text-gray-900">67.2</h3>
-                    <div className="flex items-center text-green-600 text-sm mt-2">
-                      <ArrowUpRight className="h-4 w-4 mr-1" />
-                      <span>+3.2 pts sobre 100</span>
-                    </div>
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xl font-semibold text-gray-700 mb-2">Índice Global</p>
+                    {indiceGlobalLoading ? (
+                      <p className="text-sm text-gray-500">Calculando…</p>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-600">Comunitat Valenciana</span>
+                          <span className="font-semibold text-gray-900 tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.cv ?? null)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-600">España</span>
+                          <span className="font-semibold text-gray-900 tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.esp ?? null)}
+                          </span>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 mb-1">
+                            Relativo al top UE
+                          </p>
+                          <p className="text-lg font-bold text-[#0c6c8b] tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.relativoTopUE ?? null)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <User className="h-8 w-8 text-gray-400" />
+                  <User className="h-8 w-8 text-gray-400 shrink-0" />
                 </div>
               </Card>
 
               <Card className="p-6 bg-white">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Ranking CCAA</p>
-                    <h3 className="text-3xl font-bold text-gray-900">5°</h3>
-                    <div className="flex items-center text-green-600 text-sm mt-2">
-                      <ArrowUpRight className="h-4 w-4 mr-1" />
-                      <span>+1 posición de 17 comunidades</span>
-                    </div>
-                  </div>
-                  <Target className="h-8 w-8 text-gray-400" />
-                </div>
-              </Card>
-
-              <Card className="p-6 bg-white">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Dimensión Más Fuerte</p>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">Infraestructura</h3>
-                    <p className="text-2xl font-bold text-[#0c6c8b]">75.0</p>
+                    <p className="text-xl font-semibold text-gray-700 mb-1">Dimensión más fuerte en Comunidad Valenciana</p>
+                    <h3 className="text-sm font-normal text-gray-900 mb-1">
+                      {dimensionMasFuerteLoading
+                        ? "Calculando…"
+                        : (dimensionMasFuerteCV?.nombre ?? "Sin datos")}
+                    </h3>
+                    <p className="text-2xl font-bold text-[#0c6c8b]">
+                      {dimensionMasFuerteLoading
+                        ? "—"
+                        : fmtIndice(dimensionMasFuerteCV?.score ?? null)}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">puntos</p>
                   </div>
                   <Wifi className="h-8 w-8 text-gray-400" />
@@ -334,12 +450,61 @@ const Dashboard = () => {
               <Card className="p-6 bg-white">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Dimensión Más Débil</p>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">Emprendimiento</h3>
-                    <p className="text-2xl font-bold text-red-600">58.0</p>
+                    <p className="text-xl font-semibold text-gray-700 mb-1">Dimensión más débil en Comunidad Valenciana</p>
+                    <h3 className="text-sm font-normal text-gray-900 mb-1">
+                      {dimensionMasDebilLoading
+                        ? "Calculando…"
+                        : (dimensionMasDebilCV?.nombre ?? "Sin datos")}
+                    </h3>
+                    <p className="text-2xl font-bold text-red-600">
+                      {dimensionMasDebilLoading
+                        ? "—"
+                        : fmtIndice(dimensionMasDebilCV?.score ?? null)}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">puntos</p>
                   </div>
                   <AlertCircle className="h-8 w-8 text-red-400" />
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xl font-semibold text-gray-700 mb-2">Índice por territorio</p>
+                    {indiceGlobalLoading ? (
+                      <p className="text-sm text-gray-500">Calculando…</p>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-600">Alicante</span>
+                          <span className="font-semibold text-gray-900 tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.alicante ?? null)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-600">Castellón</span>
+                          <span className="font-semibold text-gray-900 tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.castellon ?? null)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-600">Valencia</span>
+                          <span className="font-semibold text-gray-900 tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.valencia ?? null)}
+                          </span>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 mb-1">
+                            Relativo al top UE
+                          </p>
+                          <p className="text-lg font-bold text-[#0c6c8b] tabular-nums">
+                            {fmtIndice(indiceGlobalDashboard?.relativoTerritoriosUE ?? null)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <Target className="h-8 w-8 text-gray-400 shrink-0" />
                 </div>
               </Card>
             </div>

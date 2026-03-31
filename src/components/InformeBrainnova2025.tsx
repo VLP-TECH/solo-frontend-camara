@@ -284,7 +284,7 @@ const InformeContent = ({ pdfUrl }: { pdfUrl?: string | null }) => {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-semibold text-[#0c6c8b] mb-2">
+            <h3 className="text-[#0c6c8b] mb-2">
               Transformación Digital Empresarial
             </h3>
             <p className="text-sm text-gray-600">
@@ -311,7 +311,7 @@ const InformeContent = ({ pdfUrl }: { pdfUrl?: string | null }) => {
             </p>
           </div>
           <div className="p-4 bg-orange-50 rounded-lg">
-            <h3 className="font-semibold text-[#0c6c8b] mb-2">
+            <h3 className="text-[#0c6c8b] mb-2">
               Emprendimiento e Innovación
             </h3>
             <p className="text-sm text-gray-600">

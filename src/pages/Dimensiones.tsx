@@ -310,11 +310,7 @@ const Dimensiones = () => {
                       <SelectValue placeholder="País" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(
-                        availablePaisPeriodo?.paises?.length
-                          ? [...new Set(["España", ...(availablePaisPeriodo.paises || [])])]
-                          : ["España", "Comunitat Valenciana", "Valencia", "Alicante", "Castellón"]
-                      ).map((p) => (
+                      {["Alicante", "Castellón", "Comunidad Valenciana", "España", "Valencia"].map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
