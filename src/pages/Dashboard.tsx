@@ -26,6 +26,7 @@ import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
   getDimensiones,
+  getDimensionScore,
   getSubdimensionesConScores,
   getAvailablePaisYPeriodo,
   getIndiceGlobalTerritorio,
@@ -43,6 +44,7 @@ import {
 } from "recharts";
 
 const RADAR_TICKS_ALL_AXES = [20, 40, 60, 80, 100];
+const UE_TOP_CANDIDATES = ["Alemania", "Francia", "Italia", "Países Bajos", "Dinamarca", "España"] as const;
 
 function RadarTicksAllAxes({ cx, cy, startAngle, innerRadius, outerRadius }: {
   cx?: number; cy?: number; startAngle?: number; innerRadius?: number; outerRadius?: number;
@@ -75,6 +77,25 @@ function RadarTicksAllAxes({ cx, cy, startAngle, innerRadius, outerRadius }: {
     }
   }
   return <g>{labels}</g>;
+}
+
+function RadarDimensionTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  const x = props.x ?? 0;
+  const y = props.y ?? 0;
+  const value = String(props.payload?.value ?? "");
+  const [dimension, topPais] = value.split("||");
+  return (
+    <g>
+      <text x={x} y={y} textAnchor="middle" fill="#374151" fontSize={11}>
+        <tspan x={x} dy="0">{dimension}</tspan>
+        {topPais ? <tspan x={x} dy="1.2em" fill="#16a34a">{topPais}</tspan> : null}
+      </text>
+    </g>
+  );
 }
 
 const Dashboard = () => {
@@ -196,7 +217,41 @@ const Dashboard = () => {
     enabled: true,
   });
 
-  const radarDataDisplay = radarData ?? [];
+  const { data: topUEPorDimension = {} } = useQuery({
+    queryKey: ["dashboard-top-ue-dimension", Number(radarAno) || 2024],
+    queryFn: async () => {
+      const periodo = Number(radarAno) || 2024;
+      if (!dimensiones?.length) return {} as Record<string, string>;
+      const entries = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const vals = await Promise.all(
+            UE_TOP_CANDIDATES.map(async (pais) => ({
+              pais,
+              score: await getDimensionScore(dim.nombre, pais, periodo),
+            }))
+          );
+          const valid = vals.filter((v) => Number.isFinite(v.score) && v.score > 0);
+          if (!valid.length) return [dim.nombre, ""] as const;
+          const max = valid.reduce((acc, cur) => (cur.score > acc.score ? cur : acc));
+          return [dim.nombre, max.pais] as const;
+        })
+      );
+      return Object.fromEntries(entries) as Record<string, string>;
+    },
+    enabled: !!dimensiones?.length,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const radarDataDisplay = useMemo(
+    () =>
+      (radarData ?? []).map((row: { dimension: string; [key: string]: unknown }) => ({
+        ...row,
+        dimensionLabel: row.dimension
+          ? `${row.dimension}||${topUEPorDimension[row.dimension] || ""}`
+          : "",
+      })),
+    [radarData, topUEPorDimension]
+  );
 
   const periodoIndiceGlobal = Number(radarAno) || 2024;
 
@@ -277,6 +332,29 @@ const Dashboard = () => {
       if (!conDatos.length) return null;
       const max = conDatos.reduce((acc, curr) => (curr.score > acc.score ? curr : acc));
       return { nombre: max.nombre, score: Math.round(max.score * 10) / 10 };
+    },
+    enabled: !!dimensiones?.length,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: comparativaDimensionesDashboard = [], isPending: comparativaDimensionesLoading } = useQuery({
+    queryKey: ["dashboard-comparativa-dimensiones", periodoIndiceGlobal],
+    queryFn: async () => {
+      if (!dimensiones?.length) return [];
+      const rows = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const [valencia, alicante, castellon] = await Promise.all([
+            getDimensionScore(dim.nombre, "Valencia", periodoIndiceGlobal),
+            getDimensionScore(dim.nombre, "Alicante", periodoIndiceGlobal),
+            getDimensionScore(dim.nombre, "Castellón", periodoIndiceGlobal),
+          ]);
+          const max = Math.max(valencia, alicante, castellon);
+          const destacado: "valencia" | "alicante" | "castellon" =
+            max === valencia ? "valencia" : max === alicante ? "alicante" : "castellon";
+          return { dimension: dim.nombre, valencia, alicante, castellon, destacado };
+        })
+      );
+      return rows;
     },
     enabled: !!dimensiones?.length,
     staleTime: 5 * 60 * 1000,
@@ -514,7 +592,7 @@ const Dashboard = () => {
               <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 mb-1">
-                    Análisis por Dimensiones
+                    Análisis por Dimensión
                   </h2>
                   <p className="text-sm text-gray-600">
                     Índice BRAINNOVA por las 7 dimensiones
@@ -577,7 +655,7 @@ const Dashboard = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={radarDataDisplay}>
                     <PolarGrid stroke="#d1d5db" strokeOpacity={0.8} gridType="polygon" />
-                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                    <PolarAngleAxis dataKey="dimensionLabel" tick={<RadarDimensionTick />} />
                     <PolarRadiusAxis
                       angle={90}
                       domain={radarDomain}
@@ -648,6 +726,77 @@ const Dashboard = () => {
                     <div className="w-4 h-4 rounded-full bg-[#1E3A5F]" />
                     <span className="text-sm text-gray-600">{radarProvincia}</span>
                   </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 text-center mt-3">
+                País en verde = TOP UE de esa dimensión.
+              </p>
+            </Card>
+
+            {/* Strategic Indicators Table */}
+            <Card className="p-6 bg-white mb-8">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-1">
+                  Comparativa Detallada por Dimensiones
+                </h2>
+              </div>
+              <div className="overflow-x-auto">
+                {comparativaDimensionesLoading ? (
+                  <div className="py-8 text-center text-gray-500">Cargando comparativa...</div>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Valencia</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Alicante</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Castellón</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparativaDimensionesDashboard.map((row) => (
+                        <tr key={row.dimension} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-3 px-4 text-sm text-gray-900">{row.dimension}</td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center space-x-2">
+                              <span className={`text-sm font-medium ${
+                                row.destacado === "valencia" ? "text-green-600" : "text-gray-700"
+                              }`}>
+                                {fmtIndice(row.valencia)}
+                              </span>
+                              {row.destacado === "valencia" && (
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center space-x-2">
+                              <span className={`text-sm font-medium ${
+                                row.destacado === "alicante" ? "text-green-600" : "text-gray-700"
+                              }`}>
+                                {fmtIndice(row.alicante)}
+                              </span>
+                              {row.destacado === "alicante" && (
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center space-x-2">
+                              <span className={`text-sm font-medium ${
+                                row.destacado === "castellon" ? "text-green-600" : "text-gray-700"
+                              }`}>
+                                {fmtIndice(row.castellon)}
+                              </span>
+                              {row.destacado === "castellon" && (
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </Card>
