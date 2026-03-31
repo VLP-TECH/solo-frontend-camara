@@ -279,88 +279,6 @@ const EvolucionTemporal = () => {
               </Card>
             </div>
 
-            {/* Evolución por Dimensiones */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Evolución por dimensiones BRAINNOVA
-                </CardTitle>
-                <p className="text-sm text-gray-600">
-                  Trayectoria de las siete dimensiones del Índice BRAINNOVA (referencia)
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLineChart data={dimensionesData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="year" 
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <YAxis 
-                        domain={[40, 80]}
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Capital Humano" 
-                        stroke="#3B82F6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Ecosistema" 
-                        stroke="#F97316" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Emprendimiento" 
-                        stroke="#EF4444" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Infraestructura" 
-                        stroke="#10B981" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Servicios Públicos" 
-                        stroke="#8B5CF6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Sostenibilidad" 
-                        stroke="#EAB308" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Transformación Digital" 
-                        stroke="#14B8A6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Evolución del Índice Global */}
             <Card className="bg-white">
               <CardHeader>
@@ -464,6 +382,88 @@ const EvolucionTemporal = () => {
                     </div>
                   </>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Evolución por Dimensiones */}
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Evolución por dimensiones BRAINNOVA
+                </CardTitle>
+                <p className="text-sm text-gray-600">
+                  Trayectoria de las siete dimensiones del Índice BRAINNOVA (referencia)
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLineChart data={dimensionesData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis 
+                        dataKey="year" 
+                        stroke="#6b7280"
+                        tick={{ fill: '#6b7280' }}
+                      />
+                      <YAxis 
+                        domain={[40, 80]}
+                        stroke="#6b7280"
+                        tick={{ fill: '#6b7280' }}
+                      />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Capital Humano" 
+                        stroke="#3B82F6" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Ecosistema" 
+                        stroke="#F97316" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Emprendimiento" 
+                        stroke="#EF4444" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Infraestructura" 
+                        stroke="#10B981" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Servicios Públicos" 
+                        stroke="#8B5CF6" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Sostenibilidad" 
+                        stroke="#EAB308" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="Transformación Digital" 
+                        stroke="#14B8A6" 
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                    </RechartsLineChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
 

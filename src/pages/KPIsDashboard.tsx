@@ -296,7 +296,9 @@ const KPIsDashboard = () => {
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Normalizado</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Comparativa</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Valencia</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">TOP UE</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Tendencia</th>
                       </tr>
                     </thead>
@@ -354,27 +356,20 @@ const KPIsDashboard = () => {
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-4">
-                              <div className={`text-xs space-y-1 ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                <p>
-                                  Valencia:{" "}
-                                  <span className="font-semibold">
-                                    {comparativa?.valencia != null ? Number(comparativa.valencia).toFixed(1) : "—"}
-                                  </span>
-                                </p>
-                                <p>
-                                  España:{" "}
-                                  <span className="font-semibold">
-                                    {comparativa?.espana != null ? Number(comparativa.espana).toFixed(1) : "—"}
-                                  </span>
-                                </p>
-                                <p>
-                                  TOP UE:{" "}
-                                  <span className="font-semibold">
-                                    {comparativa?.topUE != null ? Number(comparativa.topUE).toFixed(1) : "—"}
-                                  </span>
-                                </p>
-                              </div>
+                            <td className="py-4 px-4 text-center">
+                              <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
+                                {comparativa?.valencia != null ? Number(comparativa.valencia).toFixed(1) : "—"}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
+                                {comparativa?.espana != null ? Number(comparativa.espana).toFixed(1) : "—"}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
+                                {comparativa?.topUE != null ? Number(comparativa.topUE).toFixed(1) : "—"}
+                              </span>
                             </td>
                             <td className="py-4 px-4 text-center">
                               {hasTrend ? (
