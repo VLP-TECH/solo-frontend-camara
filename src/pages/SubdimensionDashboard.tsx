@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,37 +9,17 @@ import { Button } from "@/components/ui/button";
 import { 
   LineChart,
   LogOut,
-  Download,
-  GraduationCap,
   TrendingUp
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
   getIndicadoresPorSubdimension,
-  getDistribucionPorSubdimension,
   getDatosHistoricosIndicador,
   getSubdimensiones,
   getDimensiones,
-  getSubdimensionesConScores,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Legend,
-  Tooltip,
-  LineChart as RechartsLineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid
-} from "recharts";
-import { exportIndicadoresToCSV } from "@/lib/csv-export";
-
-const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
 
 const SubdimensionDashboard = () => {
   const navigate = useNavigate();
@@ -49,6 +29,8 @@ const SubdimensionDashboard = () => {
   const [searchParams] = useSearchParams();
   const subdimensionNombre = searchParams.get("subdimension") || "";
   const dimensionNombre = searchParams.get("dimension") || "";
+  const territorioAplicado = searchParams.get("territorio") || "España";
+  const anoAplicado = Number(searchParams.get("ano") || "2024");
 
   const handleSignOut = async () => {
     await signOut();
@@ -77,88 +59,44 @@ const SubdimensionDashboard = () => {
     enabled: !!subdimensionNombre,
   });
 
-  // Obtener distribución por subdimensión si tenemos la dimensión
-  const { data: distribucion } = useQuery({
-    queryKey: ["distribucion-subdimension", dimensionNombreFinal],
-    queryFn: () => getDistribucionPorSubdimension(dimensionNombreFinal),
-    enabled: !!dimensionNombreFinal,
-  });
-
-  // Obtener datos históricos para todos los indicadores
-  const { data: historicoData } = useQuery({
-    queryKey: ["historico-subdimension", indicadores?.map(i => i.nombre)],
+  // Comparativa por indicador en el territorio/año aplicados, más España y referencia UE
+  const { data: comparativaIndicadores, isFetching: comparativaFetching } = useQuery({
+    queryKey: ["comparativa-subdimension-indicadores", indicadores?.map(i => i.nombre), territorioAplicado, anoAplicado],
     queryFn: async () => {
       if (!indicadores) return {};
-      const data: Record<string, Array<{ periodo: number; valor: number }>> = {};
+      const uePaises = ["Alemania", "Francia", "Italia", "Países Bajos"];
+      const territoryAliases: Record<string, string[]> = {
+        "Comunidad Valenciana": ["Comunidad Valenciana", "Comunitat Valenciana", "CV"],
+      };
+      const getAliases = (territorio: string): string[] =>
+        territoryAliases[territorio] ?? [territorio];
+      const getValorAnual = async (indicador: string, territorio: string, year: number) => {
+        for (const alias of getAliases(territorio)) {
+          const rows = await getDatosHistoricosIndicador(indicador, alias, 20);
+          const rowYear = rows.find((r) => Number(r.periodo) === year);
+          if (rowYear && Number.isFinite(Number(rowYear.valor))) return Number(rowYear.valor);
+        }
+        return null;
+      };
+
+      const data: Record<string, { territorio: number | null; espana: number | null; mediaUE: number | null; topUE: number | null }> = {};
       await Promise.all(
         indicadores.map(async (ind) => {
-          if (ind.ultimoValor !== undefined) {
-            const historico = await getDatosHistoricosIndicador(ind.nombre, "Comunitat Valenciana", 10);
-            data[ind.nombre] = historico;
-          }
+          const [territorio, espana, ...ueValsRaw] = await Promise.all([
+            getValorAnual(ind.nombre, territorioAplicado, anoAplicado),
+            getValorAnual(ind.nombre, "España", anoAplicado),
+            ...uePaises.map((p) => getValorAnual(ind.nombre, p, anoAplicado)),
+          ]);
+          const ueVals = ueValsRaw.filter((v): v is number => v != null && Number.isFinite(v));
+          const mediaUE = ueVals.length ? ueVals.reduce((a, b) => a + b, 0) / ueVals.length : null;
+          const topUE = ueVals.length ? Math.max(...ueVals) : null;
+          data[ind.nombre] = { territorio, espana, mediaUE, topUE };
         })
       );
       return data;
     },
     enabled: !!indicadores && indicadores.length > 0,
   });
-
-  const periodoComparativa = useMemo(() => {
-    const periods: number[] = [];
-    if (!historicoData || !indicadores) return 2024;
-    for (const ind of indicadores) {
-      const rows = historicoData?.[ind.nombre] || [];
-      for (const r of rows) {
-        if (typeof r.periodo === "number" && r.periodo > 0) periods.push(r.periodo);
-      }
-    }
-    return periods.length ? Math.max(...periods) : 2024;
-  }, [historicoData, indicadores]);
-
-  const { data: subdimScores, isFetching: subdimScoresFetching } = useQuery({
-    queryKey: ["subdim-scores", dimensionNombreFinal, subdimensionNombre, periodoComparativa],
-    queryFn: () => getSubdimensionesConScores(dimensionNombreFinal, "Valencia", periodoComparativa),
-    enabled: !!dimensionNombreFinal && !!subdimensionNombre && !!periodoComparativa,
-  });
-
-  const normalize = (s: string) => (s || "").trim().toLowerCase();
-  const subdimScore = subdimScores?.find((s) => normalize(s.nombre) === normalize(subdimensionNombre));
-
-  // Preparar datos para el gráfico de pastel
-  const pieData = distribucion?.map(sub => ({
-    name: sub.nombre,
-    value: sub.porcentaje,
-    totalIndicadores: sub.totalIndicadores
-  })) || [];
-
-  // Preparar datos para el gráfico de línea (evolución histórica)
-  const lineData: Array<{ periodo: number; [key: string]: number | string }> = [];
-  
-  if (historicoData && indicadores) {
-    const periodos = new Set<number>();
-    indicadores.forEach(ind => {
-      const historico = historicoData[ind.nombre] || [];
-      historico.forEach(d => periodos.add(d.periodo));
-    });
-    
-    Array.from(periodos).sort().forEach(periodo => {
-      const punto: { periodo: number; [key: string]: number | string } = { periodo };
-      indicadores.forEach(ind => {
-        const historico = historicoData[ind.nombre] || [];
-        const valor = historico.find(d => d.periodo === periodo);
-        if (valor) {
-          punto[ind.nombre] = valor.valor;
-        }
-      });
-      lineData.push(punto);
-    });
-  }
-
-  const handleExportCSV = () => {
-    if (indicadores) {
-      exportIndicadoresToCSV(indicadores, `subdimension-${subdimensionNombre}`);
-    }
-  };
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
@@ -175,7 +113,10 @@ const SubdimensionDashboard = () => {
   }
 
   const totalIndicadores = indicadores?.length || 0;
-  const pesoDimension = dimensionInfo?.peso || 0;
+  const fmt = (v: number | null | undefined) =>
+    v == null || Number.isNaN(v)
+      ? "—"
+      : v.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   return (
     <>
@@ -254,16 +195,24 @@ const SubdimensionDashboard = () => {
                 </h1>
               </div>
               <p className="text-lg text-gray-600">
-                Sistema de indicadores del ecosistema digital valenciano organizados por dimensiones
+                Indicadores de la subdimensión para {territorioAplicado} · {anoAplicado}
               </p>
             </div>
 
             {/* Dimension Navigation */}
             {dimensionInfo && (
               <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-                <span className="text-sm font-semibold text-gray-700 px-3 py-2 bg-white rounded-lg border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/dimensiones/detalle?dimension=${encodeURIComponent(dimensionInfo.nombre)}&territorio=${encodeURIComponent(territorioAplicado)}&ano=${encodeURIComponent(String(anoAplicado))}`
+                    )
+                  }
+                  className="text-sm font-semibold text-gray-700 px-3 py-2 bg-white rounded-lg border border-gray-200 hover:bg-gray-50"
+                >
                   {dimensionInfo.nombre}
-                </span>
+                </button>
                 <span className="text-sm text-gray-500">→</span>
                 <span className="text-sm font-semibold text-[#0c6c8b] px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
                   {subdimensionNombre}
@@ -271,234 +220,51 @@ const SubdimensionDashboard = () => {
               </div>
             )}
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Comparativa de score para Valencia vs España vs TOP UE */}
-              <Card className="bg-white border-[#0c6c8b]/30">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <GraduationCap className="h-5 w-5 text-[#0c6c8b]" />
-                        <span className="text-sm text-gray-600">Comparativa subdimensión</span>
-                      </div>
-                      <div className="text-3xl font-bold text-[#0c6c8b]">
-                        {subdimScore?.score != null && !isNaN(Number(subdimScore.score))
-                          ? Math.round(Number(subdimScore.score))
-                          : "—"}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Valencia · {periodoComparativa}
-                      </div>
-                    </div>
+            <Card className="bg-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xl font-bold text-gray-900">
+                  Indicadores de la subdimensión ({totalIndicadores})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="text-center py-8 text-gray-500">Cargando indicadores...</div>
+                ) : !indicadores?.length ? (
+                  <div className="text-center py-8 text-gray-500">No hay indicadores para esta subdimensión.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px]">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">{territorioAplicado}</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Media UE</th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Top UE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {indicadores.map((indicador) => {
+                          const comp = comparativaIndicadores?.[indicador.nombre];
+                          return (
+                            <tr key={indicador.nombre} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-3 px-4 text-sm text-gray-900">{indicador.nombre}</td>
+                              <td className="py-3 px-4 text-sm text-center font-medium text-gray-800">{fmt(comp?.territorio)}</td>
+                              <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.espana)}</td>
+                              <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.mediaUE)}</td>
+                              <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.topUE)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {comparativaFetching && (
+                      <p className="text-xs text-gray-500 mt-3">Calculando comparativas para {territorioAplicado} y {anoAplicado}...</p>
+                    )}
                   </div>
-
-                  <div className="space-y-1 mt-3">
-                    <div className="text-sm text-gray-600">
-                      España:{" "}
-                      <span className="font-semibold">
-                        {subdimScore?.espana != null ? Math.round(subdimScore.espana) : "—"}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Media UE:{" "}
-                      <span className="font-semibold">
-                        {subdimScore?.ue != null ? Math.round(subdimScore.ue) : "—"}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      TOP UE: <span className="font-semibold">100</span>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-gray-500 mt-2">
-                    Referencia para Valencia: escala 0–100. El TOP UE (máximo desempeño en la UE) se normaliza a 100,
-                    así que el valor de Valencia indica su distancia relativa frente al mejor benchmark europeo.
-                  </p>
-
-                  {subdimScoresFetching && (
-                    <p className="text-xs text-gray-400 mt-2">Calculando comparativa…</p>
-                  )}
-                </CardContent>
-              </Card>
-              {/* Total Indicadores Card */}
-              <Card className="bg-gray-50 border-gray-200">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <GraduationCap className="h-5 w-5 text-[#0c6c8b]" />
-                        <span className="text-sm text-gray-600">Total indicadores</span>
-                      </div>
-                      <div className="text-3xl font-bold text-gray-900 mb-1">
-                        {totalIndicadores}
-                      </div>
-                      {dimensionInfo && (
-                        <div className="text-xs text-gray-500">
-                          Peso: {pesoDimension}%
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Individual Indicator Cards */}
-              {indicadores?.slice(0, 3).map((indicador, index) => (
-                <Card key={indicador.nombre} className="bg-gray-50 border-gray-200">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <TrendingUp className="h-5 w-5 text-[#0c6c8b]" />
-                        </div>
-                        <div className="text-3xl font-bold text-gray-900 mb-1">
-                          {indicador.ultimoValor !== undefined ? indicador.ultimoValor.toFixed(1) : "0"}
-                        </div>
-                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">
-                          {indicador.nombre}
-                        </p>
-                        {indicador.subdimension && (
-                          <p className="text-xs text-gray-500">
-                            {indicador.subdimension}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Distribución por Subdimensión */}
-              <Card className="bg-white">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <GraduationCap className="h-5 w-5 text-[#0c6c8b]" />
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        Distribución por subdimensión
-                      </CardTitle>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleExportCSV}
-                      className="flex items-center space-x-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Exportar CSV</span>
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend
-                          content={({ payload }) => (
-                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-2 w-full">
-                              {payload?.map((entry, index) => {
-                                const pct = entry.payload?.value ?? pieData[index]?.value;
-                                return (
-                                  <div
-                                    key={`legend-${index}`}
-                                    className="flex items-start gap-2 min-w-0 sm:max-w-[45%]"
-                                  >
-                                    <span
-                                      className="inline-block w-3 h-3 rounded-sm flex-shrink-0 mt-0.5"
-                                      style={{ backgroundColor: entry.color }}
-                                    />
-                                    <span className="text-sm text-gray-700 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                                      {entry.value}: {pct}%
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No hay datos de distribución disponibles
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Evolución Histórica */}
-              <Card className="bg-white">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <TrendingUp className="h-5 w-5 text-[#0c6c8b]" />
-                      <CardTitle className="text-xl font-bold text-gray-900">
-                        Evolución histórica
-                      </CardTitle>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleExportCSV}
-                      className="flex items-center space-x-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Exportar CSV</span>
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {lineData.length > 0 && indicadores ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsLineChart data={lineData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="periodo" 
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis tick={{ fontSize: 12 }} />
-                        <Tooltip />
-                        <Legend />
-                        {indicadores.slice(0, 5).map((ind, index) => (
-                          <Line
-                            key={ind.nombre}
-                            type="monotone"
-                            dataKey={ind.nombre}
-                            stroke={COLORS[index % COLORS.length]}
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            name={ind.nombre.length > 30 ? ind.nombre.substring(0, 30) + "..." : ind.nombre}
-                          />
-                        ))}
-                      </RechartsLineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No hay datos históricos disponibles
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </main>
       </div>

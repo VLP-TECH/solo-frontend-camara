@@ -774,15 +774,18 @@ const DimensionDetail = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {subdimensiones?.map((subdimension) => {
                   const nombreSub = subdimension?.nombre ?? "";
-                  const porcentajeIndicadores = getPorcentajeIndicadores(nombreSub);
                   const scoreNum = Number(subdimension?.score);
                   const tieneScore = !isNaN(scoreNum) && scoreNum > 0;
-                  const progressValue = tieneScore ? Math.min(100, Math.max(0, scoreNum)) : (typeof porcentajeIndicadores === "number" && !isNaN(porcentajeIndicadores) ? porcentajeIndicadores : 0);
+                  const progressValue = tieneScore ? Math.min(100, Math.max(0, scoreNum)) : 0;
                   return (
                   <Card 
                     key={nombreSub} 
                     className="bg-white border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
-                    onClick={() => navigate(`/kpis/subdimension?subdimension=${encodeURIComponent(nombreSub)}&dimension=${encodeURIComponent(displayDimensionNombre)}`)}
+                    onClick={() =>
+                      navigate(
+                        `/kpis/subdimension?subdimension=${encodeURIComponent(nombreSub)}&dimension=${encodeURIComponent(displayDimensionNombre)}&territorio=${encodeURIComponent(territorioEfectivo)}&ano=${encodeURIComponent(appliedAno)}`
+                      )
+                    }
                   >
                     <CardContent className="p-6">
                       <div className="mb-4">
@@ -792,10 +795,10 @@ const DimensionDetail = () => {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <div className="text-4xl font-bold text-gray-900">
-                              {tieneScore ? Math.round(scoreNum) : (porcentajeIndicadores != null ? `${porcentajeIndicadores}%` : "—")}
+                              {tieneScore ? Math.round(scoreNum) : "—"}
                             </div>
                             <div className="text-sm text-gray-500 mt-1">
-                              {tieneScore ? territorioEfectivo : (porcentajeIndicadores != null ? "de los indicadores de la dimensión" : "Sin datos")}
+                              {tieneScore ? territorioEfectivo : "Sin datos"}
                             </div>
                           </div>
                           <div className="text-right space-y-1">
@@ -818,17 +821,14 @@ const DimensionDetail = () => {
                                 </div>
                               </>
                             )}
-                            {porcentajeIndicadores != null && (
-                              <div className="text-sm text-[#0c6c8b] font-medium">
-                                {porcentajeIndicadores}% indicadores
-                              </div>
-                            )}
                           </div>
                         </div>
                         <Progress value={progressValue} className="h-2" />
-                        <div className="text-xs text-gray-500 mt-1">{subdimension.indicadores ?? 0} indicadores</div>
                       </div>
-                      <div className="flex items-center justify-end mt-4">
+                      <div className="flex items-center justify-end gap-2 mt-4">
+                        <span className="text-xs text-gray-500">
+                          {subdimension.indicadores ?? 0} indicadores
+                        </span>
                         <ArrowRight className="h-5 w-5 text-[#0c6c8b]" />
                       </div>
                     </CardContent>
