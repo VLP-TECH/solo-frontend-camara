@@ -6,6 +6,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   Select,
   SelectContent,
@@ -42,6 +43,8 @@ const EvolucionTemporal = () => {
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const [selectedIndicador, setSelectedIndicador] = useState<string>("");
+  const [searchIndicador, setSearchIndicador] = useState<string>("");
+  const [selectedComparacionTerritorio, setSelectedComparacionTerritorio] = useState<string>("Valencia");
 
   const handleSignOut = async () => {
     await signOut();
@@ -54,9 +57,34 @@ const EvolucionTemporal = () => {
     queryFn: getIndicadores,
   });
 
-  const indicadorActual = selectedIndicador || todosIndicadores?.[0]?.nombre || "";
+  const normalizeText = (s: string) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
+
+  const indicadoresFiltrados = useMemo(() => {
+    const q = normalizeText(searchIndicador);
+    if (!q) return todosIndicadores || [];
+    return (todosIndicadores || []).filter((ind) =>
+      normalizeText(ind.nombre || "").includes(q)
+    );
+  }, [todosIndicadores, searchIndicador]);
+
+  const indicadorActual =
+    selectedIndicador ||
+    indicadoresFiltrados?.[0]?.nombre ||
+    todosIndicadores?.[0]?.nombre ||
+    "";
+
 
   // Datos históricos del indicador seleccionado (España + Comunitat Valenciana + Alemania como ref UE)
+  const { data: historicoTerritorioRaw } = useQuery({
+    queryKey: ["historico-territorio", indicadorActual, selectedComparacionTerritorio],
+    queryFn: () => getDatosHistoricosIndicador(indicadorActual, selectedComparacionTerritorio, 20),
+    enabled: !!indicadorActual,
+  });
   const { data: historicoCVRaw } = useQuery({
     queryKey: ["historico-cv", indicadorActual],
     queryFn: () => getDatosHistoricosIndicador(indicadorActual, "Comunitat Valenciana", 20),
@@ -74,17 +102,19 @@ const EvolucionTemporal = () => {
   });
 
   const indicadorData = useMemo(() => {
+    const territorioMap = new Map((historicoTerritorioRaw || []).map(d => [d.periodo, d.valor]));
     const cvMap = new Map((historicoCVRaw || []).map(d => [d.periodo, d.valor]));
     const espMap = new Map((historicoEspRaw || []).map(d => [d.periodo, d.valor]));
     const ueMap = new Map((historicoUERaw || []).map(d => [d.periodo, d.valor]));
-    const allYears = [...new Set([...cvMap.keys(), ...espMap.keys(), ...ueMap.keys()])].sort();
+    const allYears = [...new Set([...territorioMap.keys(), ...cvMap.keys(), ...espMap.keys(), ...ueMap.keys()])].sort();
     return allYears.map(year => ({
       year,
+      [selectedComparacionTerritorio]: territorioMap.get(year) ?? null,
       "Comunitat Valenciana": cvMap.get(year) ?? null,
       "España": espMap.get(year) ?? null,
-      "Ref. UE (Alemania)": ueMap.get(year) ?? null,
+      "Top UE (Alemania)": ueMap.get(year) ?? null,
     }));
-  }, [historicoCVRaw, historicoEspRaw, historicoUERaw]);
+  }, [historicoTerritorioRaw, historicoCVRaw, historicoEspRaw, historicoUERaw, selectedComparacionTerritorio]);
 
   // Datos estáticos para evolución por dimensiones e índice global (se mantienen como referencia)
   const dimensionesData = [
@@ -134,6 +164,53 @@ const EvolucionTemporal = () => {
       };
     });
   }, [indiceGlobalHistorico]);
+
+  const resumenCV = useMemo(() => {
+    const valenciaRows = indiceGlobalData.filter(
+      (r) => r.valor != null && Number.isFinite(Number(r.valor))
+    );
+    const first = valenciaRows[0];
+    const last = valenciaRows[valenciaRows.length - 1];
+
+    const crecimientoTotal =
+      first?.valor != null && last?.valor != null
+        ? Number(last.valor) - Number(first.valor)
+        : null;
+
+    const yearSpan =
+      first?.year != null && last?.year != null ? Number(last.year) - Number(first.year) : 0;
+    const cagr =
+      first?.valor != null &&
+      last?.valor != null &&
+      Number(first.valor) > 0 &&
+      yearSpan > 0
+        ? (Math.pow(Number(last.valor) / Number(first.valor), 1 / yearSpan) - 1) * 100
+        : null;
+
+    const dimensionKeys = [
+      "Capital Humano",
+      "Ecosistema",
+      "Emprendimiento",
+      "Infraestructura",
+      "Servicios Públicos",
+      "Sostenibilidad",
+      "Transformación Digital",
+    ] as const;
+    const firstDim = dimensionesData[0];
+    const lastDim = dimensionesData[dimensionesData.length - 1];
+    const evoluciones = dimensionKeys
+      .map((k) => ({ nombre: k, delta: Number(lastDim?.[k] ?? 0) - Number(firstDim?.[k] ?? 0) }))
+      .filter((d) => Number.isFinite(d.delta));
+    const mejor = evoluciones.length
+      ? evoluciones.reduce((acc, cur) => (cur.delta > acc.delta ? cur : acc))
+      : null;
+    const atencion = evoluciones.length
+      ? evoluciones.reduce((acc, cur) => (cur.delta < acc.delta ? cur : acc))
+      : null;
+
+    const rango = first && last ? `${first.year}-${last.year}` : "sin rango";
+    return { crecimientoTotal, cagr, mejor, atencion, rango };
+  }, [indiceGlobalData, dimensionesData]);
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
@@ -223,14 +300,22 @@ const EvolucionTemporal = () => {
             </div>
 
             {/* Key Performance Indicators */}
+            <div>
+              <h2 className="text-lg font-semibold text-[#0c6c8b] mb-3">
+                Indicadores de evolución · Comunidad Valenciana
+              </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="bg-green-50 border-green-200">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Crecimiento Total</p>
-                      <h3 className="text-2xl font-bold text-gray-900">+8.9</h3>
-                      <p className="text-xs text-gray-600 mt-1">puntos (2020-2024)</p>
+                      <h3 className="text-2xl font-bold text-gray-900">
+                        {resumenCV.crecimientoTotal != null
+                          ? `${resumenCV.crecimientoTotal >= 0 ? "+" : ""}${resumenCV.crecimientoTotal.toFixed(1)}`
+                          : "—"}
+                      </h3>
+                      <p className="text-xs text-gray-600 mt-1">puntos ({resumenCV.rango})</p>
                     </div>
                     <TrendingUp className="h-8 w-8 text-green-600" />
                   </div>
@@ -242,7 +327,11 @@ const EvolucionTemporal = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">CAGR</p>
-                      <h3 className="text-2xl font-bold text-gray-900">+3.6%</h3>
+                      <h3 className="text-2xl font-bold text-gray-900">
+                        {resumenCV.cagr != null
+                          ? `${resumenCV.cagr >= 0 ? "+" : ""}${resumenCV.cagr.toFixed(1)}%`
+                          : "—"}
+                      </h3>
                       <p className="text-xs text-gray-600 mt-1">Tasa anual compuesta</p>
                     </div>
                     <TrendingUp className="h-8 w-8 text-blue-600" />
@@ -255,8 +344,14 @@ const EvolucionTemporal = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-blue-200 mb-1">Mejor Evolución</p>
-                      <h3 className="text-xl font-bold mb-1">Infraestructura</h3>
-                      <p className="text-2xl font-bold">+7.0</p>
+                      <h3 className="text-xl font-bold mb-1">
+                        {resumenCV.mejor?.nombre ?? "—"}
+                      </h3>
+                      <p className="text-2xl font-bold">
+                        {resumenCV.mejor != null
+                          ? `${resumenCV.mejor.delta >= 0 ? "+" : ""}${resumenCV.mejor.delta.toFixed(1)}`
+                          : "—"}
+                      </p>
                       <p className="text-xs text-blue-200 mt-1">pts</p>
                     </div>
                     <TrendingUp className="h-8 w-8 text-white" />
@@ -269,14 +364,21 @@ const EvolucionTemporal = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Área de Atención</p>
-                      <h3 className="text-xl font-bold mb-1">Emprendimiento</h3>
-                      <p className="text-2xl font-bold text-orange-600">+8.0</p>
+                      <h3 className="text-xl font-bold mb-1">
+                        {resumenCV.atencion?.nombre ?? "—"}
+                      </h3>
+                      <p className="text-2xl font-bold text-orange-600">
+                        {resumenCV.atencion != null
+                          ? `${resumenCV.atencion.delta >= 0 ? "+" : ""}${resumenCV.atencion.delta.toFixed(1)}`
+                          : "—"}
+                      </p>
                       <p className="text-xs text-gray-600 mt-1">pts</p>
                     </div>
                     <AlertTriangle className="h-8 w-8 text-orange-600" />
                   </div>
                 </CardContent>
               </Card>
+            </div>
             </div>
 
             {/* Evolución del Índice Global */}
@@ -476,18 +578,59 @@ const EvolucionTemporal = () => {
                       Evolución de Indicadores Específicos
                     </CardTitle>
                   </div>
-                  <Select value={indicadorActual} onValueChange={setSelectedIndicador}>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Input
+                        value={searchIndicador}
+                        onChange={(e) => setSearchIndicador(e.target.value)}
+                        placeholder="Buscar indicador..."
+                        className="w-64 bg-white"
+                      />
+                      {searchIndicador.trim() && (
+                        <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-auto">
+                          {indicadoresFiltrados.length > 0 ? (
+                            indicadoresFiltrados.slice(0, 12).map((ind) => (
+                              <button
+                                key={ind.id ?? ind.nombre}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedIndicador(ind.nombre);
+                                  setSearchIndicador("");
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                              >
+                                {ind.nombre}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-sm text-gray-500">Sin resultados</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Select value={selectedComparacionTerritorio} onValueChange={setSelectedComparacionTerritorio}>
+                      <SelectTrigger className="w-44 bg-white">
+                        <SelectValue placeholder="Territorio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(["Valencia", "Castellón", "Alicante"] as const).map((t) => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={indicadorActual} onValueChange={setSelectedIndicador}>
                     <SelectTrigger className="w-96 bg-white">
                       <SelectValue placeholder="Seleccionar indicador..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
-                      {(todosIndicadores || []).map((ind) => (
+                      {(indicadoresFiltrados || []).map((ind) => (
                         <SelectItem key={ind.id ?? ind.nombre} value={ind.nombre}>
                           {ind.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -497,18 +640,23 @@ const EvolucionTemporal = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      {(["Comunitat Valenciana", "España", "Ref. UE (Alemania)"] as const).map((serie, idx) => {
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                      {([selectedComparacionTerritorio, "Comunitat Valenciana", "España", "Top UE (Alemania)"] as const).map((serie, idx) => {
                         const values = indicadorData.map(d => d[serie]).filter((v): v is number => v !== null && v !== undefined);
                         const first = values[0];
                         const last = values[values.length - 1];
                         const growth = first && last && first !== 0
                           ? (((last - first) / Math.abs(first)) * 100).toFixed(1)
                           : null;
-                        const bgColors = ["bg-blue-50 border-blue-200", "bg-blue-50 border-blue-200", "bg-green-50 border-green-200"];
+                        const bgColors = [
+                          "bg-indigo-50 border-indigo-200",
+                          "bg-blue-50 border-blue-200",
+                          "bg-blue-50 border-blue-200",
+                          "bg-green-50 border-green-200",
+                        ];
                         const years = indicadorData.map(d => d.year);
                         return (
-                          <Card key={serie} className={bgColors[idx]}>
+                          <Card key={serie} className={bgColors[idx] || "bg-gray-50 border-gray-200"}>
                             <CardContent className="p-4">
                               <p className="text-sm text-gray-600 mb-1">{serie}</p>
                               <h3 className="text-2xl font-bold text-gray-900">
@@ -538,6 +686,14 @@ const EvolucionTemporal = () => {
                           />
                           <Tooltip />
                           <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey={selectedComparacionTerritorio}
+                            stroke="#6366F1"
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            connectNulls
+                          />
                           <Line 
                             type="monotone" 
                             dataKey="Comunitat Valenciana" 
@@ -556,7 +712,7 @@ const EvolucionTemporal = () => {
                           />
                           <Line 
                             type="monotone" 
-                            dataKey="Ref. UE (Alemania)" 
+                            dataKey="Top UE (Alemania)" 
                             stroke="#10B981" 
                             strokeWidth={2}
                             strokeDasharray="5 5"
