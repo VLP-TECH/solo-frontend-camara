@@ -31,6 +31,55 @@ const NOMBRES_PROVINCIAS: Record<string, string> = {
   castellon: "Castellón",
 };
 
+/** Pesos oficiales de dimensiones según Metodología BRAINNOVA 2026 (Metodologia.tsx) */
+const PESOS_DIMENSIONES: Array<{ nombre: string; peso: number; descripcion: string }> = [
+  { nombre: "Transformación Digital Empresarial", peso: 30, descripcion: "Núcleo del modelo, refleja adopción tecnológica real" },
+  { nombre: "Capital Humano", peso: 20, descripcion: "Factor habilitador esencial" },
+  { nombre: "Infraestructura Digital", peso: 15, descripcion: "Habilitador estructural: permite el uso de herramientas digitales" },
+  { nombre: "Ecosistema y Colaboración", peso: 15, descripcion: "Dinamismo, capacidad de renovación y transición hacia modelos digitales" },
+  { nombre: "Apoyo al Emprendimiento e Innovación", peso: 10, descripcion: "Redes de innovación, transferencia y confianza" },
+  { nombre: "Servicios Públicos Digitales", peso: 10, descripcion: "Impacto útil pero más periférico sobre las empresas" },
+  { nombre: "Sostenibilidad Digital", peso: 5, descripcion: "Dimensión emergente y transversal, incipiente en adopción empresarial" },
+];
+
+const FUENTES_DATOS = [
+  "Instituto Nacional de Estadística (INE) — Datos empresariales y población",
+  "Eurostat — Comparativas europeas",
+  "Ministerio de Asuntos Económicos — Digitalización administrativa",
+  "Comisión Nacional de los Mercados y la Competencia (CNMC) — Infraestructuras y conectividad",
+  "Observatorio Nacional de Tecnología — Adopción tecnológica",
+  "Registros autonómicos — Datos regionales específicos",
+];
+
+/** Mapa de temas a términos de búsqueda de indicadores */
+const TEMAS_INDICADORES: Array<{ keywords: string[]; searchTerms: string[]; dimensionHint: string; contexto: string }> = [
+  { keywords: ["erp"], searchTerms: ["ERP"], dimensionHint: "Transformación Digital Empresarial", contexto: "sistemas ERP en empresas" },
+  { keywords: ["inteligencia artificial", "ia empresas", "empresas ia", "adopción ia", "adopcion ia", "uso de ia"], searchTerms: ["inteligencia artificial", "IA"], dimensionHint: "Transformación Digital Empresarial", contexto: "uso de inteligencia artificial en empresas" },
+  { keywords: ["comercio electrónico", "comercio electronico", "e-commerce", "ecommerce", "ventas online"], searchTerms: ["comercio electrónico", "e-commerce", "ventas online"], dimensionHint: "Transformación Digital Empresarial", contexto: "comercio electrónico empresarial" },
+  { keywords: ["intensidad digital", "dii", "índice de intensidad digital", "indice de intensidad digital"], searchTerms: ["intensidad digital", "DII"], dimensionHint: "Transformación Digital Empresarial", contexto: "Índice de Intensidad Digital (DII)" },
+  { keywords: ["big data", "datos masivos", "analítica de datos", "analitica de datos"], searchTerms: ["big data", "datos", "analítica"], dimensionHint: "Transformación Digital Empresarial", contexto: "uso de big data y analítica de datos" },
+  { keywords: ["cloud", "nube", "servicios en la nube", "computación en la nube"], searchTerms: ["cloud", "nube"], dimensionHint: "Transformación Digital Empresarial", contexto: "adopción de servicios en la nube" },
+  { keywords: ["pymes", "pyme", "pequeñas empresas", "microempresas"], searchTerms: ["pymes", "pequeñas", "micro"], dimensionHint: "Transformación Digital Empresarial", contexto: "digitalización de pymes" },
+  { keywords: ["formación digital", "formacion digital", "capacitación digital", "capacitacion digital", "formación tic", "formacion tic"], searchTerms: ["formación", "capacitación", "formación digital"], dimensionHint: "Capital Humano", contexto: "formación digital en empresas" },
+  { keywords: ["brecha generacional", "competencias por edad", "jóvenes digitales", "jovenes digitales"], searchTerms: ["brecha", "generacional", "edad", "jóvenes"], dimensionHint: "Capital Humano", contexto: "brecha generacional en competencias digitales" },
+  { keywords: ["perfiles tic", "contratar tic", "escasez tic", "talento digital", "reclutamiento tic"], searchTerms: ["perfiles TIC", "contratar", "escasez", "talento"], dimensionHint: "Capital Humano", contexto: "dificultades para contratar perfiles TIC" },
+  { keywords: ["empleo tecnológico", "empleo tecnologico", "empleo tic", "empleo sector tic", "ocupación tic", "ocupacion tic", "trabajadores tic"], searchTerms: ["empleo", "TIC", "tecnológico", "sector"], dimensionHint: "Capital Humano", contexto: "empleo en el sector tecnológico" },
+  { keywords: ["graduados stem", "stem", "graduados tecnología", "graduados tecnologia"], searchTerms: ["STEM", "graduados", "tecnología"], dimensionHint: "Capital Humano", contexto: "graduados STEM" },
+  { keywords: ["eficiencia energética", "tic energía", "tic energia", "tic eficiencia"], searchTerms: ["eficiencia energética", "energía", "TIC"], dimensionHint: "Sostenibilidad Digital", contexto: "uso de TIC para eficiencia energética" },
+  { keywords: ["descarbonización", "descarbonizacion", "plan descarbonización", "plan descarbonizacion", "huella carbono"], searchTerms: ["descarbonización", "carbono", "emisiones"], dimensionHint: "Sostenibilidad Digital", contexto: "planes de descarbonización empresarial" },
+  { keywords: ["consumo energético", "consumo energetico", "energía infraestructura", "energia infraestructura", "centros de datos"], searchTerms: ["consumo energético", "energía", "centro de datos"], dimensionHint: "Sostenibilidad Digital", contexto: "consumo energético de infraestructuras digitales" },
+  { keywords: ["residuos electrónicos", "residuos electronicos", "raee", "reciclaje equipos"], searchTerms: ["residuos", "electrónicos", "RAEE", "reciclaje"], dimensionHint: "Sostenibilidad Digital", contexto: "gestión de residuos electrónicos" },
+  { keywords: ["proyectos europeos", "horizonte europa", "horizon europe", "fondos europeos"], searchTerms: ["proyectos europeos", "Horizonte", "Europa"], dimensionHint: "Ecosistema y Colaboración", contexto: "participación en proyectos europeos" },
+  { keywords: ["densidad empresas tic", "empresas tic región", "empresas tic region", "tejido tic"], searchTerms: ["densidad", "empresas TIC", "sector TIC"], dimensionHint: "Ecosistema y Colaboración", contexto: "densidad de empresas TIC" },
+  { keywords: ["clústeres", "clusteres", "cluster digital", "clúster", "cluster"], searchTerms: ["clúster", "cluster", "concentración"], dimensionHint: "Ecosistema y Colaboración", contexto: "clústeres digitales" },
+  { keywords: ["colaboración universidad", "colaboracion universidad", "universidad-empresa", "transferencia conocimiento"], searchTerms: ["universidad", "colaboración", "transferencia"], dimensionHint: "Ecosistema y Colaboración", contexto: "colaboración universidad-empresa" },
+  { keywords: ["inversión startups", "inversion startups", "venture capital", "capital riesgo"], searchTerms: ["inversión", "startups", "venture", "capital"], dimensionHint: "Emprendimiento e Innovación", contexto: "inversión en startups tecnológicas" },
+  { keywords: ["financiación startups", "financiacion startups", "financiación digital", "financiacion digital", "acceso financiación", "acceso financiacion"], searchTerms: ["financiación", "startups", "acceso"], dimensionHint: "Emprendimiento e Innovación", contexto: "acceso a financiación de startups" },
+  { keywords: ["densidad startups", "número startups", "numero startups", "startups por habitante"], searchTerms: ["densidad", "startups", "número"], dimensionHint: "Emprendimiento e Innovación", contexto: "densidad de startups" },
+  { keywords: ["tasa supervivencia", "supervivencia empresas", "supervivencia startups", "mortalidad empresarial"], searchTerms: ["supervivencia", "tasa", "mortalidad"], dimensionHint: "Emprendimiento e Innovación", contexto: "tasa de supervivencia empresarial" },
+  { keywords: ["sectores digitalizados", "sector más digital", "sector mas digital", "digitalización sectorial", "digitalizacion sectorial"], searchTerms: ["sector", "actividad", "digitalización"], dimensionHint: "Transformación Digital Empresarial", contexto: "digitalización por sectores de actividad" },
+];
+
 export interface KnowledgeItem {
   id: string;
   category: string;
@@ -365,14 +414,392 @@ export async function getKPIInfo(): Promise<KnowledgeItem[]> {
 }
 
 /**
+ * Maneja preguntas sobre el modelo, metodología y cálculos del índice BRAINNOVA.
+ * Devuelve la respuesta directa o null si no coincide con ningún patrón.
+ */
+function handlePreguntasModelo(lowerQuery: string): string | null {
+  // --- Qué mide el índice BRAINNOVA ---
+  if (
+    (lowerQuery.includes("qué mide") || lowerQuery.includes("que mide")) &&
+    (lowerQuery.includes("brainnova") || lowerQuery.includes("índice") || lowerQuery.includes("indice"))
+  ) {
+    return `El **índice BRAINNOVA** mide el grado de desarrollo de la **economía digital** de un territorio. Evalúa la capacidad de empresas, administración y ciudadanía para aprovechar las tecnologías digitales a través de **7 dimensiones**, **28 subdimensiones** y **más de 80 indicadores**. Es un indicador compuesto (escala 0-100) basado en el estándar europeo DESI (Digital Economy and Society Index), adaptado al contexto regional y autonómico español.\n\nLas 7 dimensiones son:\n${PESOS_DIMENSIONES.map((d, i) => `${i + 1}. **${d.nombre}** (${d.peso}%)`).join("\n")}\n\nPuedes consultar el detalle en la sección **Metodología** del menú.`;
+  }
+
+  // --- Cuáles son las dimensiones del sistema ---
+  if (
+    ((lowerQuery.includes("cuáles son") || lowerQuery.includes("cuales son") || lowerQuery.includes("qué dimensiones") || lowerQuery.includes("que dimensiones") || lowerQuery.includes("enumera") || lowerQuery.includes("lista las dimensiones")) &&
+    (lowerQuery.includes("dimensiones") || lowerQuery.includes("sistema"))) ||
+    (lowerQuery.includes("dimensiones del sistema") || lowerQuery.includes("dimensiones brainnova"))
+  ) {
+    return `El sistema BRAINNOVA se estructura en **7 dimensiones**:\n\n${PESOS_DIMENSIONES.map((d, i) => `${i + 1}. **${d.nombre}** (${d.peso}%) — ${d.descripcion}`).join("\n")}\n\nCada dimensión se desglosa en subdimensiones (28 en total) y cada subdimensión contiene indicadores específicos (más de 80 en total). Puedes explorar cada dimensión y sus indicadores en el menú **Dimensiones**.`;
+  }
+
+  // --- Indicadores de la dimensión Capital Humano (pregunta explícita) ---
+  if (
+    (lowerQuery.includes("indicadores") || lowerQuery.includes("qué incluye") || lowerQuery.includes("que incluye") || lowerQuery.includes("qué mide") || lowerQuery.includes("que mide")) &&
+    lowerQuery.includes("capital humano") &&
+    !lowerQuery.includes("peso") && !lowerQuery.includes("ponderación")
+  ) {
+    return `La dimensión **Capital Humano** (peso: 20%) incluye indicadores sobre:\n\n• **Personas con habilidades digitales básicas** (% de la población)\n• **Personas con habilidades digitales avanzadas**\n• **Brecha generacional** en competencias digitales\n• **Empresas que ofrecen formación digital** a sus empleados\n• **Empleo en el sector TIC** y tecnológico\n• **Dificultades para contratar perfiles TIC**\n• **Graduados STEM** y formación universitaria en tecnología\n• **Especialistas TIC** en el mercado laboral\n\nPara ver la lista completa con valores actuales, consulta **Dimensiones** → Capital Humano, o pregúntame "¿Qué indicadores hay en Capital Humano?" para obtener el listado de la base de datos.`;
+  }
+
+  // --- Cómo se calcula el Índice Global BRAINNOVA ---
+  if (
+    (lowerQuery.includes("cómo se calcula") || lowerQuery.includes("como se calcula") || lowerQuery.includes("cómo calcula") || lowerQuery.includes("como calcula") ||
+     lowerQuery.includes("fórmula") || lowerQuery.includes("formula")) &&
+    (lowerQuery.includes("índice") || lowerQuery.includes("indice") || lowerQuery.includes("brainnova") || lowerQuery.includes("global"))
+  ) {
+    return `El **Índice Global BRAINNOVA** se calcula en 4 etapas:\n\n**1. Normalización de indicadores** (escala 0-100):\nValor_Normalizado = ((Valor_Real - Valor_Mín) / (Valor_Máx - Valor_Mín)) × 100\n\n**2. Agregación a subdimensiones** (media ponderada por importancia):\nSubdimensión = ∑(Indicador_i × Peso_i) / ∑Peso_i\n(Pesos: Alta=3, Media=2, Baja=1)\n\n**3. Agregación a dimensiones** (promedio de subdimensiones con score > 0):\nDimensión = promedio(subdimensiones con datos)\n\n**4. Índice global** (media ponderada de las 7 dimensiones):\nÍndice_BRAINNOVA = ∑(Dimensión_k × Peso_k) / 100\n\nLos pesos de cada dimensión:\n${PESOS_DIMENSIONES.map(d => `• ${d.nombre}: **${d.peso}%**`).join("\n")}\n\nEl detalle completo está en la sección **Metodología**.`;
+  }
+
+  // --- Qué peso tiene la Transformación Digital Empresarial ---
+  if (
+    (lowerQuery.includes("qué peso") || lowerQuery.includes("que peso") || lowerQuery.includes("cuánto pesa") || lowerQuery.includes("cuanto pesa")) &&
+    lowerQuery.includes("transformación digital")
+  ) {
+    return `La dimensión **Transformación Digital Empresarial** tiene un peso del **30%** en el índice BRAINNOVA, siendo la dimensión con mayor peso. Es el núcleo del modelo porque refleja la adopción tecnológica real en el tejido empresarial.\n\nIncluye indicadores sobre adopción de ERP, inteligencia artificial, comercio electrónico, big data, servicios en la nube, redes sociales y el Índice de Intensidad Digital (DII).\n\n**Todos los pesos:**\n${PESOS_DIMENSIONES.map(d => `• ${d.nombre}: **${d.peso}%**`).join("\n")}`;
+  }
+
+  // --- Cómo se normalizan los indicadores ---
+  if (
+    (lowerQuery.includes("normaliza") || lowerQuery.includes("normalizan") || lowerQuery.includes("normalización") || lowerQuery.includes("normalizacion"))
+  ) {
+    return `Los indicadores se **normalizan** a una escala 0-100 mediante la fórmula **Min-Max**:\n\n**Valor_Normalizado = ((Valor_Real - Valor_Mínimo) / (Valor_Máximo - Valor_Mínimo)) × 100**\n\nEl mínimo y máximo se obtienen del conjunto de referencia (todos los territorios/países disponibles para ese indicador en el período seleccionado). Así, el peor valor se acerca a 0 y el mejor a 100.\n\nLos indicadores se ponderan según su importancia estratégica:\n• **Alta**: peso 3\n• **Media**: peso 2\n• **Baja**: peso 1\n\nEl score por indicador se calcula como: Score_i = (Valor_i / Max_i) × 100. El detalle completo está en la sección **Metodología**.`;
+  }
+
+  // --- Referencia: media nacional o top europeo ---
+  if (
+    (lowerQuery.includes("referencia") && (lowerQuery.includes("comparación") || lowerQuery.includes("comparacion"))) ||
+    (lowerQuery.includes("media nacional") && lowerQuery.includes("top europeo")) ||
+    ((lowerQuery.includes("referencia") || lowerQuery.includes("benchmark")) && (lowerQuery.includes("europeo") || lowerQuery.includes("nacional")))
+  ) {
+    return `La **referencia** para la comparación de indicadores BRAINNOVA utiliza dos niveles:\n\n• **Media nacional (España)**: se compara el valor del territorio (provincia o CV) con el valor del mismo indicador para España.\n• **Referencia europea (UE)**: se comparan los scores con los de países europeos de referencia (Alemania, Francia, Italia, Países Bajos). El "top europeo" es el mejor valor entre estos países para cada indicador.\n\nEn la **normalización Min-Max**, el máximo y mínimo se calculan sobre todos los territorios disponibles (incluidos los europeos cuando hay datos). En las fichas de subdimensiones se muestran los scores para el territorio, España y la media UE.\n\nPuedes ver estas comparativas en **Dimensiones** (detalle), **Comparación Territorial** y el **Dashboard**.`;
+  }
+
+  // --- Cómo se ponderan las dimensiones ---
+  if (
+    (lowerQuery.includes("cómo se ponderan") || lowerQuery.includes("como se ponderan") || lowerQuery.includes("sistema de ponderación") || lowerQuery.includes("sistema de ponderacion")) &&
+    (lowerQuery.includes("dimensiones") || lowerQuery.includes("índice") || lowerQuery.includes("indice"))
+  ) {
+    return `Las dimensiones del índice BRAINNOVA se **ponderan** con pesos fijos definidos en la metodología. El índice global es la media ponderada:\n\n**Índice_BRAINNOVA = ∑(Dimensión_k × Peso_k) / 100**\n\n**Pesos asignados:**\n${PESOS_DIMENSIONES.map(d => `• **${d.nombre}**: ${d.peso}% — ${d.descripcion}`).join("\n")}\n\nEstos pesos reflejan la importancia estratégica de cada dimensión en el ecosistema digital. La Transformación Digital Empresarial (30%) tiene el mayor peso al ser el núcleo del modelo.`;
+  }
+
+  // --- Qué fuentes de datos se utilizan ---
+  if (
+    (lowerQuery.includes("fuentes") || lowerQuery.includes("fuente")) &&
+    (lowerQuery.includes("datos") || lowerQuery.includes("información") || lowerQuery.includes("informacion") || lowerQuery.includes("utilizan") || lowerQuery.includes("usan"))
+  ) {
+    return `Las **fuentes de datos** del índice BRAINNOVA son:\n\n${FUENTES_DATOS.map((f, i) => `${i + 1}. **${f.split(" — ")[0]}** — ${f.split(" — ")[1]}`).join("\n")}\n\nCada indicador tiene su fuente específica registrada en la base de datos (campo "Fuente"). Puedes ver la fuente de cada indicador en **Todos los Indicadores (KPIs)**. Todos los datos pasan por un proceso de **validación cruzada** con múltiples fuentes antes de su inclusión.`;
+  }
+
+  // --- Cada cuánto se actualizan ---
+  if (
+    (lowerQuery.includes("cada cuánto") || lowerQuery.includes("cada cuanto") || lowerQuery.includes("periodicidad") || lowerQuery.includes("frecuencia") || lowerQuery.includes("actualizan") || lowerQuery.includes("actualización") || lowerQuery.includes("actualizacion")) &&
+    (lowerQuery.includes("indicador") || lowerQuery.includes("indicadores") || lowerQuery.includes("datos") || lowerQuery.includes("índice") || lowerQuery.includes("indice"))
+  ) {
+    return `El índice BRAINNOVA se **actualiza anualmente**, con datos de cierre a 31 de diciembre del año anterior.\n\n• La mayoría de indicadores se actualizan **anualmente** según la disponibilidad de fuentes oficiales (INE, Eurostat, CNMC...)\n• Algunos indicadores de infraestructura pueden tener datos **semestrales**\n• Los periodos disponibles en el panel son: **2022, 2023, 2024**\n\nTodos los datos pasan por un proceso de **validación cruzada** con múltiples fuentes. La **metodología se revisa cada 2-3 años** para incorporar nuevas tendencias y tecnologías emergentes.\n\nPuedes ver el último periodo disponible de cada indicador en **Todos los Indicadores (KPIs)**.`;
+  }
+
+  // --- Se puede recalcular con otra ponderación ---
+  if (
+    (lowerQuery.includes("recalcular") || lowerQuery.includes("recalcula") || lowerQuery.includes("otra ponderación") || lowerQuery.includes("otra ponderacion") || lowerQuery.includes("cambiar pesos") || lowerQuery.includes("modificar pesos"))
+  ) {
+    return `**Sí**, es posible recalcular el índice BRAINNOVA con otra ponderación. Los scores de cada dimensión ya están calculados independientemente, por lo que basta con aplicar la media ponderada con los nuevos pesos:\n\n**Índice_nuevo = ∑(Dimensión_k × Peso_nuevo_k) / ∑Peso_nuevo_k**\n\nLos pesos actuales son:\n${PESOS_DIMENSIONES.map(d => `• ${d.nombre}: ${d.peso}%`).join("\n")}\n\nPara simular con otros pesos, puedes tomar los scores por dimensión del **Dashboard** o de **Comparación Territorial** y aplicar tu propia fórmula. La sección **BRAINNOVA Score** (/brainnova-score) permite calcular el índice con los filtros disponibles.`;
+  }
+
+  return null;
+}
+
+/**
+ * Maneja preguntas de análisis avanzado: brecha, priorización, impacto, correlación, simulación.
+ */
+async function handlePreguntasAnalisis(
+  lowerQuery: string,
+  provinciaKey: string | undefined
+): Promise<string | null> {
+  // --- Dimensión con mayor brecha respecto al top europeo ---
+  if (
+    (lowerQuery.includes("brecha") || lowerQuery.includes("gap")) &&
+    (lowerQuery.includes("top europeo") || lowerQuery.includes("europa") || lowerQuery.includes("ue") || lowerQuery.includes("europeo"))
+  ) {
+    try {
+      let territorio = "Valencia";
+      if (provinciaKey) territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      const dimensiones = await getDimensiones();
+      if (dimensiones.length > 0) {
+        const comparativas = await Promise.all(
+          dimensiones.map(async (dim) => {
+            const subs = await getSubdimensionesConScores(dim.nombre, territorio, 2024);
+            const scoresTerritorio = subs.filter(s => s.score > 0);
+            const scoresUE = subs.filter(s => s.ue > 0);
+            const avgTerritorio = scoresTerritorio.length > 0 ? scoresTerritorio.reduce((a, b) => a + b.score, 0) / scoresTerritorio.length : 0;
+            const avgUE = scoresUE.length > 0 ? scoresUE.reduce((a, b) => a + b.ue, 0) / scoresUE.length : 0;
+            return { nombre: dim.nombre, scoreTerritorio: Math.round(avgTerritorio), scoreUE: Math.round(avgUE), brecha: Math.round(avgUE - avgTerritorio) };
+          })
+        );
+        const conBrechaPositiva = comparativas.filter(c => c.brecha > 0).sort((a, b) => b.brecha - a.brecha);
+        if (conBrechaPositiva.length > 0) {
+          const ranking = conBrechaPositiva.map((c, i) => `${i + 1}. **${c.nombre}**: ${territorio} ${c.scoreTerritorio} vs UE ${c.scoreUE} (brecha: **${c.brecha} puntos**)`).join("\n");
+          return `**Dimensiones con mayor brecha respecto a la media UE** en ${territorio}:\n\n${ranking}\n\nLa dimensión con **mayor brecha** es **${conBrechaPositiva[0].nombre}** (${conBrechaPositiva[0].brecha} puntos por debajo de la media UE). Para cerrar esta brecha, se deberían priorizar los indicadores de esa dimensión.`;
+        }
+        return `No se ha detectado una brecha significativa respecto a la media UE en los datos disponibles para ${territorio}. Esto puede deberse a que no hay suficientes datos europeos cargados. Consulta **Comparación Territorial** y el **Dashboard** para más detalle.`;
+      }
+    } catch (error) {
+      console.error("Error fetching brecha UE:", error);
+    }
+  }
+
+  // --- Subdimensiones por debajo de la media nacional ---
+  if (
+    (lowerQuery.includes("subdimensiones") || lowerQuery.includes("subdimensión") || lowerQuery.includes("subdimension")) &&
+    (lowerQuery.includes("por debajo") || lowerQuery.includes("debajo de la media") || lowerQuery.includes("inferior"))
+  ) {
+    try {
+      let territorio = "Valencia";
+      if (provinciaKey) territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      const dimensiones = await getDimensiones();
+      const porDebajoDeEspana: Array<{ sub: string; dim: string; score: number; espana: number; diff: number }> = [];
+      for (const dim of dimensiones) {
+        const subs = await getSubdimensionesConScores(dim.nombre, territorio, 2024);
+        for (const sub of subs) {
+          if (sub.score > 0 && sub.espana > 0 && sub.score < sub.espana) {
+            porDebajoDeEspana.push({ sub: sub.nombre, dim: dim.nombre, score: sub.score, espana: sub.espana, diff: sub.espana - sub.score });
+          }
+        }
+      }
+      if (porDebajoDeEspana.length > 0) {
+        porDebajoDeEspana.sort((a, b) => b.diff - a.diff);
+        const lista = porDebajoDeEspana.slice(0, 10).map((s, i) => `${i + 1}. **${s.sub}** (${s.dim}): ${territorio} ${s.score} vs España ${s.espana} (−${s.diff} pts)`).join("\n");
+        return `**Subdimensiones de ${territorio} por debajo de la media nacional (España):**\n\n${lista}\n\nEstas ${porDebajoDeEspana.length} subdimensiones representan áreas donde ${territorio} tiene margen de mejora respecto a la media española.`;
+      }
+      return `No se han encontrado subdimensiones de ${territorio} significativamente por debajo de la media nacional en los datos disponibles.`;
+    } catch (error) {
+      console.error("Error fetching subdimensiones bajo media:", error);
+    }
+  }
+
+  // --- Qué dimensión tiene mayor impacto en el índice global ---
+  if (
+    (lowerQuery.includes("mayor impacto") || lowerQuery.includes("más impacto") || lowerQuery.includes("mas impacto") || lowerQuery.includes("más influye") || lowerQuery.includes("mas influye")) &&
+    (lowerQuery.includes("índice") || lowerQuery.includes("indice") || lowerQuery.includes("global") || lowerQuery.includes("dimensión") || lowerQuery.includes("dimension"))
+  ) {
+    return `La dimensión con **mayor impacto** en el índice global depende de dos factores: su **peso** y su **score actual**.\n\n**Por peso asignado:**\n${PESOS_DIMENSIONES.map(d => `• ${d.nombre}: **${d.peso}%**`).join("\n")}\n\nLa **Transformación Digital Empresarial** (30%) es la que más influye por su peso. Un cambio de 1 punto en esta dimensión afecta 0,3 puntos al índice global, mientras que el mismo cambio en Sostenibilidad Digital (5%) solo afecta 0,05 puntos.\n\n**Por margen de mejora:** las dimensiones con scores más bajos tienen mayor potencial de impacto si se invierten recursos en mejorarlas. Consulta el **Dashboard** o **Comparación Territorial** para ver qué dimensiones tienen más margen.`;
+  }
+
+  // --- Qué ocurriría si aumentara la adopción de IA un 10% ---
+  if (
+    (lowerQuery.includes("qué ocurriría") || lowerQuery.includes("que ocurriria") || lowerQuery.includes("qué pasaría") || lowerQuery.includes("que pasaria") || lowerQuery.includes("simulación") || lowerQuery.includes("simulacion") || lowerQuery.includes("si aumentara") || lowerQuery.includes("si creciera"))
+  ) {
+    return `Un aumento del **10% en la adopción de IA** afectaría al índice BRAINNOVA de la siguiente manera:\n\n1. **Efecto directo**: el indicador de IA mejoraría dentro de la subdimensión correspondiente de **Transformación Digital Empresarial**\n2. **Efecto en la dimensión**: según el peso del indicador (Alta, Media o Baja) y el número de indicadores en la subdimensión, el score de la dimensión subiría proporcionalmente\n3. **Efecto en el índice global**: como Transformación Digital Empresarial tiene un peso del **30%**, el impacto en el índice global sería significativo\n\n**Estimación aproximada**: si el indicador de IA tiene importancia "Alta" (peso 3) y la subdimensión tiene ~5 indicadores, un aumento del 10% en IA podría subir la dimensión ~2-3 puntos, lo que se traduciría en ~0,6-0,9 puntos en el índice global.\n\nPara una simulación exacta, puedes usar la sección **BRAINNOVA Score** del menú.`;
+  }
+
+  // --- Correlación entre capital humano y digitalización empresarial ---
+  if (
+    lowerQuery.includes("correlación") || lowerQuery.includes("correlacion")
+  ) {
+    try {
+      const dimensiones = await getDimensiones();
+      const provinciasNombres = ["Valencia", "Alicante", "Castellón"];
+      const datos: Array<{ prov: string; capitalHumano: number; transformacion: number }> = [];
+      for (const prov of provinciasNombres) {
+        const ch = await getDimensionScore("Capital Humano", prov, 2024);
+        const td = await getDimensionScore("Transformación Digital Empresarial", prov, 2024);
+        if (ch > 0 && td > 0) datos.push({ prov, capitalHumano: ch, transformacion: td });
+      }
+      if (datos.length > 0) {
+        const lineas = datos.map(d => `• **${d.prov}**: Capital Humano ${d.capitalHumano} | Transformación Digital ${d.transformacion}`).join("\n");
+        return `**Relación entre Capital Humano y Transformación Digital Empresarial** por provincia:\n\n${lineas}\n\nLos datos sugieren que las provincias con mayor score en Capital Humano tienden a tener también mejores resultados en digitalización empresarial, lo que indica una **correlación positiva**. El capital humano actúa como habilitador de la transformación digital.\n\nPara un análisis estadístico formal (coeficiente de correlación), se pueden exportar los datos desde **Comparación Territorial** o **Todos los Indicadores (KPIs)**.`;
+      }
+    } catch (error) {
+      console.error("Error en análisis correlación:", error);
+    }
+    return `La **correlación entre Capital Humano y digitalización empresarial** puede analizarse comparando los scores de ambas dimensiones por territorio en **Comparación Territorial** y en el **Dashboard**. Generalmente existe una correlación positiva: territorios con mayor capital humano digital tienden a tener mayor transformación digital empresarial. Para un análisis estadístico formal se pueden exportar los datos.`;
+  }
+
+  // --- Indicadores que explican la brecha con top europeo ---
+  if (
+    (lowerQuery.includes("indicadores") || lowerQuery.includes("indicador")) &&
+    (lowerQuery.includes("explican") || lowerQuery.includes("causan")) &&
+    (lowerQuery.includes("brecha") || lowerQuery.includes("gap"))
+  ) {
+    return `Los **indicadores que explican la brecha** respecto al top europeo son aquellos donde el territorio (CV o provincia) tiene un valor claramente por debajo de la referencia UE. Para identificarlos:\n\n1. Consulta cada dimensión en **Dimensiones** (detalle) → las subdimensiones con mayor diferencia entre score del territorio y score UE son las que más contribuyen\n2. Dentro de esas subdimensiones, los indicadores con importancia "Alta" y valor bajo son los más explicativos\n3. Típicamente, las mayores brechas se encuentran en indicadores de **adopción de tecnologías avanzadas** (IA, big data, cloud) y **emprendimiento digital**\n\nPuedes ver las comparativas por subdimensión en las fichas de dimensiones, donde se muestra territorio vs España vs UE.`;
+  }
+
+  // --- Áreas a priorizar para mejorar el índice global ---
+  if (
+    (lowerQuery.includes("priorizar") || lowerQuery.includes("priorizar") || lowerQuery.includes("áreas") || lowerQuery.includes("areas")) &&
+    (lowerQuery.includes("mejorar") || lowerQuery.includes("índice") || lowerQuery.includes("indice") || lowerQuery.includes("subir"))
+  ) {
+    try {
+      let territorio = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : "Valencia";
+      const dimensiones = await getDimensiones();
+      const scoresPairs = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const score = await getDimensionScore(dim.nombre, territorio, 2024);
+          const pesoDim = PESOS_DIMENSIONES.find(p => p.nombre.toLowerCase().includes(dim.nombre.toLowerCase().slice(0, 15)))?.peso || 10;
+          return { nombre: dim.nombre, score, peso: pesoDim, impactoPotencial: Math.round((100 - score) * pesoDim / 100) };
+        })
+      );
+      const conDatos = scoresPairs.filter(s => s.score > 0);
+      if (conDatos.length > 0) {
+        conDatos.sort((a, b) => b.impactoPotencial - a.impactoPotencial);
+        const ranking = conDatos.map((s, i) => `${i + 1}. **${s.nombre}** — score actual: ${s.score}, peso: ${s.peso}%, impacto potencial: **+${s.impactoPotencial}** puntos si llegara a 100`).join("\n");
+        return `**Áreas a priorizar para mejorar el índice BRAINNOVA** en ${territorio} (ordenadas por impacto potencial):\n\n${ranking}\n\nLa priorización combina dos factores: el **peso** de la dimensión y su **margen de mejora** (distancia a 100). Las dimensiones con mayor "impacto potencial" son las que más beneficio aportarían al índice global si se mejoran.`;
+      }
+    } catch (error) {
+      console.error("Error en análisis priorización:", error);
+    }
+  }
+
+  // --- Comparación Valencia con Madrid ---
+  if (
+    lowerQuery.includes("madrid") &&
+    (lowerQuery.includes("compara") || lowerQuery.includes("comparación") || lowerQuery.includes("comparacion") || lowerQuery.includes("frente") || lowerQuery.includes("versus") || lowerQuery.includes("vs"))
+  ) {
+    return `La comparación de **Valencia con Madrid** en capital humano digital u otras dimensiones requiere datos de ambas regiones. El panel BRAINNOVA está centrado en la **Comunitat Valenciana** (Valencia, Alicante, Castellón).\n\nPara una comparación interregional:\n• Los datos de la CV se encuentran en **Comparación Territorial** y el **Dashboard**\n• Los datos de Madrid podrían obtenerse de fuentes como el DESI regional o informes del INE sobre digitalización por CC.AA.\n• A nivel europeo, se pueden usar datos de Eurostat para comparar regiones NUTS-2\n\nDentro de la CV, puedes comparar las tres provincias en todas las dimensiones. ¿Quieres ver la comparación entre Valencia, Alicante y Castellón en Capital Humano?`;
+  }
+
+  // --- Qué provincia lidera en una dimensión ---
+  if (
+    (lowerQuery.includes("provincia lidera") || lowerQuery.includes("provincia mejor") || lowerQuery.includes("quién lidera") || lowerQuery.includes("quien lidera") || lowerQuery.includes("cuál lidera") || lowerQuery.includes("cual lidera"))
+  ) {
+    try {
+      const dimensiones = await getDimensiones();
+      const dimMencionada = dimensiones.find(d => lowerQuery.includes(d.nombre.toLowerCase()));
+      if (dimMencionada) {
+        const [valencia, alicante, castellon] = await Promise.all([
+          getDimensionScore(dimMencionada.nombre, "Valencia", 2024),
+          getDimensionScore(dimMencionada.nombre, "Alicante", 2024),
+          getDimensionScore(dimMencionada.nombre, "Castellón", 2024),
+        ]);
+        const provincias = [
+          { nombre: "Valencia", score: valencia },
+          { nombre: "Alicante", score: alicante },
+          { nombre: "Castellón", score: castellon },
+        ].sort((a, b) => b.score - a.score);
+        return `**Ranking provincial en ${dimMencionada.nombre}:**\n\n${provincias.map((p, i) => `${i + 1}. **${p.nombre}**: ${p.score} puntos`).join("\n")}\n\nLa provincia que **lidera** en ${dimMencionada.nombre} es **${provincias[0].nombre}** con ${provincias[0].score} puntos.`;
+      }
+      const resultados: Array<{ dim: string; lider: string; score: number }> = [];
+      for (const dim of dimensiones) {
+        const [v, a, c] = await Promise.all([
+          getDimensionScore(dim.nombre, "Valencia", 2024),
+          getDimensionScore(dim.nombre, "Alicante", 2024),
+          getDimensionScore(dim.nombre, "Castellón", 2024),
+        ]);
+        const max = Math.max(v, a, c);
+        const lider = max === v ? "Valencia" : max === a ? "Alicante" : "Castellón";
+        if (max > 0) resultados.push({ dim: dim.nombre, lider, score: max });
+      }
+      if (resultados.length > 0) {
+        const lista = resultados.map(r => `• **${r.dim}**: lidera **${r.lider}** (${r.score} pts)`).join("\n");
+        return `**Provincia líder por dimensión:**\n\n${lista}`;
+      }
+    } catch (error) {
+      console.error("Error provincia lidera:", error);
+    }
+  }
+
+  // --- Posición de la CV respecto a la UE ---
+  if (
+    (lowerQuery.includes("posición") || lowerQuery.includes("posicion")) &&
+    (lowerQuery.includes("ue") || lowerQuery.includes("unión europea") || lowerQuery.includes("union europea") || lowerQuery.includes("europa"))
+  ) {
+    return `La **posición de la Comunitat Valenciana respecto a la UE** se analiza comparando los scores de cada dimensión con la referencia europea (media de España, Alemania, Francia, Italia y Países Bajos).\n\nPara ver la posición relativa:\n• En **Dimensiones** → detalle de cada dimensión: se muestran scores por subdimensión vs España vs UE\n• En el **Dashboard**: el gráfico radar permite comparar con la referencia UE\n• En **Evolución Temporal**: se puede seguir la convergencia/divergencia con Europa\n\nGeneralmente, la CV se sitúa por debajo de la media UE en dimensiones como Transformación Digital Empresarial y Emprendimiento, y más cerca de la media en Infraestructura Digital. Consulta las comparativas por dimensión para el detalle actual.`;
+  }
+
+  // --- Brecha entre zonas urbanas y rurales ---
+  if (
+    (lowerQuery.includes("brecha") || lowerQuery.includes("diferencia")) &&
+    (lowerQuery.includes("urbana") || lowerQuery.includes("rural") || lowerQuery.includes("urbano") || lowerQuery.includes("rurales"))
+  ) {
+    return `La **brecha entre zonas urbanas y rurales** en la Comunitat Valenciana se puede aproximar comparando las provincias:\n\n• **Valencia**: mayor concentración urbana, tiende a liderar en Capital Humano y servicios digitales\n• **Alicante**: perfil mixto con buena infraestructura\n• **Castellón**: mayor ruralidad relativa, puede mostrar menor score en algunas dimensiones\n\nLos datos del panel se organizan por **provincia** (Valencia, Alicante, Castellón), no por ámbito urbano/rural directo. Para un análisis más granular, algunos indicadores pueden tener desglose territorial más fino en las fuentes originales (INE, Eurostat).\n\nPuedes comparar las tres provincias en **Comparación Territorial** para ver las diferencias actuales.`;
+  }
+
+  return null;
+}
+
+/**
+ * Maneja preguntas sobre temas específicos buscando indicadores relevantes en la BD.
+ */
+async function handleIndicadorPorTema(
+  lowerQuery: string,
+  cleanQuery: string,
+  provinciaKey: string | undefined
+): Promise<string | null> {
+  for (const tema of TEMAS_INDICADORES) {
+    const coincide = tema.keywords.some(kw => lowerQuery.includes(kw));
+    if (!coincide) continue;
+
+    const indicadores = await searchIndicators(tema.searchTerms.join(" "));
+    if (indicadores.length === 0) {
+      for (const term of tema.searchTerms) {
+        const alt = await searchIndicators(term);
+        if (alt.length > 0) {
+          indicadores.push(...alt);
+          break;
+        }
+      }
+    }
+
+    if (indicadores.length > 0) {
+      const nombreProvincia = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : undefined;
+      const detalle = await getIndicatorDetails(indicadores[0].nombre, {
+        pais: nombreProvincia,
+        periodo: 2024,
+      });
+
+      if (detalle) {
+        let respuesta = `**${detalle.nombre}**\n\n`;
+        if (detalle.dimension) respuesta += `Dimensión: ${detalle.dimension}\n`;
+        if (detalle.subdimension) respuesta += `Subdimensión: ${detalle.subdimension}\n`;
+        if (detalle.importancia) respuesta += `Importancia: ${detalle.importancia}\n`;
+        if (detalle.formula) respuesta += `Fórmula: ${detalle.formula}\n`;
+        if (detalle.fuente) respuesta += `Fuente: ${detalle.fuente}\n`;
+
+        if (detalle.ultimoValor !== undefined && detalle.ultimoValor !== null) {
+          respuesta += `\nÚltimo valor${nombreProvincia ? ` en **${nombreProvincia}**` : ""}: **${detalle.ultimoValor}**`;
+          if (detalle.ultimoPeriodo) respuesta += ` (período ${detalle.ultimoPeriodo})`;
+          if (detalle.ultimoPais && !nombreProvincia) respuesta += ` — ${detalle.ultimoPais}`;
+        } else {
+          respuesta += `\nNo hay un valor registrado para este indicador${nombreProvincia ? ` en ${nombreProvincia}` : ""}. Consulta **Todos los Indicadores (KPIs)** para más detalle.`;
+        }
+
+        if (indicadores.length > 1) {
+          respuesta += `\n\nTambién hay ${indicadores.length - 1} indicador(es) más sobre ${tema.contexto}. ¿Quieres el detalle de alguno?`;
+        }
+
+        return respuesta;
+      }
+    }
+
+    return `No he encontrado datos específicos sobre **${tema.contexto}** en la base de datos actual. Este indicador pertenece a la dimensión **${tema.dimensionHint}**. Puedes consultar **Dimensiones** → ${tema.dimensionHint} o **Todos los Indicadores (KPIs)** para explorar los indicadores disponibles.`;
+  }
+
+  return null;
+}
+
+/**
  * Genera una respuesta del chatbot basada en la consulta del usuario
  */
 export async function generateChatbotResponse(userQuery: string): Promise<string> {
-  // Limpiar la consulta
   const cleanQuery = userQuery.replace(/[¿?¡!]/g, '').trim();
   const lowerQuery = cleanQuery.toLowerCase();
 
-  // --- Puntuación / índice global de la Comunitat Valenciana (desde Supabase) ---
+  // Detectar provincia mencionada (se usa en varios handlers)
+  const provinciaKeyDetectada = Object.keys(NOMBRES_PROVINCIAS).find(
+    (key) => lowerQuery.includes(key)
+  );
+
+  // --- 1. Preguntas sobre modelo, metodología y cálculos (respuestas estáticas precisas) ---
+  const respuestaModelo = handlePreguntasModelo(lowerQuery);
+  if (respuestaModelo) return respuestaModelo;
+
+  // --- 2. Preguntas de análisis avanzado (brecha UE, priorización, impacto, etc.) ---
+  const respuestaAnalisis = await handlePreguntasAnalisis(lowerQuery, provinciaKeyDetectada);
+  if (respuestaAnalisis) return respuestaAnalisis;
+
+  // --- 3. Puntuación / índice global de la Comunitat Valenciana (desde Supabase) ---
   const preguntaPuntuacionGlobal =
     (lowerQuery.includes("puntuación global") || lowerQuery.includes("puntuacion global") ||
      lowerQuery.includes("índice global") || lowerQuery.includes("indice global") ||
@@ -387,9 +814,7 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   }
 
   // --- Índice BRAINNOVA por provincia (Alicante, Castellón, Valencia) ---
-  const provinciaKey = Object.keys(NOMBRES_PROVINCIAS).find(
-    (key) => lowerQuery.includes(key)
-  );
+  const provinciaKey = provinciaKeyDetectada;
   const preguntaIndiceProvincia =
     (lowerQuery.includes("índice") || lowerQuery.includes("indice")) &&
     (lowerQuery.includes("brainnova") ||
@@ -818,6 +1243,10 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
   
+  // --- 4. Preguntas sobre temas específicos (ERP, IA, 5G, sostenibilidad, etc.) ---
+  const respuestaTema = await handleIndicadorPorTema(lowerQuery, cleanQuery, provinciaKey);
+  if (respuestaTema) return respuestaTema;
+
   // Detectar si pregunta sobre KPIs o indicadores específicos
   if (lowerQuery.includes('kpi') || lowerQuery.includes('indicador') || lowerQuery.includes('métrica') || lowerQuery.includes('dato') || lowerQuery.includes('empresa') || lowerQuery.includes('persona') || lowerQuery.includes('digital') || lowerQuery.includes('inteligencia artificial') || lowerQuery.includes('big data') || lowerQuery.includes('banda ancha') || lowerQuery.includes('habilidad')) {
     // Buscar indicadores que coincidan con la consulta
@@ -924,7 +1353,7 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
   
-  // Respuesta por defecto
-  return `No tengo esa información, lo siento. Puedo ayudarte con preguntas sobre dimensiones, indicadores, pesos, evolución del índice, comparación entre provincias o encuestas. ¿Puedes reformular tu pregunta?`;
+  // Respuesta por defecto mejorada con sugerencias concretas
+  return `No he encontrado una respuesta precisa para tu pregunta. Puedo ayudarte con:\n\n**Sobre el modelo:**\n• "¿Qué mide el índice BRAINNOVA?"\n• "¿Cuáles son las dimensiones?"\n• "¿Cómo se calcula el índice global?"\n\n**Sobre resultados:**\n• "¿Cuál es la puntuación global de la Comunitat Valenciana?"\n• "¿Cuál es la mejor dimensión de Valencia?"\n• "¿Cómo ha evolucionado el índice?"\n\n**Sobre indicadores:**\n• "¿Qué porcentaje de empresas usa ERP?"\n• "¿Cuál es la cobertura 5G?"\n• "¿Qué indicadores hay en Capital Humano?"\n\n**Análisis avanzado:**\n• "¿Qué áreas priorizar para mejorar el índice?"\n• "¿Cuál es la brecha respecto al top europeo?"\n\n¿Puedes reformular tu pregunta?`;
 }
 
