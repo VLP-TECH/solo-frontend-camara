@@ -949,10 +949,17 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   // Normalizar typos frecuentes antes de analizar
   const lowerQuery = cleanQuery.toLowerCase()
     .replace(/puntauaci[oó]n/g, "puntuación")
+    .replace(/puntuci[oó]n/g, "puntuación")
     .replace(/puntución/g, "puntuación")
+    .replace(/domensiones/g, "dimensiones")
+    .replace(/dimesiones/g, "dimensiones")
+    .replace(/dimenciones/g, "dimensiones")
+    .replace(/dimenisones/g, "dimensiones")
     .replace(/dimesi[oó]n/g, "dimensión")
+    .replace(/dimens[oó]n/g, "dimensión")
     .replace(/indicadore(?!s)/g, "indicadores")
-    .replace(/evoluci[oó]n/g, "evolución");
+    .replace(/evoluci[oó]n/g, "evolución")
+    .replace(/castellon(?!é)/g, "castellón");
 
   // Detectar provincia mencionada (se usa en varios handlers)
   const provinciaKeyDetectada = Object.keys(NOMBRES_PROVINCIAS).find(
@@ -1312,6 +1319,66 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
     }
   }
   
+  // --- Puntuaciones/scores de todas las dimensiones para un territorio (calculado) ---
+  const pidePuntuacionesDimensiones =
+    (lowerQuery.includes("puntuaciones") || lowerQuery.includes("puntuación") || lowerQuery.includes("puntuacion") ||
+     lowerQuery.includes("scores") || lowerQuery.includes("resultados") || lowerQuery.includes("notas") ||
+     lowerQuery.includes("valores")) &&
+    (lowerQuery.includes("dimensiones") || lowerQuery.includes("dimensión") || lowerQuery.includes("dimension") ||
+     lowerQuery.includes("cada dimensión") || lowerQuery.includes("cada dimension") ||
+     lowerQuery.includes("todas las dimensiones") || lowerQuery.includes("por dimensión") || lowerQuery.includes("por dimension")) &&
+    (provinciaKey != null || lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") ||
+     lowerQuery.includes("valenciana") || lowerQuery.includes("valencia") || lowerQuery.includes("alicante") ||
+     lowerQuery.includes("castellón") || lowerQuery.includes("castellon"));
+
+  if (pidePuntuacionesDimensiones) {
+    try {
+      let territorio = "Valencia";
+      if (provinciaKey) {
+        territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      } else if (lowerQuery.includes("alicante")) {
+        territorio = "Alicante";
+      } else if (lowerQuery.includes("castellón") || lowerQuery.includes("castellon")) {
+        territorio = "Castellón";
+      } else if (lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana")) {
+        territorio = "Comunitat Valenciana";
+      }
+
+      const dimensiones = await getDimensiones();
+      if (dimensiones && dimensiones.length > 0) {
+        const scorePairs = await Promise.all(
+          dimensiones.map(async (dim) => ({
+            nombre: dim.nombre,
+            peso: dim.peso,
+            score: await getDimensionScore(dim.nombre, territorio, 2024),
+          }))
+        );
+
+        const conDatos = scorePairs.filter(s => s.score > 0);
+        if (conDatos.length > 0) {
+          conDatos.sort((a, b) => b.score - a.score);
+          const mejor = conDatos[0];
+          const peor = conDatos[conDatos.length - 1];
+
+          const indiceGlobal = await getIndiceGlobalTerritorio(territorio, 2024);
+
+          let respuesta = `**Puntuaciones por dimensión en ${territorio}** (sobre 100):\n\n`;
+          respuesta += conDatos.map((s, i) => `${i + 1}. **${s.nombre}** (peso ${s.peso}%): **${s.score}** puntos`).join("\n");
+          if (indiceGlobal) {
+            respuesta += `\n\n**Índice global BRAINNOVA**: **${indiceGlobal}** puntos`;
+          }
+          respuesta += `\n\n**Mejor dimensión**: ${mejor.nombre} (${mejor.score} pts)`;
+          respuesta += `\n**Dimensión con más margen de mejora**: ${peor.nombre} (${peor.score} pts)`;
+
+          return respuesta;
+        }
+        return `No se han podido obtener puntuaciones de las dimensiones para **${territorio}** en este momento. Consulta **Comparación Territorial** para ver los datos.`;
+      }
+    } catch (error) {
+      console.error("Error fetching dimension scores for territory:", error);
+    }
+  }
+
   // --- Preguntas sobre peso / importancia de dimensiones en el índice ---
   // Nombres de dimensiones conocidos para matching flexible (sin depender de la keyword "dimensión")
   const NOMBRES_DIMENSIONES_CONOCIDAS = [
