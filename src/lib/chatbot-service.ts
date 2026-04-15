@@ -946,7 +946,13 @@ async function handleIndicadorPorTema(
  */
 export async function generateChatbotResponse(userQuery: string): Promise<string> {
   const cleanQuery = userQuery.replace(/[¿?¡!]/g, '').trim();
-  const lowerQuery = cleanQuery.toLowerCase();
+  // Normalizar typos frecuentes antes de analizar
+  const lowerQuery = cleanQuery.toLowerCase()
+    .replace(/puntauaci[oó]n/g, "puntuación")
+    .replace(/puntución/g, "puntuación")
+    .replace(/dimesi[oó]n/g, "dimensión")
+    .replace(/indicadore(?!s)/g, "indicadores")
+    .replace(/evoluci[oó]n/g, "evolución");
 
   // Detectar provincia mencionada (se usa en varios handlers)
   const provinciaKeyDetectada = Object.keys(NOMBRES_PROVINCIAS).find(
@@ -1171,32 +1177,19 @@ export async function generateChatbotResponse(userQuery: string): Promise<string
   }
 
   // --- Mejor/peor dimensión de un territorio ---
+  const tieneDimension = lowerQuery.includes("dimensión") || lowerQuery.includes("dimension") || lowerQuery.includes("dimensiones");
+  const tieneTerritorio = lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") || lowerQuery.includes("valenciana") ||
+    provinciaKey != null || lowerQuery.includes("valencia") || lowerQuery.includes("alicante") ||
+    lowerQuery.includes("castellón") || lowerQuery.includes("castellon");
+  const palabrasMejor = lowerQuery.includes("mejor") || lowerQuery.includes("mayor") || lowerQuery.includes("más alta") || lowerQuery.includes("mas alta") || lowerQuery.includes("más alto") || lowerQuery.includes("más fuerte") || lowerQuery.includes("punto fuerte") || lowerQuery.includes("destaca");
+  const palabrasPeor = lowerQuery.includes("peor") || lowerQuery.includes("menor") || lowerQuery.includes("más baja") || lowerQuery.includes("mas baja") || lowerQuery.includes("más bajo") || lowerQuery.includes("más débil") || lowerQuery.includes("punto débil");
+
   const preguntaMejorPeorDimension =
-    (lowerQuery.includes("mejor resultado") || lowerQuery.includes("peor resultado") ||
-     lowerQuery.includes("mejor dimensión") || lowerQuery.includes("mejor dimension") ||
-     lowerQuery.includes("peor dimensión") || lowerQuery.includes("peor dimension") ||
-     lowerQuery.includes("mayor puntuación") || lowerQuery.includes("mayor puntuacion") ||
-     lowerQuery.includes("menor puntuación") || lowerQuery.includes("menor puntuacion") ||
-     lowerQuery.includes("peor puntuación") || lowerQuery.includes("peor puntuacion") ||
-     lowerQuery.includes("mejor puntuación") || lowerQuery.includes("mejor puntuacion") ||
-     lowerQuery.includes("más alta") || lowerQuery.includes("más baja") ||
-     lowerQuery.includes("mas alta") || lowerQuery.includes("mas baja") ||
-     lowerQuery.includes("más alto") || lowerQuery.includes("más bajo") ||
-     lowerQuery.includes("menor score") || lowerQuery.includes("mayor score") ||
-     lowerQuery.includes("menor resultado") || lowerQuery.includes("mayor resultado") ||
-     lowerQuery.includes("destaca") || lowerQuery.includes("más fuerte") || lowerQuery.includes("más débil") ||
-     lowerQuery.includes("punto fuerte") || lowerQuery.includes("punto débil")) &&
-    (lowerQuery.includes("dimensión") || lowerQuery.includes("dimension") || lowerQuery.includes("dimensiones") ||
-     lowerQuery.includes("resultado") || lowerQuery.includes("puntuación") || lowerQuery.includes("puntuacion") ||
-     lowerQuery.includes("score") || lowerQuery.includes("destaca") || lowerQuery.includes("fuerte") || lowerQuery.includes("débil")) &&
-    (lowerQuery.includes("comunitat") || lowerQuery.includes("comunidad valenciana") || lowerQuery.includes("valenciana") ||
-     provinciaKey != null || lowerQuery.includes("valencia") || lowerQuery.includes("alicante") ||
-     lowerQuery.includes("castellón") || lowerQuery.includes("castellon"));
+    (palabrasMejor || palabrasPeor) && tieneDimension && tieneTerritorio;
 
   if (preguntaMejorPeorDimension) {
     try {
-      const esPeor = lowerQuery.includes("peor") || lowerQuery.includes("más débil") || lowerQuery.includes("punto débil") ||
-        lowerQuery.includes("menor") || lowerQuery.includes("más baja") || lowerQuery.includes("mas baja") || lowerQuery.includes("más bajo");
+      const esPeor = palabrasPeor && !palabrasMejor;
       let territorio = "Comunitat Valenciana";
       if (provinciaKey) {
         territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
