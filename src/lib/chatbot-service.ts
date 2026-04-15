@@ -427,10 +427,14 @@ function handlePreguntasModelo(lowerQuery: string): string | null {
   }
 
   // --- Cuáles son las dimensiones del sistema ---
+  const pideDatosNumericos = lowerQuery.includes("puntuaciones") || lowerQuery.includes("puntuación") ||
+    lowerQuery.includes("puntuacion") || lowerQuery.includes("scores") || lowerQuery.includes("resultados") ||
+    lowerQuery.includes("notas") || lowerQuery.includes("valores") || lowerQuery.includes("score");
   if (
-    ((lowerQuery.includes("cuáles son") || lowerQuery.includes("cuales son") || lowerQuery.includes("qué dimensiones") || lowerQuery.includes("que dimensiones") || lowerQuery.includes("enumera") || lowerQuery.includes("lista las dimensiones")) &&
+    !pideDatosNumericos &&
+    (((lowerQuery.includes("cuáles son") || lowerQuery.includes("cuales son") || lowerQuery.includes("qué dimensiones") || lowerQuery.includes("que dimensiones") || lowerQuery.includes("enumera") || lowerQuery.includes("lista las dimensiones")) &&
     (lowerQuery.includes("dimensiones") || lowerQuery.includes("sistema"))) ||
-    (lowerQuery.includes("dimensiones del sistema") || lowerQuery.includes("dimensiones brainnova"))
+    (lowerQuery.includes("dimensiones del sistema") || lowerQuery.includes("dimensiones brainnova")))
   ) {
     return `El sistema BRAINNOVA se estructura en **7 dimensiones**:\n\n${PESOS_DIMENSIONES.map((d, i) => `${i + 1}. **${d.nombre}** (${d.peso}%) — ${d.descripcion}`).join("\n")}\n\nCada dimensión se desglosa en subdimensiones (28 en total) y cada subdimensión contiene indicadores específicos (más de 80 en total). Puedes explorar cada dimensión y sus indicadores en el menú **Dimensiones**.`;
   }
