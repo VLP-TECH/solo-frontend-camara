@@ -579,19 +579,74 @@ async function handlePreguntasAnalisis(
     }
   }
 
-  // --- Qué dimensión tiene mayor impacto en el índice global ---
+  // --- Qué dimensión tiene mayor impacto en el índice global (calculado) ---
   if (
     (lowerQuery.includes("mayor impacto") || lowerQuery.includes("más impacto") || lowerQuery.includes("mas impacto") || lowerQuery.includes("más influye") || lowerQuery.includes("mas influye")) &&
     (lowerQuery.includes("índice") || lowerQuery.includes("indice") || lowerQuery.includes("global") || lowerQuery.includes("dimensión") || lowerQuery.includes("dimension"))
   ) {
-    return `La dimensión con **mayor impacto** en el índice global depende de dos factores: su **peso** y su **score actual**.\n\n**Por peso asignado:**\n${PESOS_DIMENSIONES.map(d => `• ${d.nombre}: **${d.peso}%**`).join("\n")}\n\nLa **Transformación Digital Empresarial** (30%) es la que más influye por su peso. Un cambio de 1 punto en esta dimensión afecta 0,3 puntos al índice global, mientras que el mismo cambio en Sostenibilidad Digital (5%) solo afecta 0,05 puntos.\n\n**Por margen de mejora:** las dimensiones con scores más bajos tienen mayor potencial de impacto si se invierten recursos en mejorarlas. Consulta el **Dashboard** o **Comparación Territorial** para ver qué dimensiones tienen más margen.`;
+    try {
+      let territorio = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : "Valencia";
+      const dimensiones = await getDimensiones();
+      const analisis = await Promise.all(
+        dimensiones.map(async (dim) => {
+          const score = await getDimensionScore(dim.nombre, territorio, 2024);
+          const pesoDim = PESOS_DIMENSIONES.find(p => dim.nombre.toLowerCase().includes(p.nombre.toLowerCase().slice(0, 15)) || p.nombre.toLowerCase().includes(dim.nombre.toLowerCase().slice(0, 15)))?.peso || 10;
+          const margenMejora = 100 - score;
+          const impactoPotencial = Math.round(margenMejora * pesoDim / 100 * 10) / 10;
+          const impactoPunto = Math.round(pesoDim / 100 * 10) / 10;
+          return { nombre: dim.nombre, score, peso: pesoDim, margenMejora, impactoPotencial, impactoPunto };
+        })
+      );
+      const conDatos = analisis.filter(a => a.score > 0);
+      if (conDatos.length > 0) {
+        conDatos.sort((a, b) => b.impactoPotencial - a.impactoPotencial);
+        const tabla = conDatos.map((a, i) => `${i + 1}. **${a.nombre}** — score: ${a.score}/100, peso: ${a.peso}%, margen: ${a.margenMejora} pts, impacto si llega a 100: **+${a.impactoPotencial}** pts en índice global`).join("\n");
+        return `**Análisis de impacto por dimensión** en ${territorio}:\n\n${tabla}\n\n**Lectura:** La dimensión **${conDatos[0].nombre}** tiene el mayor impacto potencial (+${conDatos[0].impactoPotencial} puntos si llegara a 100) porque combina alto peso (${conDatos[0].peso}%) con margen de mejora (${conDatos[0].margenMejora} puntos).\n\nCada punto que suba ${conDatos[0].nombre} aporta **${conDatos[0].impactoPunto}** puntos al índice global.`;
+      }
+    } catch (error) {
+      console.error("Error en análisis impacto:", error);
+    }
+    return `La dimensión con **mayor impacto** en el índice global depende del peso (Transformación Digital Empresarial 30% es la mayor) y del margen de mejora actual. No se han podido obtener los datos para el cálculo en este momento.`;
   }
 
-  // --- Qué ocurriría si aumentara la adopción de IA un 10% ---
+  // --- Qué ocurriría si aumentara la adopción de IA un 10% (calculado) ---
   if (
     (lowerQuery.includes("qué ocurriría") || lowerQuery.includes("que ocurriria") || lowerQuery.includes("qué pasaría") || lowerQuery.includes("que pasaria") || lowerQuery.includes("simulación") || lowerQuery.includes("simulacion") || lowerQuery.includes("si aumentara") || lowerQuery.includes("si creciera"))
   ) {
-    return `Un aumento del **10% en la adopción de IA** afectaría al índice BRAINNOVA de la siguiente manera:\n\n1. **Efecto directo**: el indicador de IA mejoraría dentro de la subdimensión correspondiente de **Transformación Digital Empresarial**\n2. **Efecto en la dimensión**: según el peso del indicador (Alta, Media o Baja) y el número de indicadores en la subdimensión, el score de la dimensión subiría proporcionalmente\n3. **Efecto en el índice global**: como Transformación Digital Empresarial tiene un peso del **30%**, el impacto en el índice global sería significativo\n\n**Estimación aproximada**: si el indicador de IA tiene importancia "Alta" (peso 3) y la subdimensión tiene ~5 indicadores, un aumento del 10% en IA podría subir la dimensión ~2-3 puntos, lo que se traduciría en ~0,6-0,9 puntos en el índice global.\n\nPara una simulación exacta, puedes usar la sección **BRAINNOVA Score** del menú.`;
+    try {
+      let territorio = provinciaKey ? (NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey) : "Valencia";
+      const indiceActual = await getIndiceGlobalTerritorio(territorio, 2024);
+      const scoreTDE = await getDimensionScore("Transformación Digital Empresarial", territorio, 2024);
+      const pesoTDE = PESOS_DIMENSIONES.find(p => p.nombre.includes("Transformación"))?.peso || 30;
+
+      let respuesta = `**Simulación: +10% adopción de IA** en ${territorio}:\n\n`;
+      respuesta += `**Estado actual:**\n`;
+      if (indiceActual) respuesta += `• Índice global BRAINNOVA: **${indiceActual}** puntos\n`;
+      if (scoreTDE > 0) respuesta += `• Score Transformación Digital Empresarial: **${scoreTDE}** puntos\n`;
+      respuesta += `• Peso de la dimensión: **${pesoTDE}%**\n\n`;
+
+      respuesta += `**Estimación del impacto:**\n`;
+      respuesta += `1. Un +10% en el indicador de IA (importancia "Alta", peso 3) dentro de una subdimensión con ~5 indicadores → la subdimensión sube ~6-8 puntos\n`;
+      respuesta += `2. Si la dimensión Transformación Digital tiene ~4 subdimensiones → la dimensión sube ~**2-3 puntos**\n`;
+
+      if (scoreTDE > 0) {
+        const nuevoScoreTDE = scoreTDE + 2.5;
+        const impactoIndice = Math.round(2.5 * pesoTDE / 100 * 10) / 10;
+        respuesta += `3. Score TDE pasaría de ${scoreTDE} a ~**${Math.round(nuevoScoreTDE)}**\n`;
+        respuesta += `4. Impacto en índice global: ~**+${impactoIndice}** puntos`;
+        if (indiceActual) {
+          const nuevoIndice = Math.round((indiceActual + impactoIndice) * 10) / 10;
+          respuesta += ` (de ${indiceActual} a ~**${nuevoIndice}**)`;
+        }
+        respuesta += `\n`;
+      }
+
+      respuesta += `\nPara una simulación exacta, consulta la sección **BRAINNOVA Score** del menú.`;
+      return respuesta;
+    } catch (error) {
+      console.error("Error en simulación:", error);
+    }
+    return `Un aumento del 10% en IA impactaría en Transformación Digital Empresarial (peso 30%) y subiría el índice global ~0,6-0,9 puntos. No se han podido obtener datos para una estimación más precisa.`;
   }
 
   // --- Correlación entre capital humano y digitalización empresarial ---
@@ -617,13 +672,35 @@ async function handlePreguntasAnalisis(
     return `La **correlación entre Capital Humano y digitalización empresarial** puede analizarse comparando los scores de ambas dimensiones por territorio en **Comparación Territorial** y en el **Dashboard**. Generalmente existe una correlación positiva: territorios con mayor capital humano digital tienden a tener mayor transformación digital empresarial. Para un análisis estadístico formal se pueden exportar los datos.`;
   }
 
-  // --- Indicadores que explican la brecha con top europeo ---
+  // --- Indicadores/subdimensiones que explican la brecha con top europeo (calculado) ---
   if (
-    (lowerQuery.includes("indicadores") || lowerQuery.includes("indicador")) &&
-    (lowerQuery.includes("explican") || lowerQuery.includes("causan")) &&
-    (lowerQuery.includes("brecha") || lowerQuery.includes("gap"))
+    (lowerQuery.includes("indicadores") || lowerQuery.includes("indicador") || lowerQuery.includes("subdimensiones") || lowerQuery.includes("qué explica") || lowerQuery.includes("que explica")) &&
+    (lowerQuery.includes("explican") || lowerQuery.includes("causan") || lowerQuery.includes("explica")) &&
+    (lowerQuery.includes("brecha") || lowerQuery.includes("gap") || lowerQuery.includes("europeo") || lowerQuery.includes("ue"))
   ) {
-    return `Los **indicadores que explican la brecha** respecto al top europeo son aquellos donde el territorio (CV o provincia) tiene un valor claramente por debajo de la referencia UE. Para identificarlos:\n\n1. Consulta cada dimensión en **Dimensiones** (detalle) → las subdimensiones con mayor diferencia entre score del territorio y score UE son las que más contribuyen\n2. Dentro de esas subdimensiones, los indicadores con importancia "Alta" y valor bajo son los más explicativos\n3. Típicamente, las mayores brechas se encuentran en indicadores de **adopción de tecnologías avanzadas** (IA, big data, cloud) y **emprendimiento digital**\n\nPuedes ver las comparativas por subdimensión en las fichas de dimensiones, donde se muestra territorio vs España vs UE.`;
+    try {
+      let territorio = "Valencia";
+      if (provinciaKey) territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+      const dimensiones = await getDimensiones();
+      const brechasPorSub: Array<{ sub: string; dim: string; score: number; ue: number; diff: number }> = [];
+      for (const dim of dimensiones) {
+        const subs = await getSubdimensionesConScores(dim.nombre, territorio, 2024);
+        for (const sub of subs) {
+          if (sub.score > 0 && sub.ue > 0 && sub.score < sub.ue) {
+            brechasPorSub.push({ sub: sub.nombre, dim: dim.nombre, score: sub.score, ue: sub.ue, diff: sub.ue - sub.score });
+          }
+        }
+      }
+      if (brechasPorSub.length > 0) {
+        brechasPorSub.sort((a, b) => b.diff - a.diff);
+        const top10 = brechasPorSub.slice(0, 10);
+        const lista = top10.map((s, i) => `${i + 1}. **${s.sub}** (${s.dim}): ${territorio} ${s.score} vs UE ${s.ue} (**−${s.diff} puntos**)`).join("\n");
+        return `**Subdimensiones que más explican la brecha con la UE** en ${territorio} (ordenadas por diferencia):\n\n${lista}\n\nEstas son las ${brechasPorSub.length} subdimensiones donde ${territorio} está por debajo de la media UE. Las primeras del listado son las que más contribuyen a la brecha global. Mejorar sus indicadores tendría el mayor impacto.`;
+      }
+      return `No se han encontrado subdimensiones de ${territorio} con brecha significativa respecto a la media UE en los datos disponibles.`;
+    } catch (error) {
+      console.error("Error calculando brecha subdimensiones UE:", error);
+    }
   }
 
   // --- Áreas a priorizar para mejorar el índice global ---
@@ -700,12 +777,97 @@ async function handlePreguntasAnalisis(
     }
   }
 
-  // --- Posición de la CV respecto a la UE ---
+  // --- Posición de la CV respecto a la UE (calculado) ---
   if (
-    (lowerQuery.includes("posición") || lowerQuery.includes("posicion")) &&
-    (lowerQuery.includes("ue") || lowerQuery.includes("unión europea") || lowerQuery.includes("union europea") || lowerQuery.includes("europa"))
+    (lowerQuery.includes("posición") || lowerQuery.includes("posicion") || lowerQuery.includes("respecto") || lowerQuery.includes("comparación con") || lowerQuery.includes("comparacion con") || lowerQuery.includes("frente a")) &&
+    (lowerQuery.includes("ue") || lowerQuery.includes("unión europea") || lowerQuery.includes("union europea") || lowerQuery.includes("europa") || lowerQuery.includes("top eu") || lowerQuery.includes("europeo"))
   ) {
-    return `La **posición de la Comunitat Valenciana respecto a la UE** se analiza comparando los scores de cada dimensión con la referencia europea (media de España, Alemania, Francia, Italia y Países Bajos).\n\nPara ver la posición relativa:\n• En **Dimensiones** → detalle de cada dimensión: se muestran scores por subdimensión vs España vs UE\n• En el **Dashboard**: el gráfico radar permite comparar con la referencia UE\n• En **Evolución Temporal**: se puede seguir la convergencia/divergencia con Europa\n\nGeneralmente, la CV se sitúa por debajo de la media UE en dimensiones como Transformación Digital Empresarial y Emprendimiento, y más cerca de la media en Infraestructura Digital. Consulta las comparativas por dimensión para el detalle actual.`;
+    try {
+      let territorio = "Valencia";
+      if (provinciaKey) territorio = NOMBRES_PROVINCIAS[provinciaKey] || provinciaKey;
+
+      const dimensiones = await getDimensiones();
+      const comparativa: Array<{
+        dim: string;
+        scoreTerritorio: number;
+        scoreEspana: number;
+        scoreUE: number;
+        diffUE: number;
+        posicion: string;
+      }> = [];
+
+      for (const dim of dimensiones) {
+        const subs = await getSubdimensionesConScores(dim.nombre, territorio, 2024);
+        const conScore = subs.filter(s => s.score > 0);
+        const conEspana = subs.filter(s => s.espana > 0);
+        const conUE = subs.filter(s => s.ue > 0);
+
+        const avgTerritorio = conScore.length > 0
+          ? Math.round(conScore.reduce((a, b) => a + b.score, 0) / conScore.length)
+          : 0;
+        const avgEspana = conEspana.length > 0
+          ? Math.round(conEspana.reduce((a, b) => a + b.espana, 0) / conEspana.length)
+          : 0;
+        const avgUE = conUE.length > 0
+          ? Math.round(conUE.reduce((a, b) => a + b.ue, 0) / conUE.length)
+          : 0;
+
+        if (avgTerritorio > 0) {
+          const diffUE = avgUE > 0 ? avgTerritorio - avgUE : 0;
+          let posicion = "sin datos UE";
+          if (avgUE > 0) {
+            if (diffUE > 5) posicion = "por encima de la UE";
+            else if (diffUE >= -5) posicion = "similar a la UE";
+            else posicion = "por debajo de la UE";
+          }
+          comparativa.push({ dim: dim.nombre, scoreTerritorio: avgTerritorio, scoreEspana: avgEspana, scoreUE: avgUE, diffUE, posicion });
+        }
+      }
+
+      if (comparativa.length > 0) {
+        const tabla = comparativa.map(c => {
+          const signo = c.diffUE >= 0 ? "+" : "";
+          const ueStr = c.scoreUE > 0 ? `${c.scoreUE}` : "N/D";
+          const diffStr = c.scoreUE > 0 ? ` (${signo}${c.diffUE})` : "";
+          return `| ${c.dim} | **${c.scoreTerritorio}** | ${c.scoreEspana || "N/D"} | ${ueStr} | ${c.diffUE !== 0 ? `**${signo}${c.diffUE}**` : "—"}${c.scoreUE > 0 ? ` ${c.posicion}` : ""} |`;
+        }).join("\n");
+
+        const porEncima = comparativa.filter(c => c.diffUE > 5).length;
+        const porDebajo = comparativa.filter(c => c.diffUE < -5).length;
+        const similar = comparativa.filter(c => c.scoreUE > 0 && c.diffUE >= -5 && c.diffUE <= 5).length;
+        const sinDatosUE = comparativa.filter(c => c.scoreUE === 0).length;
+
+        const indiceCV = comparativa.reduce((sum, c) => sum + c.scoreTerritorio, 0) / comparativa.length;
+        const indiceUE = comparativa.filter(c => c.scoreUE > 0);
+        const avgIndiceUE = indiceUE.length > 0 ? indiceUE.reduce((sum, c) => sum + c.scoreUE, 0) / indiceUE.length : 0;
+        const diffGlobal = avgIndiceUE > 0 ? Math.round(indiceCV - avgIndiceUE) : 0;
+
+        let resumen = `**Posición de ${territorio} respecto a la UE** (calculado por dimensión):\n\n`;
+        resumen += `| Dimensión | ${territorio} | España | Media UE | Diferencia vs UE |\n`;
+        resumen += `|---|---|---|---|---|\n`;
+        resumen += tabla;
+        resumen += `\n\n**Resumen:**\n`;
+        if (avgIndiceUE > 0) {
+          const signoG = diffGlobal >= 0 ? "+" : "";
+          resumen += `• Índice medio ${territorio}: **${Math.round(indiceCV)}** vs Media UE: **${Math.round(avgIndiceUE)}** (${signoG}${diffGlobal} puntos)\n`;
+        }
+        if (porEncima > 0) resumen += `• ${porEncima} dimensión(es) **por encima** de la media UE\n`;
+        if (similar > 0) resumen += `• ${similar} dimensión(es) **similar(es)** a la media UE (±5 puntos)\n`;
+        if (porDebajo > 0) resumen += `• ${porDebajo} dimensión(es) **por debajo** de la media UE\n`;
+        if (sinDatosUE > 0) resumen += `• ${sinDatosUE} dimensión(es) sin datos UE disponibles\n`;
+
+        const peorBrecha = comparativa.filter(c => c.scoreUE > 0).sort((a, b) => a.diffUE - b.diffUE);
+        if (peorBrecha.length > 0 && peorBrecha[0].diffUE < 0) {
+          resumen += `\nLa **mayor brecha** está en **${peorBrecha[0].dim}** (${peorBrecha[0].diffUE} puntos respecto a la UE).`;
+        }
+
+        return resumen;
+      }
+      return `No se han podido obtener datos suficientes para calcular la posición de ${territorio} respecto a la UE. Consulta el **Dashboard** o **Comparación Territorial** para ver los datos disponibles.`;
+    } catch (error) {
+      console.error("Error calculando posición UE:", error);
+      return `Ha ocurrido un error al calcular la posición respecto a la UE. Puedes consultar el **Dashboard** y **Dimensiones** para ver las comparativas.`;
+    }
   }
 
   // --- Brecha entre zonas urbanas y rurales ---
