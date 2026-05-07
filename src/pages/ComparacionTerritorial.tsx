@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDimensiones, getDimensionScore } from "@/lib/kpis-data";
+import { getDashboardSnapshot } from "@/lib/dashboard-snapshot";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -31,83 +31,81 @@ const ComparacionTerritorial = () => {
 
   const periodo = parseInt(selectedAno, 10) || 2024;
 
-  const { data: comparacionData, isLoading: loadingComparacion } = useQuery({
-    queryKey: ["comparacion-territorial", periodo],
-    queryFn: async () => {
-      const dimensiones = await getDimensiones();
-      const provinciasNombres = ["Valencia", "Alicante", "Castellón"] as const;
-      const scoresPorDimension: Array<{ dimension: string; valencia: number; alicante: number; castellon: number; destacado: "valencia" | "alicante" | "castellon" }> = [];
-      for (const dim of dimensiones) {
-        const [valencia, alicante, castellon] = await Promise.all([
-          getDimensionScore(dim.nombre, "Valencia", periodo),
-          getDimensionScore(dim.nombre, "Alicante", periodo),
-          getDimensionScore(dim.nombre, "Castellón", periodo),
-        ]);
-        const max = Math.max(valencia, alicante, castellon);
-        const destacado: "valencia" | "alicante" | "castellon" =
-          max === valencia ? "valencia" : max === alicante ? "alicante" : "castellon";
-        scoresPorDimension.push({
-          dimension: dim.nombre,
-          valencia,
-          alicante,
-          castellon,
-          destacado,
-        });
-      }
-      const provinciaToKey: Record<string, "valencia" | "alicante" | "castellon"> = {
-        Valencia: "valencia",
-        Alicante: "alicante",
-        "Castellón": "castellon",
-      };
-      const indicePorProvincia: Record<string, number> = {};
-      const mejorDimensionPorProvincia: Record<string, { nombre: string; puntos: number }> = {};
-      for (const p of provinciasNombres) {
-        let suma = 0;
-        let count = 0;
-        let mejorNombre = "";
-        let mejorPuntos = 0;
-        const key = provinciaToKey[p];
-        for (const row of scoresPorDimension) {
-          const v = row[key];
-          if (typeof v === "number") {
-            suma += v;
-            count++;
-            if (v > mejorPuntos) {
-              mejorPuntos = v;
-              mejorNombre = row.dimension;
-            }
+  const { data: snapshot, isLoading: loadingComparacion } = useQuery({
+    queryKey: ["dashboard-snapshot", periodo],
+    queryFn: () => getDashboardSnapshot(periodo),
+  });
+
+  const comparacionData = useMemo(() => {
+    if (!snapshot) return null;
+    const provinciasNombres = ["Valencia", "Alicante", "Castellón"] as const;
+    const scoresPorDimension = snapshot.dimensiones.map((dim) => {
+      const valencia = dim.scoresPorTerritorio.valencia?.score ?? 0;
+      const alicante = dim.scoresPorTerritorio.alicante?.score ?? 0;
+      const castellon = dim.scoresPorTerritorio.castellon?.score ?? 0;
+      const max = Math.max(valencia, alicante, castellon);
+      const destacado: "valencia" | "alicante" | "castellon" =
+        max === valencia ? "valencia" : max === alicante ? "alicante" : "castellon";
+      return { dimension: dim.nombre, valencia, alicante, castellon, destacado };
+    });
+
+    const provinciaToKey: Record<string, "valencia" | "alicante" | "castellon"> = {
+      Valencia: "valencia",
+      Alicante: "alicante",
+      "Castellón": "castellon",
+    };
+    const indicePorProvincia: Record<string, number> = {};
+    const mejorDimensionPorProvincia: Record<string, { nombre: string; puntos: number }> = {};
+    for (const p of provinciasNombres) {
+      let suma = 0;
+      let count = 0;
+      let mejorNombre = "";
+      let mejorPuntos = 0;
+      const key = provinciaToKey[p];
+      for (const row of scoresPorDimension) {
+        const v = row[key];
+        if (typeof v === "number") {
+          suma += v;
+          count++;
+          if (v > mejorPuntos) {
+            mejorPuntos = v;
+            mejorNombre = row.dimension;
           }
         }
-        indicePorProvincia[p] = count > 0 ? Math.round((suma / count) * 10) / 10 : 0;
-        mejorDimensionPorProvincia[p] = { nombre: mejorNombre, puntos: mejorPuntos };
       }
-      const ordenadas = [...provinciasNombres].sort(
-        (a, b) => (indicePorProvincia[b] ?? 0) - (indicePorProvincia[a] ?? 0)
-      );
-      const provincias = ordenadas.map((nombre, idx) => ({
-        nombre,
-        indice: indicePorProvincia[nombre] ?? 0,
-        ranking: idx + 1,
-        dimensionDestacada: mejorDimensionPorProvincia[nombre]?.nombre ?? "",
-        puntosDimension: mejorDimensionPorProvincia[nombre]?.puntos ?? 0,
-        color: "#3B82F6",
-      }));
-      const mediaRegional =
-        provincias.length > 0
-          ? Math.round((provincias.reduce((s, p) => s + p.indice, 0) / provincias.length) * 10) / 10
-          : 0;
-      const brecha =
-        provincias.length >= 2
-          ? Math.round((Math.max(...provincias.map((p) => p.indice)) - Math.min(...provincias.map((p) => p.indice))) * 10) / 10
-          : 0;
-      return {
-        provincias,
-        comparativaDimensiones: scoresPorDimension,
-        mediaRegional,
-        brechaProvincial: brecha,
-      };
-    },
-  });
+      indicePorProvincia[p] = count > 0 ? Math.round((suma / count) * 10) / 10 : 0;
+      mejorDimensionPorProvincia[p] = { nombre: mejorNombre, puntos: mejorPuntos };
+    }
+    const ordenadas = [...provinciasNombres].sort(
+      (a, b) => (indicePorProvincia[b] ?? 0) - (indicePorProvincia[a] ?? 0)
+    );
+    const provincias = ordenadas.map((nombre, idx) => ({
+      nombre,
+      indice: indicePorProvincia[nombre] ?? 0,
+      ranking: idx + 1,
+      dimensionDestacada: mejorDimensionPorProvincia[nombre]?.nombre ?? "",
+      puntosDimension: mejorDimensionPorProvincia[nombre]?.puntos ?? 0,
+      color: "#3B82F6",
+    }));
+    const mediaRegional =
+      provincias.length > 0
+        ? Math.round((provincias.reduce((s, p) => s + p.indice, 0) / provincias.length) * 10) / 10
+        : 0;
+    const brecha =
+      provincias.length >= 2
+        ? Math.round(
+            (Math.max(...provincias.map((p) => p.indice)) -
+              Math.min(...provincias.map((p) => p.indice))) *
+              10
+          ) / 10
+        : 0;
+    return {
+      provincias,
+      comparativaDimensiones: scoresPorDimension,
+      mediaRegional,
+      brechaProvincial: brecha,
+    };
+  }, [snapshot]);
 
   const provincias = comparacionData?.provincias ?? [];
   const comparativaDimensiones = comparacionData?.comparativaDimensiones ?? [];

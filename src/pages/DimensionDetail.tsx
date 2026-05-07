@@ -41,8 +41,6 @@ import {
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { 
-  getSubdimensionesConScores, 
-  getDimensionScore,
   getDimensiones,
   getIndicadoresConDatos,
   getDistribucionPorSubdimension,
@@ -50,6 +48,11 @@ import {
   getAvailablePaisYPeriodo,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
+import {
+  getDashboardSnapshot,
+  paisToTerritorioKey,
+  type TerritorioKey,
+} from "@/lib/dashboard-snapshot";
 import {
   XAxis,
   YAxis,
@@ -66,8 +69,6 @@ import {
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
 
 const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
-const UE_REFERENCE_COUNTRIES = ["Alemania", "Francia", "Italia", "Países Bajos"] as const;
-
 // Pesos de importancia según documentación técnica Brainnova Score (Alta=3, Media=2, Baja=1)
 const PESO_IMPORTANCIA: Record<string, number> = { Alta: 3, Media: 2, Baja: 1 };
 
@@ -164,60 +165,55 @@ const DimensionDetail = () => {
   };
   const Icon = dimensionInfo.icon;
 
-  // Obtener score global de la dimensión (nombre acepta mayúsculas/minúsculas)
-  const { data: dimensionScore, isFetching: scoreFetching } = useQuery({
-    queryKey: ["dimension-score", canonicalDimensionNombre, territorioEfectivo, appliedAno],
-    queryFn: () => getDimensionScore(canonicalDimensionNombre, territorioEfectivo, Number(appliedAno)),
-    enabled: !!canonicalDimensionNombre,
+  const periodoSnap = Number(appliedAno) || 2024;
+  const { data: snapshot, isFetching: snapshotFetching } = useQuery({
+    queryKey: ["dashboard-snapshot", periodoSnap],
+    queryFn: () => getDashboardSnapshot(periodoSnap),
   });
 
-  const { data: dimensionScoreEspana } = useQuery({
-    queryKey: ["dimension-score", canonicalDimensionNombre, "España", appliedAno],
-    queryFn: () => getDimensionScore(canonicalDimensionNombre, "España", Number(appliedAno)),
-    enabled: !!canonicalDimensionNombre,
-  });
-  // #region agent log
-  useEffect(() => {
-    if (!canonicalDimensionNombre) return;
-    const payload = { location: "DimensionDetail.tsx:dimensionScore", message: "dimension score query result", data: { canonicalDimensionNombre, territorioEfectivo, appliedAno, dimensionScoreRaw: dimensionScore, dimensionScoreType: typeof dimensionScore, isNull: dimensionScore == null }, timestamp: Date.now(), hypothesisId: "H4" };
-    console.warn("[DEBUG]", JSON.stringify(payload));
-    fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
-  }, [canonicalDimensionNombre, territorioEfectivo, appliedAno, dimensionScore]);
-  // #endregion
+  const dimSnapshotRow = useMemo(() => {
+    if (!snapshot || !canonicalDimensionNombre) return null;
+    const norm = (s: string) => (s || "").trim().toLowerCase();
+    return (
+      snapshot.dimensiones.find(
+        (d) => norm(d.nombre) === norm(canonicalDimensionNombre)
+      ) ?? null
+    );
+  }, [snapshot, canonicalDimensionNombre]);
 
-  // Obtener subdimensiones con scores
-  const { data: subdimensiones, isFetching: subdimensionesFetching } = useQuery({
-    queryKey: ["subdimensiones-scores", canonicalDimensionNombre, territorioEfectivo, appliedAno],
-    queryFn: () => getSubdimensionesConScores(canonicalDimensionNombre, territorioEfectivo, Number(appliedAno)),
-    enabled: !!canonicalDimensionNombre,
-  });
+  const territorioKey = paisToTerritorioKey(territorioEfectivo);
+  const dimensionScore = dimSnapshotRow?.scoresPorTerritorio[territorioKey]?.score ?? 0;
+  const dimensionScoreEspana = dimSnapshotRow?.scoresPorTerritorio.espana?.score ?? 0;
 
-  const { data: topUESubdimensionMap = {}, isFetching: topUEFetching } = useQuery({
-    queryKey: ["subdimensiones-top-ue", canonicalDimensionNombre, appliedAno],
-    queryFn: async () => {
-      const byCountry = await Promise.all(
-        UE_REFERENCE_COUNTRIES.map((country) =>
-          getSubdimensionesConScores(canonicalDimensionNombre, country, Number(appliedAno))
-        )
-      );
+  const subdimensiones = useMemo(() => {
+    if (!dimSnapshotRow) return undefined;
+    return dimSnapshotRow.subdimensiones.map((sub) => ({
+      nombre: sub.nombre,
+      score: sub.scoresPorTerritorio[territorioKey]?.score ?? 0,
+      espana: sub.scoresPorTerritorio.espana?.score ?? 0,
+      ue: sub.scoreUE,
+      indicadores: sub.indicadores,
+    }));
+  }, [dimSnapshotRow, territorioKey]);
 
-      const normalize = (s: string) => (s || "").trim().toLowerCase();
-      const map: Record<string, number> = {};
-      for (const rows of byCountry) {
-        for (const row of rows || []) {
-          const key = normalize(row?.nombre || "");
-          const score = Number(row?.score);
-          if (!key || !Number.isFinite(score)) continue;
-          if (map[key] == null || score > map[key]) map[key] = score;
-        }
+  const topUESubdimensionMap = useMemo<Record<string, number>>(() => {
+    if (!dimSnapshotRow) return {};
+    const out: Record<string, number> = {};
+    const norm = (s: string) => (s || "").trim().toLowerCase();
+    for (const sub of dimSnapshotRow.subdimensiones) {
+      let topScore = 0;
+      const ueKeys: TerritorioKey[] = ["alemania", "francia", "italia", "paisesBajos", "espana"];
+      for (const k of ueKeys) {
+        const s = sub.scoresPorTerritorio[k]?.score ?? 0;
+        if (s > topScore) topScore = s;
       }
-      return map;
-    },
-    enabled: !!canonicalDimensionNombre,
-    staleTime: 5 * 60 * 1000,
-  });
+      out[norm(sub.nombre)] = topScore;
+    }
+    return out;
+  }, [dimSnapshotRow]);
 
-  const mostrandoDatos = scoreFetching || subdimensionesFetching;
+  const mostrandoDatos = snapshotFetching;
+  const topUEFetching = snapshotFetching;
   const normalizeSubName = (s: string) => (s || "").trim().toLowerCase();
   const topUEDimensionScore = useMemo(() => {
     if (!subdimensiones?.length) return null;

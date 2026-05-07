@@ -29,7 +29,12 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getDimensiones, getIndicadoresConDatos, getDimensionScore, getAvailablePaisYPeriodo, type IndicadorConDatos } from "@/lib/kpis-data";
+import { getDimensiones, getIndicadoresConDatos, getAvailablePaisYPeriodo, type IndicadorConDatos } from "@/lib/kpis-data";
+import {
+  getDashboardSnapshot,
+  paisToTerritorioKey,
+  type TerritorioKey,
+} from "@/lib/dashboard-snapshot";
 
 interface DimensionData {
   nombre: string;
@@ -119,29 +124,21 @@ const Dimensiones = () => {
     },
   };
 
-  // Obtener scores de dimensiones (país y año aplicados al pulsar MOSTRAR)
-  const { data: dimensionScores, isFetching: dimensionScoresFetching } = useQuery({
-    queryKey: ["dimension-scores-all", appliedTerritorio, appliedAno],
-    queryFn: async () => {
-      if (!dimensionesUnicas.length) return {};
-      const pais = appliedTerritorio;
-      const periodo = Number(appliedAno) || 2024;
-      const scores: Record<string, number> = {};
-      await Promise.all(
-        dimensionesUnicas.map(async (dim) => {
-          try {
-            const score = await getDimensionScore(dim.nombre, pais, periodo);
-            scores[dim.nombre] = score;
-          } catch (error) {
-            console.error(`Error obteniendo score para ${dim.nombre}:`, error);
-            scores[dim.nombre] = 0;
-          }
-        })
-      );
-      return scores;
-    },
-    enabled: dimensionesUnicas.length > 0,
+  const periodoSnap = Number(appliedAno) || 2024;
+  const { data: snapshot, isFetching: dimensionScoresFetching } = useQuery({
+    queryKey: ["dashboard-snapshot", periodoSnap],
+    queryFn: () => getDashboardSnapshot(periodoSnap),
   });
+
+  const dimensionScores = useMemo(() => {
+    if (!snapshot) return {} as Record<string, number>;
+    const territorioKey = paisToTerritorioKey(appliedTerritorio);
+    const out: Record<string, number> = {};
+    for (const dim of snapshot.dimensiones) {
+      out[dim.nombre] = dim.scoresPorTerritorio[territorioKey]?.score ?? 0;
+    }
+    return out;
+  }, [snapshot, appliedTerritorio]);
 
   // Construir dimensiones con datos desde Supabase (solo dimensiones únicas por nombre)
   const dimensionesConIndicadores = dimensionesUnicas.map(dim => {

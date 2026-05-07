@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
   FileText,
@@ -487,13 +488,27 @@ const Informes = () => {
                 </p>
               </div>
               {isAdmin && (
-                <Button
-                  className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                  onClick={() => setShowCreateDialog(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Crear Informe
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-[#0c6c8b] text-[#0c6c8b] hover:bg-blue-50 hover:text-[#0c6c8b] hover:border-[#0c6c8b]"
+                    onClick={() => {
+                      setSelectedInforme(null);
+                      setSelectedFile(null);
+                      setShowUploadDialog(true);
+                    }}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Subir Informe
+                  </Button>
+                  <Button
+                    className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                    onClick={() => setShowCreateDialog(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear Informe
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -732,10 +747,35 @@ const Informes = () => {
             <DialogHeader>
               <DialogTitle>Subir PDF del Informe</DialogTitle>
               <DialogDescription>
-                Selecciona un archivo PDF para reemplazar el informe actual de "{selectedInforme?.title}".
+                {selectedInforme
+                  ? `Selecciona un archivo PDF para reemplazar el informe actual de "${selectedInforme.title}".`
+                  : "Selecciona un informe y sube un archivo PDF para guardarlo en Supabase."}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {!selectedInforme && (
+                <div className="space-y-2">
+                  <Label>Informe</Label>
+                  <Select
+                    value={selectedInforme?.id ?? ""}
+                    onValueChange={(value) => {
+                      const informe = informes.find((inf) => inf.id === value) ?? null;
+                      setSelectedInforme(informe);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un informe" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {informes.map((informe) => (
+                        <SelectItem key={informe.id} value={informe.id}>
+                          {informe.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="pdf-upload">Archivo PDF</Label>
                 <Input
@@ -756,7 +796,7 @@ const Informes = () => {
                 <Button
                   className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
                   onClick={handleUploadPDF}
-                  disabled={!selectedFile || uploading}
+                  disabled={!selectedFile || uploading || !selectedInforme}
                 >
                   {uploading ? (
                     <>

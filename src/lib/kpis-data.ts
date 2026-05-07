@@ -802,15 +802,6 @@ export async function getSubdimensionesConScores(
   indicadores: number;
 }>> {
   try {
-    console.log("getSubdimensionesConScores - nombreDimension:", nombreDimension, "pais:", pais, "periodo:", periodo);
-    // #region agent log
-    const logSub = (msg: string, data: Record<string, unknown>) => {
-      const payload = { location: "kpis-data.ts:getSubdimensionesConScores", message: msg, data, timestamp: Date.now(), hypothesisId: "H2" };
-      console.warn("[DEBUG]", JSON.stringify(payload));
-      fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
-    };
-    logSub("entry", { nombreDimension, pais, periodo });
-    // #endregion
     const [subdimensiones, dimensionId] = await Promise.all([
       getSubdimensiones(),
       getDimensionIdByName(nombreDimension),
@@ -820,7 +811,6 @@ export async function getSubdimensionesConScores(
       nombreDimension,
       dimensionId
     );
-    // Unificar duplicados: misma subdimensión (mismo nombre normalizado) → una sola, mismo identificador lógico
     const seenSub = new Set<string>();
     const subdimensionesUnicas = subdimensionesFiltradas.filter((sub) => {
       const key = normalizeName(sub.nombre ?? "");
@@ -828,10 +818,6 @@ export async function getSubdimensionesConScores(
       seenSub.add(key);
       return true;
     });
-    // #region agent log
-    logSub("after filter", { totalSubdimensiones: subdimensiones.length, filtradasLength: subdimensionesFiltradas.length, unicasLength: subdimensionesUnicas.length, filtradasNombres: subdimensionesUnicas.map((s) => s.nombre), nombreDimensionEnBD: subdimensiones.slice(0, 5).map((s) => s.nombre_dimension) });
-    // #endregion
-    console.log("Subdimensiones filtradas (únicas):", subdimensionesUnicas.length, subdimensionesUnicas.map(s => s.nombre));
 
     const todosIndicadores = await getIndicadores();
 
@@ -852,10 +838,6 @@ export async function getSubdimensionesConScores(
         indicadores = Array.from(byCanonicalSub.values());
 
         if (!indicadores || indicadores.length === 0) {
-          // #region agent log
-          logSub("sub sin indicadores", { subNombre: sub.nombre, nombresSubdimensionEnIndicadores: todosIndicadores.filter((ind) => ind.nombre_subdimension).map((i) => i.nombre_subdimension).slice(0, 10) });
-          // #endregion
-          console.log("No hay indicadores para subdimensión:", sub.nombre, "(nombres en BD:", todosIndicadores.filter(ind => ind.nombre_subdimension).map(i => i.nombre_subdimension).slice(0, 5), ")");
           return {
             nombre: sub.nombre,
             score: 0,
@@ -864,8 +846,6 @@ export async function getSubdimensionesConScores(
             indicadores: 0,
           };
         }
-
-        console.log(`Subdimensión ${sub.nombre}: ${indicadores.length} indicadores encontrados`);
 
         // Obtener valores de los indicadores para el territorio (por nombre_indicador o id_indicador)
         const paisVariations: Record<string, string[]> = {
@@ -885,19 +865,10 @@ export async function getSubdimensionesConScores(
               if (data.length > 0) break;
             }
 
-            if (data.length === 0) {
-              console.log(`⚠️ No se encontraron datos para indicador "${ind.nombre}" en país "${pais}" (variaciones probadas: ${variations.join(", ")})`);
-            } else {
-              console.log(`✓ Datos encontrados para "${ind.nombre}": valor=${data[0].valor_calculado}, periodo=${data[0].periodo}`);
-            }
-
             const valor = data?.[0]?.valor_calculado;
             if (valor !== null && valor !== undefined) {
               const numValor = Number(valor);
-              if (isNaN(numValor)) {
-                console.warn(`⚠️ Valor no numérico para "${ind.nombre}": ${valor}`);
-                return null;
-              }
+              if (isNaN(numValor)) return null;
               return numValor;
             }
             return null;
@@ -1009,12 +980,6 @@ export async function getSubdimensionesConScores(
             ? Math.min(100, Math.max(0, Math.round(scoresPorPais.reduce((a, b) => a + b, 0) / scoresPorPais.length)))
             : 0;
 
-        // #region agent log
-        const nonNullTerritorio = valoresTerritorio.filter((v) => v != null).length;
-        logSub("sub score computed", { subNombre: sub.nombre, indicadoresCount: indicadores.length, valoresTerritorioNonNull: nonNullTerritorio, score, espana, ue });
-        // #endregion
-        console.log(`Resultado para ${sub.nombre}: score=${score}, espana=${espana}, ue=${ue} (metodología Min-Max + ponderación importancia)`);
-
         return {
           nombre: sub.nombre,
           score,
@@ -1041,20 +1006,9 @@ export async function getDimensionScore(
   pais: string = "Comunitat Valenciana",
   periodo: number = 2024
 ): Promise<number> {
-  // #region agent log
-  const log = (msg: string, data: Record<string, unknown>) => {
-    const payload = { location: "kpis-data.ts:getDimensionScore", message: msg, data, timestamp: Date.now(), hypothesisId: "H1" };
-    console.warn("[DEBUG]", JSON.stringify(payload));
-    fetch("http://127.0.0.1:7242/ingest/a8e4c967-55a9-4bdb-a1c8-6bca4e1372c3", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
-  };
-  log("getDimensionScore entry", { nombreDimension, pais, periodo });
-  // #endregion
   try {
     const subdimensiones = await getSubdimensionesConScores(nombreDimension, pais, periodo);
     const conScore = subdimensiones.filter((sub) => sub.score != null && !isNaN(sub.score) && sub.score > 0);
-    // #region agent log
-    log("getDimensionScore after subdimensiones", { totalSubdimensiones: subdimensiones.length, conScoreLength: conScore.length, scores: subdimensiones.map((s) => ({ n: s.nombre, score: s.score })) });
-    // #endregion
     if (conScore.length === 0) return 0;
 
     const promedio = conScore.reduce((sum, sub) => sum + sub.score, 0) / conScore.length;

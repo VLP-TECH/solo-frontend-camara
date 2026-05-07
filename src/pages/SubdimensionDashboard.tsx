@@ -15,11 +15,15 @@ import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
   getIndicadoresPorSubdimension,
-  getDatosHistoricosIndicador,
   getSubdimensiones,
   getDimensiones,
   type IndicadorConDatos
 } from "@/lib/kpis-data";
+import {
+  getDashboardSnapshot,
+  paisToTerritorioKey,
+  type TerritorioKey,
+} from "@/lib/dashboard-snapshot";
 
 const SubdimensionDashboard = () => {
   const navigate = useNavigate();
@@ -59,44 +63,40 @@ const SubdimensionDashboard = () => {
     enabled: !!subdimensionNombre,
   });
 
-  // Comparativa por indicador en el territorio/año aplicados, más España y referencia UE
-  const { data: comparativaIndicadores, isFetching: comparativaFetching } = useQuery({
-    queryKey: ["comparativa-subdimension-indicadores", indicadores?.map(i => i.nombre), territorioAplicado, anoAplicado],
-    queryFn: async () => {
-      if (!indicadores) return {};
-      const uePaises = ["Alemania", "Francia", "Italia", "Países Bajos"];
-      const territoryAliases: Record<string, string[]> = {
-        "Comunidad Valenciana": ["Comunidad Valenciana", "Comunitat Valenciana", "CV"],
-      };
-      const getAliases = (territorio: string): string[] =>
-        territoryAliases[territorio] ?? [territorio];
-      const getValorAnual = async (indicador: string, territorio: string, year: number) => {
-        for (const alias of getAliases(territorio)) {
-          const rows = await getDatosHistoricosIndicador(indicador, alias, 20);
-          const rowYear = rows.find((r) => Number(r.periodo) === year);
-          if (rowYear && Number.isFinite(Number(rowYear.valor))) return Number(rowYear.valor);
-        }
+  const periodoSnap = anoAplicado || 2024;
+  const { data: snapshot, isFetching: comparativaFetching } = useQuery({
+    queryKey: ["dashboard-snapshot", periodoSnap],
+    queryFn: () => getDashboardSnapshot(periodoSnap),
+  });
+
+  const comparativaIndicadores = useMemo(() => {
+    if (!indicadores || !snapshot) {
+      return {} as Record<string, { territorio: number | null; espana: number | null; mediaUE: number | null; topUE: number | null }>;
+    }
+    const territorioKey = paisToTerritorioKey(territorioAplicado);
+    const ueKeys: TerritorioKey[] = ["alemania", "francia", "italia", "paisesBajos"];
+    const norm = (s: string) => (s || "").trim().toLowerCase();
+
+    const data: Record<string, { territorio: number | null; espana: number | null; mediaUE: number | null; topUE: number | null }> = {};
+    for (const ind of indicadores) {
+      const byNombre = snapshot.valoresPorIndicadorNombre.get(norm(ind.nombre));
+      const byId = ind.id != null ? snapshot.valoresPorIndicadorId.get(ind.id) : undefined;
+      const get = (k: TerritorioKey): number | null => {
+        const v1 = byNombre?.get(k);
+        if (v1 != null && Number.isFinite(v1)) return v1;
+        const v2 = byId?.get(k);
+        if (v2 != null && Number.isFinite(v2)) return v2;
         return null;
       };
-
-      const data: Record<string, { territorio: number | null; espana: number | null; mediaUE: number | null; topUE: number | null }> = {};
-      await Promise.all(
-        indicadores.map(async (ind) => {
-          const [territorio, espana, ...ueValsRaw] = await Promise.all([
-            getValorAnual(ind.nombre, territorioAplicado, anoAplicado),
-            getValorAnual(ind.nombre, "España", anoAplicado),
-            ...uePaises.map((p) => getValorAnual(ind.nombre, p, anoAplicado)),
-          ]);
-          const ueVals = ueValsRaw.filter((v): v is number => v != null && Number.isFinite(v));
-          const mediaUE = ueVals.length ? ueVals.reduce((a, b) => a + b, 0) / ueVals.length : null;
-          const topUE = ueVals.length ? Math.max(...ueVals) : null;
-          data[ind.nombre] = { territorio, espana, mediaUE, topUE };
-        })
-      );
-      return data;
-    },
-    enabled: !!indicadores && indicadores.length > 0,
-  });
+      const territorio = get(territorioKey);
+      const espana = get("espana");
+      const ueVals = ueKeys.map(get).filter((v): v is number => v != null);
+      const mediaUE = ueVals.length ? ueVals.reduce((a, b) => a + b, 0) / ueVals.length : null;
+      const topUE = ueVals.length ? Math.max(...ueVals) : null;
+      data[ind.nombre] = { territorio, espana, mediaUE, topUE };
+    }
+    return data;
+  }, [indicadores, snapshot, territorioAplicado]);
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
