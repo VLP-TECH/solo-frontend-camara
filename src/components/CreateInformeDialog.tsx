@@ -8,12 +8,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2, Loader2, Upload, Image as ImageIcon, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { insertInformeCreateRow } from "@/lib/informes-db";
+import { generateInformePdfBlob } from "@/lib/generate-informe-pdf";
 import { useToast } from "@/hooks/use-toast";
 
 interface CreateInformeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
+  /** Tras guardar bien (Supabase o localStorage); puede ser async (p. ej. recargar lista). */
+  onSuccess?: () => void | Promise<void>;
 }
 
 interface Seccion {
@@ -34,7 +37,8 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
-  
+  const [submitPhase, setSubmitPhase] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -167,6 +171,7 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
     }
 
     setLoading(true);
+    setSubmitPhase(null);
     try {
       // Subir imagen de portada si existe
       let portadaImagenUrl = portada.imagenUrl;
@@ -187,11 +192,48 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
         })
       );
 
-      // Preparar datos del informe
+      const fechaPublicacion =
+        formData.date.trim() ||
+        (() => {
+          const hoy = new Date();
+          const s = hoy.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+          return s.charAt(0).toUpperCase() + s.slice(1);
+        })();
+
+      const newId = `informe-editor-${Date.now()}`;
+
+      const contenidoPayload = {
+        portada: {
+          imagenUrl: portadaImagenUrl,
+          organizacion: portada.organizacion,
+          subtitulo: portada.subtitulo,
+          textoAdicional: portada.textoAdicional,
+        },
+        secciones: secciones.filter((s) => s.titulo || s.contenido),
+        graficas: graficasConUrls
+          .filter((g) => g.url || g.titulo)
+          .map(({ id: gid, seccionId, titulo, url }) => ({ id: gid, seccionId, titulo, url })),
+        created_at: new Date().toISOString(),
+      };
+      const contenidoJson = JSON.stringify(contenidoPayload);
+
       const informeData = {
+        id: newId,
         title: formData.title,
         description: formData.description,
-        date: formData.date,
+        date: fechaPublicacion,
+        category: formData.category,
+        portada: contenidoPayload.portada,
+        secciones: contenidoPayload.secciones,
+        graficas: contenidoPayload.graficas,
+        created_at: contenidoPayload.created_at,
+      };
+
+      setSubmitPhase("Generando PDF…");
+      const pdfBlob = await generateInformePdfBlob({
+        title: formData.title,
+        description: formData.description,
+        date: fechaPublicacion,
         category: formData.category,
         portada: {
           imagenUrl: portadaImagenUrl,
@@ -199,48 +241,79 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
           subtitulo: portada.subtitulo,
           textoAdicional: portada.textoAdicional,
         },
-        secciones: secciones.filter(s => s.titulo || s.contenido),
-        graficas: graficasConUrls.filter(g => g.url || g.titulo),
-        created_at: new Date().toISOString(),
-      };
+        secciones: secciones.filter((s) => s.titulo || s.contenido),
+        graficas: graficasConUrls
+          .filter((g) => g.url || g.titulo)
+          .map(({ titulo, url }) => ({ titulo, url: url || "" })),
+      });
+
+      setSubmitPhase("Subiendo PDF…");
+      const safePrefix = newId.replace(/[^a-z0-9-_]/gi, "-");
+      const pdfPath = `${safePrefix}-${Date.now()}.pdf`;
+      const { error: pdfUploadError } = await supabase.storage.from("informes").upload(pdfPath, pdfBlob, {
+        contentType: "application/pdf",
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (pdfUploadError) {
+        console.error("Error subiendo PDF:", pdfUploadError);
+        toast({
+          title: "Error al subir el PDF",
+          description: pdfUploadError.message || "No se pudo subir el PDF generado.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const { data: pdfUrlData } = supabase.storage.from("informes").getPublicUrl(pdfPath);
+      const publicPdfUrl = pdfUrlData.publicUrl;
 
       // Guardar en Supabase (tabla informes) o localStorage como fallback
-      let savedSuccessfully = false;
       try {
-        const { error: insertError } = await supabase
-          .from('informes')
-          // @ts-ignore: tabla informes puede no estar tipada
-          .insert([informeData]);
+        setSubmitPhase("Guardando en base de datos…");
+        const { error: insertError } = await insertInformeCreateRow({
+          id: newId,
+          titulo: formData.title,
+          descripcion: formData.description,
+          fecha: fechaPublicacion,
+          contenidoJson,
+          pdfUrl: publicPdfUrl,
+        });
 
         if (insertError) {
-          console.warn('Error saving to Supabase, using localStorage fallback:', insertError);
+          console.warn("Error saving to Supabase, using localStorage fallback:", insertError);
           throw insertError;
         }
-        
-        savedSuccessfully = true;
+
         toast({
           title: "Éxito",
-          description: "Informe creado correctamente",
+          description: "Informe creado: PDF generado y guardado en el repositorio.",
         });
       } catch (error) {
         // Si falla Supabase, guardar en localStorage como fallback
-        console.log('Using localStorage fallback for informe');
-        const existingInformes = JSON.parse(localStorage.getItem('informes') || '[]');
-        const newInforme = {
-          id: `informe-${Date.now()}`,
-          ...informeData,
-        };
-        existingInformes.push(newInforme);
-        localStorage.setItem('informes', JSON.stringify(existingInformes));
-        
-        toast({
-          title: "Informe guardado localmente",
-          description: "El informe se guardó en el navegador. Para persistencia completa, configura la tabla 'informes' en Supabase.",
-        });
+        console.log("Using localStorage fallback for informe");
+        try {
+          const existingInformes = JSON.parse(localStorage.getItem("informes") || "[]");
+          if (!Array.isArray(existingInformes)) throw new Error("Lista local inválida");
+          const newInforme = {
+            ...informeData,
+            pdfUrl: publicPdfUrl,
+          };
+          existingInformes.push(newInforme);
+          localStorage.setItem("informes", JSON.stringify(existingInformes));
+
+          toast({
+            title: "Informe guardado localmente",
+            description:
+              "El PDF está en Storage; la ficha se guardó en el navegador porque la base de datos no respondió.",
+          });
+        } catch (localErr) {
+          console.error("localStorage fallback failed:", localErr);
+          throw localErr;
+        }
       }
 
-      onSuccess();
       onOpenChange(false);
+      await Promise.resolve(onSuccess?.());
       
       // Reset form
       setFormData({
@@ -262,12 +335,16 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
       console.error("Error creating informe:", error);
       toast({
         title: "Error",
-        description: "No se pudo crear el informe. Intenta de nuevo.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear el informe (PDF o guardado). Intenta de nuevo.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
       setUploadingImage(null);
+      setSubmitPhase(null);
     }
   };
 
@@ -277,7 +354,8 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
         <DialogHeader>
           <DialogTitle>Crear Nuevo Informe</DialogTitle>
           <DialogDescription>
-            Completa la información básica del informe. Puedes agregar más detalles después.
+            Completa básico, portada, contenido y gráficas. Al guardar se generará un PDF con todo el material,
+            se subirá al repositorio y se registrará en la base de datos.
           </DialogDescription>
         </DialogHeader>
 
@@ -622,7 +700,7 @@ const CreateInformeDialog = ({ open, onOpenChange, onSuccess }: CreateInformeDia
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Guardando...
+                {submitPhase || "Procesando…"}
               </>
             ) : (
               "Crear Informe"

@@ -104,42 +104,70 @@ const dimensionesInfo: Record<string, { icon: any; descripcion: string }> = {
   },
 };
 
+/** Variantes de CV → única etiqueta del desplegable (evita duplicados en el Select). */
+function territorioLabelDesdeValor(raw: string | null | undefined): string {
+  if (raw == null || String(raw).trim() === "") return "España";
+  const t = String(raw).trim();
+  if (/^comunitat valenciana$/i.test(t) || /^comunidad valenciana$/i.test(t) || /^cv$/i.test(t)) {
+    return "Comunidad Valenciana";
+  }
+  return t;
+}
+
 const DimensionDetail = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { roles } = usePermissions();
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dimensionNombre = (searchParams.get("dimension") || "").trim();
-  
-  const [selectedAno, setSelectedAno] = useState("2024");
-  const [selectedTerritorio, setSelectedTerritorio] = useState("España");
-  const [appliedAno, setAppliedAno] = useState("2024");
-  const [appliedTerritorio, setAppliedTerritorio] = useState("España");
+
+  const anoParam = searchParams.get("ano");
+  const terrParam = searchParams.get("territorio");
+  const [ano, setAno] = useState(() => anoParam ?? "2024");
+  const [territorio, setTerritorio] = useState(() => territorioLabelDesdeValor(terrParam));
   const [selectedReferencia, setSelectedReferencia] = useState("Media UE");
   const [metodologiaOpen, setMetodologiaOpen] = useState(false);
   const [indicadoresOpen, setIndicadoresOpen] = useState(false);
 
-  const territorioEfectivo = appliedTerritorio;
   const isValenciaSelected =
-    territorioEfectivo === "Valencia" ||
-    territorioEfectivo === "Comunitat Valenciana" ||
-    territorioEfectivo === "Comunidad Valenciana";
+    territorio === "Valencia" ||
+    territorio === "Comunitat Valenciana" ||
+    territorio === "Comunidad Valenciana";
 
-  const handlePaisChange = (pais: string) => {
-    setSelectedTerritorio(pais);
+  const handleAnoChange = (v: string) => {
+    setAno(v);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set("ano", v);
+        return n;
+      },
+      { replace: true }
+    );
   };
 
-  const handleMostrarDimension = () => {
-    setAppliedAno(selectedAno);
-    setAppliedTerritorio(selectedTerritorio);
+  const handleTerritorioChange = (t: string) => {
+    setTerritorio(t);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set("territorio", t);
+        return n;
+      },
+      { replace: true }
+    );
   };
+
+  useEffect(() => {
+    if (anoParam != null && anoParam !== "") setAno(anoParam);
+    if (terrParam != null && terrParam !== "") setTerritorio(territorioLabelDesdeValor(terrParam));
+  }, [dimensionNombre, anoParam, terrParam]);
 
   const { data: availablePaisPeriodo } = useQuery({
     queryKey: ["available-pais-periodo"],
     queryFn: getAvailablePaisYPeriodo,
   });
-  // Sin efecto que cambie año/país al cargar: selectores y datos deben coincidir (España · 2024 por defecto)
 
   const handleSignOut = async () => {
     await signOut();
@@ -165,7 +193,7 @@ const DimensionDetail = () => {
   };
   const Icon = dimensionInfo.icon;
 
-  const periodoSnap = Number(appliedAno) || 2024;
+  const periodoSnap = Number(ano) || 2024;
   const { data: snapshot, isFetching: snapshotFetching } = useQuery({
     queryKey: ["dashboard-snapshot", periodoSnap],
     queryFn: () => getDashboardSnapshot(periodoSnap),
@@ -181,7 +209,7 @@ const DimensionDetail = () => {
     );
   }, [snapshot, canonicalDimensionNombre]);
 
-  const territorioKey = paisToTerritorioKey(territorioEfectivo);
+  const territorioKey = paisToTerritorioKey(territorio);
   const dimensionScore = dimSnapshotRow?.scoresPorTerritorio[territorioKey]?.score ?? 0;
   const dimensionScoreEspana = dimSnapshotRow?.scoresPorTerritorio.espana?.score ?? 0;
 
@@ -212,7 +240,6 @@ const DimensionDetail = () => {
     return out;
   }, [dimSnapshotRow]);
 
-  const mostrandoDatos = snapshotFetching;
   const topUEFetching = snapshotFetching;
   const normalizeSubName = (s: string) => (s || "").trim().toLowerCase();
   const topUEDimensionScore = useMemo(() => {
@@ -226,8 +253,12 @@ const DimensionDetail = () => {
 
   // Obtener todos los indicadores de la dimensión
   const { data: indicadores } = useQuery({
-    queryKey: ["indicadores-dimension", canonicalDimensionNombre],
-    queryFn: () => getIndicadoresConDatos(canonicalDimensionNombre),
+    queryKey: ["indicadores-dimension", canonicalDimensionNombre, territorio, ano],
+    queryFn: () =>
+      getIndicadoresConDatos(canonicalDimensionNombre, {
+        pais: territorio,
+        periodo: Number(ano) || 2024,
+      }),
     enabled: !!canonicalDimensionNombre,
   });
 
@@ -240,14 +271,14 @@ const DimensionDetail = () => {
 
   // Obtener datos históricos para todos los indicadores
   const { data: historicoData } = useQuery({
-    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre), territorioEfectivo, appliedAno],
+    queryKey: ["historico-dimension", indicadores?.map(i => i.nombre), territorio, ano],
     queryFn: async () => {
       if (!indicadores) return {};
       const data: Record<string, Array<{ periodo: number; valor: number }>> = {};
       await Promise.all(
         indicadores.slice(0, 5).map(async (ind) => {
           if (ind.ultimoValor !== undefined) {
-            const historico = await getDatosHistoricosIndicador(ind.nombre, territorioEfectivo, 10);
+            const historico = await getDatosHistoricosIndicador(ind.nombre, territorio, 10);
             data[ind.nombre] = historico;
           }
         })
@@ -324,7 +355,11 @@ const DimensionDetail = () => {
     }
   };
 
-  const totalIndicadores = indicadores?.length || 0;
+  const totalIndicadoresCatalogo = indicadores?.length ?? 0;
+  const indicadoresConValorContexto = useMemo(
+    () => indicadores?.filter((i) => i.ultimoValor !== undefined).length ?? 0,
+    [indicadores]
+  );
 
   const menuItems = useAppMenuItems();
 
@@ -440,7 +475,7 @@ const DimensionDetail = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <Select value={selectedAno} onValueChange={setSelectedAno}>
+                  <Select value={ano} onValueChange={handleAnoChange}>
                     <SelectTrigger className="w-[120px]">
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
@@ -453,7 +488,7 @@ const DimensionDetail = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={selectedTerritorio} onValueChange={handlePaisChange}>
+                  <Select value={territorio} onValueChange={handleTerritorioChange}>
                     <SelectTrigger className="w-[220px]">
                       <SelectValue placeholder="Territorio" />
                     </SelectTrigger>
@@ -463,13 +498,6 @@ const DimensionDetail = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button
-                    onClick={handleMostrarDimension}
-                    disabled={mostrandoDatos}
-                    className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
-                  >
-                    {mostrandoDatos ? "CALCULANDO..." : "MOSTRAR"}
-                  </Button>
                 </div>
               </div>
               <p className="text-lg text-gray-600 mt-4 max-w-4xl">
@@ -490,7 +518,7 @@ const DimensionDetail = () => {
                     {dimensionScore != null ? Math.round(dimensionScore) : "—"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {territorioEfectivo} · {appliedAno} (promedio de subdimensiones)
+                    {territorio} · {ano} (promedio de subdimensiones)
                   </div>
                   <div className="text-sm text-gray-600 mt-3">
                     España:{" "}
@@ -505,7 +533,7 @@ const DimensionDetail = () => {
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    Referencia del valor para {isValenciaSelected ? "Valencia" : territorioEfectivo}: escala 0–100. El TOP UE
+                    Referencia del valor para {isValenciaSelected ? "Valencia" : territorio}: escala 0–100. El TOP UE
                     se calcula con el máximo observado en países de referencia de la UE para el mismo período, así que valores altos indican mejor
                     posicionamiento relativo.
                   </p>
@@ -521,16 +549,19 @@ const DimensionDetail = () => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
                         <GraduationCap className="h-5 w-5 text-[#0c6c8b]" />
-                        <span className="text-sm text-gray-600">Total indicadores</span>
+                        <span className="text-sm text-gray-600">Indicadores con dato</span>
                       </div>
                       <div className="text-3xl font-bold text-gray-900 mb-1">
-                        {totalIndicadores}
+                        {indicadoresConValorContexto}
                       </div>
-                      {dimensionInfoDB && (
-                        <div className="text-xs text-gray-500">
-                          Peso en índice global: {dimensionInfoDB.peso ?? 0}%
-                        </div>
-                      )}
+                      <div className="text-xs text-gray-500 space-y-0.5">
+                        <p>
+                          de {totalIndicadoresCatalogo} en la dimensión · {territorio} · {ano}
+                        </p>
+                        {dimensionInfoDB ? (
+                          <p>Peso en índice global: {dimensionInfoDB.peso ?? 0}%</p>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -779,7 +810,7 @@ const DimensionDetail = () => {
                     className="bg-white border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
                     onClick={() =>
                       navigate(
-                        `/kpis/subdimension?subdimension=${encodeURIComponent(nombreSub)}&dimension=${encodeURIComponent(displayDimensionNombre)}&territorio=${encodeURIComponent(territorioEfectivo)}&ano=${encodeURIComponent(appliedAno)}`
+                        `/kpis/subdimension?subdimension=${encodeURIComponent(nombreSub)}&dimension=${encodeURIComponent(displayDimensionNombre)}&territorio=${encodeURIComponent(territorio)}&ano=${encodeURIComponent(ano)}`
                       )
                     }
                   >
@@ -794,7 +825,7 @@ const DimensionDetail = () => {
                               {tieneScore ? Math.round(scoreNum) : "—"}
                             </div>
                             <div className="text-sm text-gray-500 mt-1">
-                              {tieneScore ? territorioEfectivo : "Sin datos"}
+                              {tieneScore ? territorio : "Sin datos"}
                             </div>
                           </div>
                           <div className="text-right space-y-1">

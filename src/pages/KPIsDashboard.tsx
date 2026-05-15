@@ -22,8 +22,10 @@ import {
   ArrowRight,
   Loader2,
   MessageSquare,
-  LogOut
+  LogOut,
+  CircleHelp,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
@@ -42,6 +44,9 @@ import {
   type IndicadorConDatos,
 } from "@/lib/kpis-data";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
+
+const NORMALIZADO_COLUMNA_AYUDA =
+  "Muestra el valor del indicador en una escala de 0 a 100 (como porcentaje) para poder compararlo de un vistazo con otros KPI. Se obtiene acotando el valor numérico del indicador entre 0 y 100; la barra de progreso refleja ese mismo porcentaje. No sustituye a la metodología Min-Max del índice BRAINNOVA en otras pantallas, pero aquí sirve como referencia visual homogénea.";
 
 const KPIsDashboard = () => {
   const navigate = useNavigate();
@@ -295,7 +300,29 @@ const KPIsDashboard = () => {
                       <tr>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
-                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Normalizado</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span>Normalizado</span>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#0c6c8b] hover:bg-[#0c6c8b]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c6c8b]/30"
+                                  aria-label="¿Qué significa la columna Normalizado?"
+                                >
+                                  <CircleHelp className="h-4 w-4" aria-hidden />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="max-w-sm w-[min(100vw-2rem,22rem)] text-sm text-muted-foreground"
+                                align="center"
+                              >
+                                <p className="font-semibold text-foreground mb-2">Columna Normalizado</p>
+                                <p className="leading-relaxed">{NORMALIZADO_COLUMNA_AYUDA}</p>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Valencia</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">TOP UE</th>

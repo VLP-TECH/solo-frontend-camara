@@ -18,10 +18,12 @@ import {
   AlertCircle,
   TrendingUp,
   LogOut,
+  CircleHelp,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { getAvailablePaisYPeriodo } from "@/lib/kpis-data";
+import { getAvailablePaisYPeriodo, getIndicadores, type Indicador } from "@/lib/kpis-data";
 import { getFiltrosGlobales } from "@/lib/brainnova-api";
 import {
   getDashboardSnapshot,
@@ -43,6 +45,8 @@ import {
 const RADAR_TICKS_ALL_AXES = [20, 40, 60, 80, 100];
 const RADAR_DOMAIN: [number, number] = [0, 100];
 const RADAR_TICKS = [0, 20, 40, 60, 80, 100];
+/** Color unificado para la referencia Top UE (serie radar + país bajo el eje) */
+const RADAR_TOP_UE_COLOR = "#0c6c8b";
 const PROVINCIAS_CV: ReadonlyArray<TerritorioKey> = ["valencia", "alicante", "castellon"];
 const PROVINCIA_DISPLAY: Record<string, string> = {
   valencia: "Valencia",
@@ -56,6 +60,9 @@ const PAISES_OPCIONES = [
   "España",
   "Valencia",
 ];
+
+const BRAINNOVA_INDICE_DESCRIPCION =
+  "Sistema integral de medición que evalúa el grado de desarrollo y madurez digital de territorios a través de 7 dimensiones basadas en estándares internacionales como el DESI (Digital Economy and Society Index) de la Comisión Europea, adaptado al contexto regional y autonómico español.";
 
 function RadarTicksAllAxes({
   cx,
@@ -116,7 +123,7 @@ function RadarDimensionTick(props: {
           {dimension}
         </tspan>
         {topPais ? (
-          <tspan x={x} dy="1.2em" fill="#16a34a">
+          <tspan x={x} dy="1.2em" fill={RADAR_TOP_UE_COLOR}>
             {topPais}
           </tspan>
         ) : null}
@@ -132,6 +139,98 @@ const fmtIndice = (v: number | null | undefined) =>
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
       });
+
+const UE_TERRITORIOS_TOP_REF: TerritorioKey[] = [
+  "espana",
+  "alemania",
+  "francia",
+  "italia",
+  "paisesBajos",
+];
+
+const PESO_IMPORTANCIA_KPI: Record<string, number> = { Alta: 3, Media: 2, Baja: 1 };
+
+function normIndNombre(s: string): string {
+  return (s || "").trim().toLowerCase();
+}
+
+function pesoIndImportancia(importancia: string | null): number {
+  if (!importancia) return 1;
+  return PESO_IMPORTANCIA_KPI[importancia.trim()] ?? 1;
+}
+
+function indicadorRowKey(ind: Indicador): string {
+  return `${ind.id ?? "noid"}:${normIndNombre(ind.nombre)}`;
+}
+
+function valorIndicadorSnapshot(
+  snap: DashboardSnapshot,
+  ind: Indicador,
+  t: TerritorioKey
+): number | null {
+  const nm = normIndNombre(ind.nombre);
+  const byNombre = snap.valoresPorIndicadorNombre.get(nm);
+  const v1 = byNombre?.get(t);
+  if (v1 != null && Number.isFinite(v1)) return v1;
+  if (ind.id != null) {
+    const byId = snap.valoresPorIndicadorId.get(ind.id);
+    const v2 = byId?.get(t);
+    if (v2 != null && Number.isFinite(v2)) return v2;
+  }
+  return null;
+}
+
+/** Valor para la CV; si no hay dato agregado, media de provincias con dato. */
+function valorActualTerritorioCV(snap: DashboardSnapshot, ind: Indicador): number | null {
+  const cv = valorIndicadorSnapshot(snap, ind, "comunitatValenciana");
+  if (cv != null && Number.isFinite(cv)) return cv;
+  const provs: TerritorioKey[] = ["valencia", "alicante", "castellon"];
+  const vals = provs
+    .map((p) => valorIndicadorSnapshot(snap, ind, p))
+    .filter((x): x is number => x != null && Number.isFinite(x));
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function topValorUE(snap: DashboardSnapshot, ind: Indicador): number | null {
+  let best: number | null = null;
+  for (const k of UE_TERRITORIOS_TOP_REF) {
+    const v = valorIndicadorSnapshot(snap, ind, k);
+    if (v == null || !Number.isFinite(v)) continue;
+    if (best == null || v > best) best = v;
+  }
+  return best;
+}
+
+function esIndicadorCoherenteConFilasFijas(ind: Indicador): boolean {
+  const n = normIndNombre(ind.nombre);
+  return (
+    /big\s*data|datos\s*masivos|anal[ií]tica/i.test(ind.nombre) ||
+    /especialistas?\s+tic|%?\s*especialistas?\s+tic/.test(n)
+  );
+}
+
+/**
+ * Indicador activo de mayor peso (Alta/Media/Baja) entre los que no coinciden
+ * con los dos KPI estáticos de la tabla, para una tercera fila complementaria.
+ */
+function indicadorConMayorPesoExcluyendoFilasFijas(list: Indicador[]): Indicador | null {
+  const activos = list.filter((i) => i.activo !== false);
+  if (activos.length === 0) return null;
+  const candidatos = activos.filter((i) => !esIndicadorCoherenteConFilasFijas(i));
+  const pool = candidatos.length > 0 ? candidatos : activos;
+  const sorted = [...pool].sort((a, b) => {
+    const d = pesoIndImportancia(b.importancia) - pesoIndImportancia(a.importancia);
+    if (d !== 0) return d;
+    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+  });
+  return sorted[0] ?? null;
+}
+
+function fmtValorIndicador(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  return v.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -160,6 +259,11 @@ const Dashboard = () => {
   const { data: availablePaisPeriodo } = useQuery({
     queryKey: ["available-pais-periodo"],
     queryFn: getAvailablePaisYPeriodo,
+  });
+
+  const { data: indicadoresMeta } = useQuery({
+    queryKey: ["indicadores-meta-dashboard"],
+    queryFn: getIndicadores,
   });
 
   const aniosOpciones = useMemo<string[]>(() => {
@@ -205,13 +309,13 @@ const Dashboard = () => {
       ? paisToTerritorioKey(radarProvincia)
       : paisToTerritorioKey(radarProvincia);
     return snapshot.dimensiones.map((dim) => {
-      const ueScore = dim.scoreUE;
+      const topUEScore = dim.topUEScore;
       const topPais = dim.topUEPais;
       if (isSpainWithProvince) {
         return {
           dimension: dim.nombre,
           dimensionLabel: `${dim.nombre}||${topPais}`,
-          ue: ueScore,
+          ue: topUEScore,
           espania: dim.scoresPorTerritorio.espana?.score ?? 0,
           provincia: dim.scoresPorTerritorio[territorioKey]?.score ?? 0,
         };
@@ -220,7 +324,7 @@ const Dashboard = () => {
         dimension: dim.nombre,
         dimensionLabel: `${dim.nombre}||${topPais}`,
         cv: dim.scoresPorTerritorio[territorioKey]?.score ?? 0,
-        ue: ueScore,
+        ue: topUEScore,
       };
     });
   }, [snapshot, radarProvincia, isSpainWithProvince]);
@@ -290,12 +394,42 @@ const Dashboard = () => {
       const valencia = dim.scoresPorTerritorio.valencia?.score ?? 0;
       const alicante = dim.scoresPorTerritorio.alicante?.score ?? 0;
       const castellon = dim.scoresPorTerritorio.castellon?.score ?? 0;
+      const esp = dim.scoresPorTerritorio.espana;
+      const espana = esp?.hasData ? esp.score : null;
+      const topPais = dim.topUEPais?.trim() ?? "";
+      const topUEScore = topPais && dim.topUEScore > 0 ? dim.topUEScore : null;
       const max = Math.max(valencia, alicante, castellon);
       const destacado: "valencia" | "alicante" | "castellon" =
         max === valencia ? "valencia" : max === alicante ? "alicante" : "castellon";
-      return { dimension: dim.nombre, valencia, alicante, castellon, destacado };
+      return {
+        dimension: dim.nombre,
+        valencia,
+        alicante,
+        castellon,
+        espana,
+        topUEScore,
+        topUEPais: topPais || null,
+        destacado,
+      };
     });
   }, [snapshot]);
+
+  const estrategicosIndicadorPesoMayor = useMemo(
+    () =>
+      indicadoresMeta?.length
+        ? indicadorConMayorPesoExcluyendoFilasFijas(indicadoresMeta)
+        : null,
+    [indicadoresMeta]
+  );
+
+  const estrategicosValoresPesoMayor = useMemo(() => {
+    if (!snapshot || !estrategicosIndicadorPesoMayor) return null;
+    return {
+      actual: valorActualTerritorioCV(snapshot, estrategicosIndicadorPesoMayor),
+      espana: valorIndicadorSnapshot(snapshot, estrategicosIndicadorPesoMayor, "espana"),
+      topEU: topValorUE(snapshot, estrategicosIndicadorPesoMayor),
+    };
+  }, [snapshot, estrategicosIndicadorPesoMayor]);
 
   const menuItems = useAppMenuItems();
 
@@ -373,10 +507,30 @@ const Dashboard = () => {
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto">
               <div className="mb-8">
-                <h1 className="text-3xl font-bold text-[#0c6c8b] mb-2">
-                  Índice Global de Economía Digital BRAINNOVA
-                </h1>
-                <p className="text-lg text-gray-600">
+                <div className="flex flex-wrap items-start gap-2 mb-2">
+                  <h1 className="text-3xl font-bold text-[#0c6c8b]">
+                    Índice Global de Economía Digital BRAINNOVA
+                  </h1>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="mt-0 inline-flex h-9 w-9 shrink-0 -translate-y-0.5 items-center justify-center rounded-full text-[#0c6c8b] hover:bg-[#0c6c8b]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c6c8b]/30"
+                        aria-label="¿Qué es el Índice Brainnova? Abre una ventana con la descripción."
+                      >
+                        <CircleHelp className="h-7 w-7" aria-hidden />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="max-w-md w-[min(100vw-2rem,28rem)] text-sm text-muted-foreground"
+                      align="start"
+                    >
+                      <p className="font-semibold text-foreground mb-2">Índice Brainnova</p>
+                      <p className="leading-relaxed">{BRAINNOVA_INDICE_DESCRIPCION}</p>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <p className="text-lg text-gray-600 max-w-4xl">
                   Análisis integral del desarrollo de la economía digital.
                 </p>
               </div>
@@ -508,8 +662,8 @@ const Dashboard = () => {
                       {isSpainWithProvince ? (
                         <>
                           {" "}
-                          para <strong>Media UE</strong>, <strong>España</strong> y{" "}
-                          <strong>{radarProvincia}</strong>
+                          para <strong>Top UE</strong> (mejor país entre referencia UE por
+                          dimensión), <strong>España</strong> y <strong>{radarProvincia}</strong>
                         </>
                       ) : (
                         <>
@@ -611,7 +765,9 @@ const Dashboard = () => {
                                 <p className="font-semibold text-gray-900 mb-1">{row?.dimension}</p>
                                 {isSpainWithProvince ? (
                                   <>
-                                    <p className="text-[#F97316]">Media UE: {row?.ue ?? 0}</p>
+                                    <p style={{ color: RADAR_TOP_UE_COLOR }}>
+                                      Top UE: {row?.ue ?? 0}
+                                    </p>
                                     <p className="text-[#1E3A5F]">España: {row?.espania ?? 0}</p>
                                     <p className="text-[#059669]">
                                       {radarProvincia}: {row?.provincia ?? 0}
@@ -622,7 +778,9 @@ const Dashboard = () => {
                                     <p className="text-[#1E3A5F]">
                                       {radarProvincia}: {row?.cv ?? 0}
                                     </p>
-                                    <p className="text-[#F97316]">Media UE: {row?.ue ?? 0}</p>
+                                    <p style={{ color: RADAR_TOP_UE_COLOR }}>
+                                      Top UE: {row?.ue ?? 0}
+                                    </p>
                                   </>
                                 )}
                               </div>
@@ -632,14 +790,14 @@ const Dashboard = () => {
                         {isSpainWithProvince ? (
                           <>
                             <Radar
-                              name="Media UE"
+                              name="Top UE"
                               dataKey="ue"
-                              stroke="#F97316"
-                              fill="#FB923C"
+                              stroke={RADAR_TOP_UE_COLOR}
+                              fill={RADAR_TOP_UE_COLOR}
                               fillOpacity={0.2}
                               strokeDasharray="5 5"
                               strokeWidth={2}
-                              dot={{ r: 4, fill: "#F97316" }}
+                              dot={{ r: 4, fill: RADAR_TOP_UE_COLOR }}
                             />
                             <Radar
                               name="España"
@@ -672,14 +830,14 @@ const Dashboard = () => {
                               dot={{ r: 4, fill: "#1E3A5F" }}
                             />
                             <Radar
-                              name="Media UE"
+                              name="Top UE"
                               dataKey="ue"
-                              stroke="#F97316"
-                              fill="#FB923C"
+                              stroke={RADAR_TOP_UE_COLOR}
+                              fill={RADAR_TOP_UE_COLOR}
                               fillOpacity={0.2}
                               strokeDasharray="5 5"
                               strokeWidth={2}
-                              dot={{ r: 4, fill: "#F97316" }}
+                              dot={{ r: 4, fill: RADAR_TOP_UE_COLOR }}
                             />
                           </>
                         )}
@@ -690,8 +848,11 @@ const Dashboard = () => {
 
                 <div className="flex items-center justify-center flex-wrap gap-x-6 gap-y-2 mt-4">
                   <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-[#F97316]" />
-                    <span className="text-sm text-gray-600">Media UE</span>
+                    <div
+                      className="w-4 h-4 rounded-full border border-white/50 shadow-sm"
+                      style={{ backgroundColor: RADAR_TOP_UE_COLOR }}
+                    />
+                    <span className="text-sm text-gray-600">Top UE</span>
                   </div>
                   {isSpainWithProvince ? (
                     <>
@@ -711,8 +872,10 @@ const Dashboard = () => {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 text-center mt-3">
-                  País en verde = TOP UE de esa dimensión.
+                <p className="text-xs text-gray-500 text-center mt-3 max-w-2xl mx-auto">
+                  Bajo cada dimensión: país líder entre la referencia UE (España, Alemania, Francia,
+                  Italia, Países Bajos). La serie discontinua en color Top UE es su puntuación en esa
+                  dimensión.
                 </p>
               </Card>
 
@@ -740,6 +903,12 @@ const Dashboard = () => {
                           </th>
                           <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
                             Castellón
+                          </th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-[#1E3A5F]">
+                            España
+                          </th>
+                          <th className="text-center py-3 px-4 text-sm font-semibold text-[#0c6c8b]">
+                            Top UE
                           </th>
                         </tr>
                       </thead>
@@ -795,6 +964,23 @@ const Dashboard = () => {
                                 )}
                               </div>
                             </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="text-sm font-medium text-[#1E3A5F] tabular-nums">
+                                {fmtIndice(row.espana)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-sm font-medium text-[#0c6c8b] tabular-nums">
+                                  {fmtIndice(row.topUEScore)}
+                                </span>
+                                {row.topUEPais ? (
+                                  <span className="text-xs text-gray-500 leading-tight">
+                                    {row.topUEPais}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -843,6 +1029,28 @@ const Dashboard = () => {
                           <TrendingUp className="h-5 w-5 text-green-600 mx-auto" />
                         </td>
                       </tr>
+                      {estrategicosIndicadorPesoMayor && estrategicosValoresPesoMayor ? (
+                        <tr
+                          key={indicadorRowKey(estrategicosIndicadorPesoMayor)}
+                          className="border-b border-gray-100 hover:bg-gray-50"
+                        >
+                          <td className="py-3 px-4 text-sm text-gray-900">
+                            {estrategicosIndicadorPesoMayor.nombre}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-center text-gray-700 font-medium tabular-nums">
+                            {fmtValorIndicador(estrategicosValoresPesoMayor.actual)}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-center text-gray-600 tabular-nums">
+                            {fmtValorIndicador(estrategicosValoresPesoMayor.espana)}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-center text-gray-600 tabular-nums">
+                            {fmtValorIndicador(estrategicosValoresPesoMayor.topEU)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <TrendingUp className="h-5 w-5 text-green-600 mx-auto" />
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -7,10 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
   FileText,
@@ -24,8 +22,8 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
-import { InformeContent } from "@/components/InformeBrainnova2025";
 import CreateInformeDialog from "@/components/CreateInformeDialog";
+import { insertInformeCompatible } from "@/lib/informes-db";
 
 interface Informe {
   id: string;
@@ -63,7 +61,9 @@ const Informes = () => {
   const [selectedInforme, setSelectedInforme] = useState<Informe | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [uploadingInformeId, setUploadingInformeId] = useState<string | null>(null);
+  /** 'new' = cabecera Subir informe (crea fila nueva); 'replace' = botón en tarjeta (actualiza PDF de ese informe). */
+  const [uploadDialogMode, setUploadDialogMode] = useState<"new" | "replace">("new");
+  const [nuevoInformeTitulo, setNuevoInformeTitulo] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -72,6 +72,7 @@ const Informes = () => {
   const [informesLoading, setInformesLoading] = useState(true);
   const [retryingPdf, setRetryingPdf] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);
 
   // Buscar PDF en Storage por id de informe (nombre tipo "brainnova-2025-123.pdf")
   const getPdfUrlFromStorage = async (informeId: string): Promise<string | undefined> => {
@@ -116,78 +117,67 @@ const Informes = () => {
     return undefined;
   };
 
-  // Cargar informes desde Supabase (o usar lista por defecto) y enriquecer con PDFs desde Storage si faltan
-  useEffect(() => {
-    let cancelled = false;
-    const loadInformes = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('informes' as any)
-          .select('*');
+  const loadInformesFromApi = useCallback(async () => {
+    try {
+      setInformesLoading(true);
+      const { data, error } = await supabase.from("informes" as any).select("*");
 
-        if (cancelled) return;
-        
-        let list: Informe[] = [];
-        
-        if (error || !data || data.length === 0) {
-          list = [...DEFAULT_INFORMES];
-        } else {
-          list = data.map((row: any) => {
-            const rawId = String(row.id ?? '').trim();
-            const id = rawId.toLowerCase() === 'brainnova-2025' ? 'brainnova-2025' : rawId;
-            return {
-              id,
-              title: String(row.title ?? row.titulo ?? ''),
-              description: String(row.description ?? row.descripcion ?? ''),
-              date: String(row.date ?? row.fecha ?? ''),
-              pages: Number(row.pages ?? row.paginas) || 0,
-              category: String(row.category ?? row.categoria ?? ''),
-              format: String(row.format ?? row.formato ?? 'PDF'),
-              pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf) ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf) : undefined
-            };
-          });
-        }
+      let list: Informe[] = [];
 
-        // Para cada informe sin pdfUrl, buscar en Storage (así al cerrar sesión y volver se recupera el link)
-        const enriched = await Promise.all(
-          list.map(async (inf) => {
-            if (inf.pdfUrl) return inf;
-            const urlFromStorage = await getPdfUrlFromStorage(inf.id);
-            if (urlFromStorage) {
-              await supabase.rpc('upsert_informe_pdf', { p_id: inf.id, p_pdf_url: urlFromStorage }).catch(() => {});
-              return { ...inf, pdfUrl: urlFromStorage };
-            }
-            return inf;
-          })
-        );
-
-        // En producción: asegurar siempre URL del PDF para Informe BRAINNOVA 2025 aunque falle Storage/BD
-        const final = enriched.map((inf) =>
-          inf.id === 'brainnova-2025' && !inf.pdfUrl
-            ? { ...inf, pdfUrl: BRAINNOVA_2025_PDF_URL }
-            : inf
-        );
-
-        if (!cancelled) setInformes(final);
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('Error cargando informes:', e);
-          setInformes(DEFAULT_INFORMES);
-        }
-      } finally {
-        if (!cancelled) setInformesLoading(false);
+      if (error || !data || data.length === 0) {
+        list = [...DEFAULT_INFORMES];
+      } else {
+        list = data.map((row: any) => {
+          const rawId = String(row.id ?? "").trim();
+          const id = rawId.toLowerCase() === "brainnova-2025" ? "brainnova-2025" : rawId;
+          return {
+            id,
+            title: String(row.title ?? row.titulo ?? ""),
+            description: String(row.description ?? row.descripcion ?? ""),
+            date: String(row.date ?? row.fecha ?? ""),
+            pages: Number(row.pages ?? row.paginas) || 0,
+            category: String(row.category ?? row.categoria ?? ""),
+            format: String(row.format ?? row.formato ?? "PDF"),
+            pdfUrl: (row.pdf_url ?? row.pdfUrl ?? row.url_pdf)
+              ? String(row.pdf_url ?? row.pdfUrl ?? row.url_pdf)
+              : undefined,
+          };
+        });
       }
-    };
-    loadInformes();
-    return () => { cancelled = true; };
+
+      const enriched = await Promise.all(
+        list.map(async (inf) => {
+          if (inf.pdfUrl) return inf;
+          const urlFromStorage = await getPdfUrlFromStorage(inf.id);
+          if (urlFromStorage) {
+            await supabase.rpc("upsert_informe_pdf", { p_id: inf.id, p_pdf_url: urlFromStorage }).catch(() => {});
+            return { ...inf, pdfUrl: urlFromStorage };
+          }
+          return inf;
+        })
+      );
+
+      const final = enriched.map((inf) =>
+        inf.id === "brainnova-2025" && !inf.pdfUrl ? { ...inf, pdfUrl: BRAINNOVA_2025_PDF_URL } : inf
+      );
+
+      setInformes(final);
+    } catch (e) {
+      console.warn("Error cargando informes:", e);
+      setInformes(DEFAULT_INFORMES);
+    } finally {
+      setInformesLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadInformesFromApi();
+  }, [loadInformesFromApi]);
 
   const handleSignOut = async () => {
     await signOut();
     window.location.href = 'https://brainnova.info/';
   };
-
-  const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);
 
   const handleInformeClick = (informe: Informe) => {
     const withPdf = informe.id === 'brainnova-2025' && !informe.pdfUrl
@@ -239,15 +229,31 @@ const Informes = () => {
 
   const handleUploadClick = (informe: Informe, e: React.MouseEvent) => {
     e.stopPropagation();
+    setUploadDialogMode("replace");
+    setNuevoInformeTitulo("");
     setSelectedInforme(informe);
     setShowUploadDialog(true);
     setSelectedFile(null);
   };
 
+  const slugIdDesdeTitulo = (titulo: string) => {
+    const base = (titulo || "informe")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    return `${base || "informe"}-${Date.now()}`;
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type !== 'application/pdf') {
+      const isPdfMime = file.type === 'application/pdf';
+      const isPdfByName = file.name.toLowerCase().endsWith('.pdf');
+      if (!isPdfMime && !isPdfByName) {
         toast({
           title: "Error",
           description: "Por favor selecciona un archivo PDF",
@@ -268,7 +274,7 @@ const Informes = () => {
   };
 
   const handleUploadPDF = async () => {
-    if (!selectedFile || !selectedInforme) {
+    if (!selectedFile) {
       toast({
         title: "Error",
         description: "Por favor selecciona un archivo PDF",
@@ -277,12 +283,103 @@ const Informes = () => {
       return;
     }
 
-    // En producción la subida requiere sesión activa; sin ella Storage rechaza por RLS
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    if (uploadDialogMode === "new") {
+      const titulo = nuevoInformeTitulo.trim();
+      if (!titulo) {
+        toast({
+          title: "Error",
+          description: "Indica el nombre del informe que quieres publicar",
+          variant: "destructive",
+        });
+        return;
+      }
+      setUploading(true);
+      try {
+        const newId = slugIdDesdeTitulo(titulo);
+        const safeStoragePrefix = newId.replace(/[^a-z0-9-_]/gi, "-");
+        const filePath = `${safeStoragePrefix}-${Date.now()}.pdf`;
+
+        const { error: uploadError } = await supabase.storage.from("informes").upload(filePath, selectedFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+        if (uploadError) {
+          console.error("Supabase Storage upload error:", uploadError);
+          toast({
+            title: "Error al subir el PDF",
+            description: uploadError.message || "No se pudo subir el PDF.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from("informes").getPublicUrl(filePath);
+        const newPdfUrl = urlData.publicUrl;
+        const hoy = new Date();
+        const fechaStr = hoy.toLocaleDateString("es-ES", {
+          month: "long",
+          year: "numeric",
+        });
+
+        const fechaDisplay = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
+
+        const { error: insertError } = await insertInformeCompatible({
+          id: newId,
+          titulo,
+          descripcion: "",
+          fechaDisplay,
+          pdfUrl: newPdfUrl,
+        });
+
+        if (insertError) {
+          console.error("[Informes] insert nuevo informe:", insertError);
+          toast({
+            title: "No se guardó en base de datos",
+            description:
+              insertError.message ||
+              "El PDF está en Storage. Revisa políticas RLS o columnas de la tabla informes.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const nuevo: Informe = {
+          id: newId,
+          title: titulo,
+          description: "",
+          date: fechaDisplay,
+          pages: 0,
+          category: "Informes",
+          format: "PDF",
+          pdfUrl: newPdfUrl,
+        };
+        setInformes((prev) => [nuevo, ...prev]);
+        toast({
+          title: "Informe creado",
+          description: "Se ha publicado un informe nuevo con el PDF indicado.",
+        });
+        setShowUploadDialog(false);
+        setNuevoInformeTitulo("");
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } catch (error: unknown) {
+        console.error("Error creando informe con PDF:", error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "No se pudo completar la operación.",
+          variant: "destructive",
+        });
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
+    if (!selectedInforme) {
       toast({
-        title: "Sesión requerida",
-        description: "Debes tener la sesión iniciada para subir PDFs. Cierra sesión, vuelve a entrar y prueba de nuevo.",
+        title: "Error",
+        description: "Selecciona un informe para actualizar su PDF",
         variant: "destructive",
       });
       return;
@@ -290,7 +387,11 @@ const Informes = () => {
 
     setUploading(true);
     try {
-      const fileName = `${selectedInforme.id}-${Date.now()}.pdf`;
+      const safeInformeId = String(selectedInforme.id)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-_]/g, "-");
+      const fileName = `${safeInformeId}-${Date.now()}.pdf`;
       const filePath = fileName;
 
       const { error: uploadError } = await supabase.storage
@@ -310,7 +411,9 @@ const Informes = () => {
         const isPolicy =
           msg.toLowerCase().includes('policy') ||
           msg.toLowerCase().includes('row-level security') ||
-          msg.toLowerCase().includes('rls');
+          msg.toLowerCase().includes('rls') ||
+          msg.toLowerCase().includes('unauthorized') ||
+          msg.toLowerCase().includes('jwt');
         let suggestion = msg;
         if (isBucketMissing) {
           suggestion = "Crea el bucket 'informes' en Supabase: Storage → New bucket → nombre 'informes', público. Luego en Policies añade INSERT para 'authenticated'.";
@@ -329,8 +432,6 @@ const Informes = () => {
       const newPdfUrl = urlData.publicUrl;
 
       // Guardar URL en BD: intentar función RPC primero, luego métodos directos como fallback
-      let savedToDB = false;
-      
       // Método 1: Función RPC (más robusto, evita problemas de esquema)
       const { error: rpcError } = await supabase.rpc('upsert_informe_pdf', {
         p_id: selectedInforme.id,
@@ -338,7 +439,6 @@ const Informes = () => {
       });
       
       if (!rpcError) {
-        savedToDB = true;
         console.log('[Informes] pdf_url guardado en Supabase via RPC:', selectedInforme.id, newPdfUrl);
       } else {
         console.warn('[Informes] Función RPC no disponible, intentando update directo:', rpcError.message);
@@ -351,7 +451,6 @@ const Informes = () => {
           .select('id');
         
         if (!updateError && updatedRows && updatedRows.length > 0) {
-          savedToDB = true;
           console.log('[Informes] pdf_url guardado via update directo:', selectedInforme.id);
         } else {
           // Método 3: Insert mínimo (solo id + pdf_url)
@@ -360,7 +459,6 @@ const Informes = () => {
             .insert({ id: selectedInforme.id, pdf_url: newPdfUrl });
           
           if (!insertError) {
-            savedToDB = true;
             console.log('[Informes] pdf_url guardado via insert directo:', selectedInforme.id);
           } else {
             console.error('[Informes] No se pudo guardar pdf_url en BD:', insertError.message);
@@ -382,7 +480,7 @@ const Informes = () => {
 
       toast({
         title: "Éxito",
-        description: "PDF subido a Supabase Storage. Ya puedes verlo o descargarlo.",
+        description: "PDF subido correctamente. Ya puedes verlo o descargarlo.",
       });
 
       if (!showPreview) setShowPreview(true);
@@ -493,6 +591,8 @@ const Informes = () => {
                     variant="outline"
                     className="border-[#0c6c8b] text-[#0c6c8b] hover:bg-blue-50 hover:text-[#0c6c8b] hover:border-[#0c6c8b]"
                     onClick={() => {
+                      setUploadDialogMode("new");
+                      setNuevoInformeTitulo("");
                       setSelectedInforme(null);
                       setSelectedFile(null);
                       setShowUploadDialog(true);
@@ -503,7 +603,10 @@ const Informes = () => {
                   </Button>
                   <Button
                     className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                    onClick={() => setShowCreateDialog(true)}
+                    onClick={() => {
+                      setShowPreview(false);
+                      setShowCreateDialog(true);
+                    }}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Crear Informe
@@ -580,7 +683,7 @@ const Informes = () => {
                             size="sm"
                             className="px-3 border-green-500 text-green-700 hover:bg-green-50"
                             onClick={(e) => handleUploadClick(informe, e)}
-                            title="Subir nuevo PDF (Admin)"
+                            title="Actualizar el PDF de este informe (admin)"
                           >
                             <Upload className="h-4 w-4" />
                           </Button>
@@ -601,118 +704,98 @@ const Informes = () => {
               <DialogTitle className="text-2xl font-bold text-[#0c6c8b]">
                 {selectedInforme?.title}
               </DialogTitle>
-              <p className="text-sm text-gray-500 mt-1">
-                {selectedInforme?.date} • {selectedInforme?.pages} páginas
-              </p>
+              {selectedInforme?.date ? (
+                <p className="text-sm text-gray-500 mt-1">{selectedInforme.date}</p>
+              ) : null}
             </DialogHeader>
-            <div className="p-6">
-              <Tabs defaultValue="html" className="w-full" key={selectedInforme?.pdfUrl}>
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="html">Ver Online (HTML)</TabsTrigger>
-                  <TabsTrigger
-                    value="pdf"
-                    onClick={() => setPdfLoadError(false)}
-                  >
-                    Ver PDF
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="html" className="mt-4">
-                  <div className="border rounded-lg bg-gray-50 max-h-[70vh] overflow-y-auto p-6">
-                    <InformeContent pdfUrl={selectedInforme?.pdfUrl} />
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="pdf" className="mt-4">
-                  <div className="border rounded-lg bg-white relative min-h-[70vh] overflow-hidden">
-                    {!selectedInforme?.pdfUrl ? (
-                      <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
-                        <FileText className="h-12 w-12 text-gray-400 mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          No hay PDF disponible
-                        </h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                          Este informe no tiene archivo PDF asociado. Un administrador puede subir uno.
-                        </p>
-                        <Button
-                          variant="outline"
-                          disabled={retryingPdf}
-                          onClick={async () => {
-                            if (!selectedInforme?.id) return;
-                            setRetryingPdf(true);
-                            try {
-                              const url = await getPdfUrlFromStorage(selectedInforme.id);
-                              if (url) {
-                                setSelectedInforme((prev) => (prev ? { ...prev, pdfUrl: url } : null));
-                                setInformes((prev) =>
-                                  prev.map((inf) => (inf.id === selectedInforme.id ? { ...inf, pdfUrl: url } : inf))
-                                );
-                                setPdfCacheBuster(Date.now());
-                              } else {
-                                toast({ title: "No encontrado", description: "No se encontró el PDF en Storage.", variant: "destructive" });
-                              }
-                            } finally {
-                              setRetryingPdf(false);
-                            }
-                          }}
-                        >
-                          {retryingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                          Reintentar buscar PDF
-                        </Button>
-                      </div>
-                    ) : pdfLoadError ? (
-                      <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
-                        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          No se pudo cargar el PDF (404 o error de red)
-                        </h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                          El archivo puede no estar disponible en el servidor o la ruta no es correcta. Prueba a abrirlo en una nueva pestaña o a descargarlo.
-                        </p>
-                        <div className="flex flex-wrap gap-2 justify-center">
-                          <Button
-                            onClick={() => window.open(getAbsolutePdfUrl(selectedInforme?.pdfUrl), '_blank', 'noopener,noreferrer')}
-                            variant="outline"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Abrir en nueva pestaña
-                          </Button>
-                          <Button
-                            onClick={() => handleDownload(selectedInforme?.pdfUrl)}
-                            className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
-                          >
-                            <Download className="h-4 w-4 mr-2" />
-                            Descargar PDF
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <iframe
-                        key={`${selectedInforme?.pdfUrl}-${pdfCacheBuster}`}
-                        src={`${getAbsolutePdfUrl(selectedInforme?.pdfUrl)}?t=${pdfCacheBuster}#toolbar=1&navpanes=1&scrollbar=1`}
-                        className="w-full min-h-[70vh] h-[70vh] border-0 block"
-                        style={{ minHeight: '70vh' }}
-                        title={`PDF: ${selectedInforme?.title}`}
-                        onError={() => {
-                          console.error('Error loading PDF in iframe');
-                          setPdfLoadError(true);
-                        }}
-                        onLoad={(e) => {
-                          try {
-                            const iframe = e.target as HTMLIFrameElement;
-                            if (iframe.contentWindow === null) {
-                              setPdfLoadError(true);
-                            }
-                          } catch {
-                            // CORS: el PDF puede haberse cargado igual
+            <div className="p-6" key={selectedInforme?.pdfUrl}>
+              <div className="border rounded-lg bg-white relative min-h-[70vh] overflow-hidden">
+                {!selectedInforme?.pdfUrl ? (
+                  <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
+                    <FileText className="h-12 w-12 text-gray-400 mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      No hay PDF disponible
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Este informe no tiene archivo PDF asociado. Un administrador puede subir uno.
+                    </p>
+                    <Button
+                      variant="outline"
+                      disabled={retryingPdf}
+                      onClick={async () => {
+                        if (!selectedInforme?.id) return;
+                        setRetryingPdf(true);
+                        try {
+                          const url = await getPdfUrlFromStorage(selectedInforme.id);
+                          if (url) {
+                            setSelectedInforme((prev) => (prev ? { ...prev, pdfUrl: url } : null));
+                            setInformes((prev) =>
+                              prev.map((inf) => (inf.id === selectedInforme.id ? { ...inf, pdfUrl: url } : inf))
+                            );
+                            setPdfCacheBuster(Date.now());
+                          } else {
+                            toast({ title: "No encontrado", description: "No se encontró el PDF en Storage.", variant: "destructive" });
                           }
-                        }}
-                      />
-                    )}
+                        } finally {
+                          setRetryingPdf(false);
+                        }
+                      }}
+                    >
+                      {retryingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      Reintentar buscar PDF
+                    </Button>
                   </div>
-                </TabsContent>
-              </Tabs>
-              
+                ) : pdfLoadError ? (
+                  <div className="flex flex-col items-center justify-center min-h-[70vh] p-8 text-center">
+                    <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      No se pudo cargar el PDF (404 o error de red)
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      El archivo puede no estar disponible en el servidor o la ruta no es correcta. Prueba a abrirlo en una nueva pestaña o a descargarlo.
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <Button
+                        onClick={() => window.open(getAbsolutePdfUrl(selectedInforme?.pdfUrl), '_blank', 'noopener,noreferrer')}
+                        variant="outline"
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Abrir en nueva pestaña
+                      </Button>
+                      <Button
+                        onClick={() => handleDownload(selectedInforme?.pdfUrl)}
+                        className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Descargar PDF
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <iframe
+                    key={`${selectedInforme?.pdfUrl}-${pdfCacheBuster}`}
+                    src={`${getAbsolutePdfUrl(selectedInforme?.pdfUrl)}?t=${pdfCacheBuster}#toolbar=1&navpanes=1&scrollbar=1`}
+                    className="w-full min-h-[70vh] h-[70vh] border-0 block"
+                    style={{ minHeight: '70vh' }}
+                    title={`PDF: ${selectedInforme?.title}`}
+                    onError={() => {
+                      console.error('Error loading PDF in iframe');
+                      setPdfLoadError(true);
+                    }}
+                    onLoad={(e) => {
+                      try {
+                        const iframe = e.target as HTMLIFrameElement;
+                        if (iframe.contentWindow === null) {
+                          setPdfLoadError(true);
+                        }
+                      } catch {
+                        // CORS: el PDF puede haberse cargado igual
+                      }
+                    }}
+                  />
+                )}
+              </div>
+
               <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
                 <Button
                   className="flex-1 min-w-[140px] bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
@@ -742,42 +825,44 @@ const Informes = () => {
         </Dialog>
 
         {/* Dialog para subir PDF (solo admin) */}
-        <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <Dialog
+          open={showUploadDialog}
+          onOpenChange={(open) => {
+            setShowUploadDialog(open);
+            if (!open) {
+              setNuevoInformeTitulo("");
+              setSelectedFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }
+          }}
+        >
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Subir PDF del Informe</DialogTitle>
+              <DialogTitle>
+                {uploadDialogMode === "new" ? "Nuevo informe (PDF)" : "Actualizar PDF del informe"}
+              </DialogTitle>
               <DialogDescription>
-                {selectedInforme
-                  ? `Selecciona un archivo PDF para reemplazar el informe actual de "${selectedInforme.title}".`
-                  : "Selecciona un informe y sube un archivo PDF para guardarlo en Supabase."}
+                {uploadDialogMode === "new"
+                  ? "Indica el nombre con el que se mostrará el informe y adjunta el PDF. Se creará un registro nuevo; no se modifica ningún informe existente."
+                  : `Sustituye el PDF asociado a «${selectedInforme?.title ?? ""}». El archivo anterior permanece en Storage salvo que lo borres manualmente.`}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              {!selectedInforme && (
+              {uploadDialogMode === "new" && (
                 <div className="space-y-2">
-                  <Label>Informe</Label>
-                  <Select
-                    value={selectedInforme?.id ?? ""}
-                    onValueChange={(value) => {
-                      const informe = informes.find((inf) => inf.id === value) ?? null;
-                      setSelectedInforme(informe);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona un informe" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {informes.map((informe) => (
-                        <SelectItem key={informe.id} value={informe.id}>
-                          {informe.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="nuevo-informe-titulo">Nombre del informe *</Label>
+                  <Input
+                    id="nuevo-informe-titulo"
+                    value={nuevoInformeTitulo}
+                    onChange={(e) => setNuevoInformeTitulo(e.target.value)}
+                    placeholder="Ej.: Informe trimestral Q1 2026"
+                    disabled={uploading}
+                    autoComplete="off"
+                  />
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="pdf-upload">Archivo PDF</Label>
+                <Label htmlFor="pdf-upload">Archivo PDF *</Label>
                 <Input
                   id="pdf-upload"
                   type="file"
@@ -796,7 +881,11 @@ const Informes = () => {
                 <Button
                   className="flex-1 bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
                   onClick={handleUploadPDF}
-                  disabled={!selectedFile || uploading || !selectedInforme}
+                  disabled={
+                    uploading ||
+                    !selectedFile ||
+                    (uploadDialogMode === "new" ? !nuevoInformeTitulo.trim() : !selectedInforme)
+                  }
                 >
                   {uploading ? (
                     <>
@@ -806,7 +895,7 @@ const Informes = () => {
                   ) : (
                     <>
                       <Upload className="h-4 w-4 mr-2" />
-                      Subir PDF
+                      {uploadDialogMode === "new" ? "Crear informe y subir PDF" : "Subir PDF"}
                     </>
                   )}
                 </Button>
@@ -814,9 +903,10 @@ const Informes = () => {
                   variant="outline"
                   onClick={() => {
                     setShowUploadDialog(false);
+                    setNuevoInformeTitulo("");
                     setSelectedFile(null);
                     if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
+                      fileInputRef.current.value = "";
                     }
                   }}
                   disabled={uploading}
@@ -832,13 +922,8 @@ const Informes = () => {
         <CreateInformeDialog
           open={showCreateDialog}
           onOpenChange={setShowCreateDialog}
-          onSuccess={() => {
-            // Recargar la lista de informes
-            // Por ahora solo mostrar mensaje, luego se puede conectar con la BD
-            toast({
-              title: "Éxito",
-              description: "Informe creado correctamente. Recarga la página para verlo.",
-            });
+          onSuccess={async () => {
+            await loadInformesFromApi();
           }}
         />
       </div>

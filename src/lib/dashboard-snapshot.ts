@@ -129,6 +129,8 @@ export interface DashboardDimensionRow {
   scoreUE: number;
   /** País UE con mayor score en esta dimensión (display name) */
   topUEPais: string;
+  /** Score del país líder (TOP) entre la referencia UE en esta dimensión */
+  topUEScore: number;
   /** Subdimensiones de la dimensión, con scores por territorio + UE */
   subdimensiones: DashboardSubdimensionRow[];
 }
@@ -447,11 +449,11 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
         : 0;
 
     let topUEPais = "";
-    let topUEScore = -1;
+    let topUEScoreDim = -1;
     for (const k of TERRITORIOS_UE) {
       const s = scoresPorTerritorio[k];
-      if (s?.hasData && s.score > topUEScore) {
-        topUEScore = s.score;
+      if (s?.hasData && s.score > topUEScoreDim) {
+        topUEScoreDim = s.score;
         topUEPais = TERRITORIO_DISPLAY[k];
       }
     }
@@ -462,6 +464,7 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
       scoresPorTerritorio,
       scoreUE,
       topUEPais,
+      topUEScore: topUEScoreDim >= 0 ? topUEScoreDim : 0,
       subdimensiones: subRows,
     };
   });

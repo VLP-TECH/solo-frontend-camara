@@ -25,6 +25,8 @@ import {
   getIndicadores,
   getDatosHistoricosIndicador,
   getIndiceGlobalHistoricoComparativo,
+  getDimensionesHistoricoEvolucion,
+  type TerritorioEvolucionDimensiones,
 } from "@/lib/kpis-data";
 import {
   LineChart as RechartsLineChart,
@@ -37,6 +39,43 @@ import {
   ResponsiveContainer
 } from "recharts";
 
+/** Años del eje X compartidos por índice global, dimensiones e indicadores en esta vista. */
+const YEARS_EVOLUCION = [2023, 2024, 2025] as const;
+
+const TERRITORIO_DIMENSIONES_OPCIONES: {
+  value: TerritorioEvolucionDimensiones;
+  label: string;
+}[] = [
+  { value: "Valencia", label: "Valencia" },
+  { value: "Castellón", label: "Castellón" },
+  { value: "Alicante", label: "Alicante" },
+  { value: "Comunitat Valenciana", label: "Comunidad Valenciana" },
+  { value: "España", label: "España" },
+  { value: "Top UE", label: "Top UE" },
+];
+
+const DIMENSION_LINE_COLORS = [
+  "#3B82F6",
+  "#F97316",
+  "#EF4444",
+  "#10B981",
+  "#8B5CF6",
+  "#EAB308",
+  "#14B8A6",
+  "#6366F1",
+  "#EC4899",
+  "#64748B",
+];
+
+/** Series fijas en gráficos de indicadores: provincias CV, España y máximo UE de referencia. */
+const EVOLUCION_INDICADOR_SERIES = [
+  { dataKey: "Valencia" as const, name: "Valencia", stroke: "#14B8A6", cardClass: "bg-teal-50 border-teal-200" },
+  { dataKey: "Castellón" as const, name: "Castellón", stroke: "#8B5CF6", cardClass: "bg-violet-50 border-violet-200" },
+  { dataKey: "Alicante" as const, name: "Alicante", stroke: "#EAB308", cardClass: "bg-amber-50 border-amber-200" },
+  { dataKey: "España" as const, name: "España", stroke: "#3B82F6", cardClass: "bg-blue-50 border-blue-200" },
+  { dataKey: "Top UE" as const, name: "Top UE", stroke: "#10B981", cardClass: "bg-emerald-50 border-emerald-200" },
+];
+
 const EvolucionTemporal = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
@@ -44,7 +83,8 @@ const EvolucionTemporal = () => {
   const { isAdmin, profile, loading: profileLoading } = useUserProfile();
   const [selectedIndicador, setSelectedIndicador] = useState<string>("");
   const [searchIndicador, setSearchIndicador] = useState<string>("");
-  const [selectedComparacionTerritorio, setSelectedComparacionTerritorio] = useState<string>("Valencia");
+  const [territorioDimensiones, setTerritorioDimensiones] =
+    useState<TerritorioEvolucionDimensiones>("Valencia");
 
   const handleSignOut = async () => {
     await signOut();
@@ -79,57 +119,117 @@ const EvolucionTemporal = () => {
     "";
 
 
-  // Datos históricos del indicador seleccionado (España + Comunitat Valenciana + Alemania como ref UE)
-  const { data: historicoTerritorioRaw } = useQuery({
-    queryKey: ["historico-territorio", indicadorActual, selectedComparacionTerritorio],
-    queryFn: () => getDatosHistoricosIndicador(indicadorActual, selectedComparacionTerritorio, 20),
-    enabled: !!indicadorActual,
-  });
-  const { data: historicoCVRaw } = useQuery({
-    queryKey: ["historico-cv", indicadorActual],
-    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "Comunitat Valenciana", 20),
-    enabled: !!indicadorActual,
-  });
-  const { data: historicoEspRaw } = useQuery({
-    queryKey: ["historico-esp", indicadorActual],
-    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "España", 20),
-    enabled: !!indicadorActual,
-  });
-  const { data: historicoUERaw } = useQuery({
-    queryKey: ["historico-ue", indicadorActual],
-    queryFn: () => getDatosHistoricosIndicador(indicadorActual, "Alemania", 20),
+  const {
+    data: historicoIndicadorSeries,
+    isPending: historicoIndicadorLoading,
+  } = useQuery({
+    queryKey: ["historico-indicador-evolucion", indicadorActual],
+    queryFn: async () => {
+      if (!indicadorActual) return null;
+      const limit = 20;
+      const [
+        valencia,
+        castellon,
+        alicante,
+        espana,
+        alemania,
+        francia,
+        italia,
+        paisesBajos,
+      ] = await Promise.all([
+        getDatosHistoricosIndicador(indicadorActual, "Valencia", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Castellón", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Alicante", limit),
+        getDatosHistoricosIndicador(indicadorActual, "España", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Alemania", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Francia", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Italia", limit),
+        getDatosHistoricosIndicador(indicadorActual, "Países Bajos", limit),
+      ]);
+      return {
+        valencia,
+        castellon,
+        alicante,
+        espana,
+        alemania,
+        francia,
+        italia,
+        paisesBajos,
+      };
+    },
     enabled: !!indicadorActual,
   });
 
   const indicadorData = useMemo(() => {
-    const territorioMap = new Map((historicoTerritorioRaw || []).map(d => [d.periodo, d.valor]));
-    const cvMap = new Map((historicoCVRaw || []).map(d => [d.periodo, d.valor]));
-    const espMap = new Map((historicoEspRaw || []).map(d => [d.periodo, d.valor]));
-    const ueMap = new Map((historicoUERaw || []).map(d => [d.periodo, d.valor]));
-    const allYears = [...new Set([...territorioMap.keys(), ...cvMap.keys(), ...espMap.keys(), ...ueMap.keys()])].sort();
-    return allYears.map(year => ({
-      year,
-      [selectedComparacionTerritorio]: territorioMap.get(year) ?? null,
-      "Comunitat Valenciana": cvMap.get(year) ?? null,
-      "España": espMap.get(year) ?? null,
-      "Top UE (Alemania)": ueMap.get(year) ?? null,
-    }));
-  }, [historicoTerritorioRaw, historicoCVRaw, historicoEspRaw, historicoUERaw, selectedComparacionTerritorio]);
+    if (!historicoIndicadorSeries) return [];
+    const toMap = (arr: { periodo: number; valor: number }[] | undefined) =>
+      new Map((arr ?? []).map((d) => [d.periodo, d.valor]));
+    const valMap = toMap(historicoIndicadorSeries.valencia);
+    const casMap = toMap(historicoIndicadorSeries.castellon);
+    const aliMap = toMap(historicoIndicadorSeries.alicante);
+    const espMap = toMap(historicoIndicadorSeries.espana);
+    const topMaps = [
+      espMap,
+      toMap(historicoIndicadorSeries.alemania),
+      toMap(historicoIndicadorSeries.francia),
+      toMap(historicoIndicadorSeries.italia),
+      toMap(historicoIndicadorSeries.paisesBajos),
+    ];
+    return [...YEARS_EVOLUCION].map((year) => {
+      const topVals = topMaps
+        .map((m) => m.get(year))
+        .filter((v): v is number => v != null && Number.isFinite(v));
+      const topUE = topVals.length > 0 ? Math.max(...topVals) : null;
+      return {
+        year,
+        Valencia: valMap.get(year) ?? null,
+        "Castellón": casMap.get(year) ?? null,
+        Alicante: aliMap.get(year) ?? null,
+        España: espMap.get(year) ?? null,
+        "Top UE": topUE,
+      };
+    });
+  }, [historicoIndicadorSeries]);
 
-  // Datos estáticos para evolución por dimensiones e índice global (se mantienen como referencia)
-  const dimensionesData = [
-    { year: 2020, "Capital Humano": 62, "Ecosistema": 58, "Emprendimiento": 50, "Infraestructura": 65, "Servicios Públicos": 60, "Sostenibilidad": 55, "Transformación Digital": 58 },
-    { year: 2021, "Capital Humano": 64, "Ecosistema": 60, "Emprendimiento": 52, "Infraestructura": 68, "Servicios Públicos": 62, "Sostenibilidad": 57, "Transformación Digital": 60 },
-    { year: 2022, "Capital Humano": 66, "Ecosistema": 62, "Emprendimiento": 54, "Infraestructura": 70, "Servicios Públicos": 64, "Sostenibilidad": 59, "Transformación Digital": 62 },
-    { year: 2023, "Capital Humano": 68, "Ecosistema": 64, "Emprendimiento": 56, "Infraestructura": 72, "Servicios Públicos": 66, "Sostenibilidad": 61, "Transformación Digital": 64 },
-    { year: 2024, "Capital Humano": 70, "Ecosistema": 66, "Emprendimiento": 58, "Infraestructura": 75, "Servicios Públicos": 68, "Sostenibilidad": 63, "Transformación Digital": 66 },
-  ];
-
-  /** Años a mostrar (3–6 años suele bastar; ampliar aquí si hay más periodos en BD). */
-  const yearsIndiceGlobal = useMemo(
-    () => [2022, 2023, 2024, 2025],
+  /** Referencia estática de dimensiones (solo tarjetas resumen KPI); mismos años que el resto de la página. */
+  const dimensionesDataReferencia = useMemo(
+    () =>
+      [
+        {
+          year: 2023,
+          "Capital Humano": 68,
+          Ecosistema: 64,
+          Emprendimiento: 56,
+          Infraestructura: 72,
+          "Servicios Públicos": 66,
+          Sostenibilidad: 61,
+          "Transformación Digital": 64,
+        },
+        {
+          year: 2024,
+          "Capital Humano": 70,
+          Ecosistema: 66,
+          Emprendimiento: 58,
+          Infraestructura: 75,
+          "Servicios Públicos": 68,
+          Sostenibilidad: 63,
+          "Transformación Digital": 66,
+        },
+        {
+          year: 2025,
+          "Capital Humano": 72,
+          Ecosistema: 68,
+          Emprendimiento: 60,
+          Infraestructura: 77,
+          "Servicios Públicos": 70,
+          Sostenibilidad: 65,
+          "Transformación Digital": 68,
+        },
+      ] as const,
     []
   );
+
+  const yearsIndiceGlobal = useMemo(() => [...YEARS_EVOLUCION], []);
 
   const {
     data: indiceGlobalHistorico = [],
@@ -146,9 +246,9 @@ const EvolucionTemporal = () => {
   const indiceGlobalData = useMemo(() => {
     return indiceGlobalHistorico.map((row, i, arr) => {
       const prev = i > 0 ? arr[i - 1] : null;
-      const ref = row.valencia ?? row.espana ?? row.europa;
+      const ref = row.valencia ?? row.espana ?? row.topUE;
       const prevRef = prev
-        ? (prev.valencia ?? prev.espana ?? prev.europa)
+        ? (prev.valencia ?? prev.espana ?? prev.topUE)
         : null;
       let cambio: string | null = null;
       if (ref != null && prevRef != null && prevRef !== 0) {
@@ -157,34 +257,36 @@ const EvolucionTemporal = () => {
       }
       return {
         year: row.year,
-        valor: row.valencia,
-        cambio,
+        valencia: row.valencia,
+        castellon: row.castellon,
+        alicante: row.alicante,
         espana: row.espana,
-        europa: row.europa,
+        topUE: row.topUE,
+        cambio,
       };
     });
   }, [indiceGlobalHistorico]);
 
   const resumenCV = useMemo(() => {
     const valenciaRows = indiceGlobalData.filter(
-      (r) => r.valor != null && Number.isFinite(Number(r.valor))
+      (r) => r.valencia != null && Number.isFinite(Number(r.valencia))
     );
     const first = valenciaRows[0];
     const last = valenciaRows[valenciaRows.length - 1];
 
     const crecimientoTotal =
-      first?.valor != null && last?.valor != null
-        ? Number(last.valor) - Number(first.valor)
+      first?.valencia != null && last?.valencia != null
+        ? Number(last.valencia) - Number(first.valencia)
         : null;
 
     const yearSpan =
       first?.year != null && last?.year != null ? Number(last.year) - Number(first.year) : 0;
     const cagr =
-      first?.valor != null &&
-      last?.valor != null &&
-      Number(first.valor) > 0 &&
+      first?.valencia != null &&
+      last?.valencia != null &&
+      Number(first.valencia) > 0 &&
       yearSpan > 0
-        ? (Math.pow(Number(last.valor) / Number(first.valor), 1 / yearSpan) - 1) * 100
+        ? (Math.pow(Number(last.valencia) / Number(first.valencia), 1 / yearSpan) - 1) * 100
         : null;
 
     const dimensionKeys = [
@@ -196,8 +298,8 @@ const EvolucionTemporal = () => {
       "Sostenibilidad",
       "Transformación Digital",
     ] as const;
-    const firstDim = dimensionesData[0];
-    const lastDim = dimensionesData[dimensionesData.length - 1];
+    const firstDim = dimensionesDataReferencia[0];
+    const lastDim = dimensionesDataReferencia[dimensionesDataReferencia.length - 1];
     const evoluciones = dimensionKeys
       .map((k) => ({ nombre: k, delta: Number(lastDim?.[k] ?? 0) - Number(firstDim?.[k] ?? 0) }))
       .filter((d) => Number.isFinite(d.delta));
@@ -210,7 +312,22 @@ const EvolucionTemporal = () => {
 
     const rango = first && last ? `${first.year}-${last.year}` : "sin rango";
     return { crecimientoTotal, cagr, mejor, atencion, rango };
-  }, [indiceGlobalData, dimensionesData]);
+  }, [indiceGlobalData, dimensionesDataReferencia]);
+
+  const {
+    data: dimensionesEvolucion,
+    isPending: dimensionesEvolucionLoading,
+    isError: dimensionesEvolucionError,
+    error: dimensionesEvolucionErrorDetail,
+  } = useQuery({
+    queryKey: ["dimensiones-evolucion-brainnova", territorioDimensiones, [...YEARS_EVOLUCION]],
+    queryFn: () =>
+      getDimensionesHistoricoEvolucion(territorioDimensiones, [...YEARS_EVOLUCION]),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const dimensionesChartRows = dimensionesEvolucion?.rows ?? [];
+  const dimensionNombresChart = dimensionesEvolucion?.dimensionNombres ?? [];
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
@@ -302,7 +419,7 @@ const EvolucionTemporal = () => {
             {/* Key Performance Indicators */}
             <div>
               <h2 className="text-lg font-semibold text-[#0c6c8b] mb-3">
-                Indicadores de evolución · Comunidad Valenciana
+                Indicadores de evolución · Valencia (índice global)
               </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="bg-green-50 border-green-200">
@@ -388,7 +505,7 @@ const EvolucionTemporal = () => {
                   Evolución del Índice Global BRAINNOVA
                 </CardTitle>
                 <p className="text-sm text-gray-600">
-                  Comparativa de Valencia frente a España y referencia europea
+                  Valencia, Castellón, Alicante, España y Top UE (máximo entre referencia UE por año)
                 </p>
               </CardHeader>
               <CardContent>
@@ -410,7 +527,12 @@ const EvolucionTemporal = () => {
                   </div>
                 ) : indiceGlobalData.length === 0 ||
                   indiceGlobalData.every(
-                    (d) => d.valor == null && d.espana == null && d.europa == null
+                    (d) =>
+                      d.valencia == null &&
+                      d.castellon == null &&
+                      d.alicante == null &&
+                      d.espana == null &&
+                      d.topUE == null
                   ) ? (
                   <div className="h-80 flex items-center justify-center text-gray-500">
                     No hay datos suficientes en la base para calcular el índice global en estos años.
@@ -435,9 +557,27 @@ const EvolucionTemporal = () => {
                           <Legend />
                           <Line
                             type="monotone"
-                            dataKey="valor"
+                            dataKey="valencia"
                             name="Valencia"
                             stroke="#14B8A6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="castellon"
+                            name="Castellón"
+                            stroke="#8B5CF6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            connectNulls
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="alicante"
+                            name="Alicante"
+                            stroke="#EAB308"
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             connectNulls
@@ -453,10 +593,11 @@ const EvolucionTemporal = () => {
                           />
                           <Line
                             type="monotone"
-                            dataKey="europa"
-                            name="Europa (UE / ref.)"
-                            stroke="#F97316"
+                            dataKey="topUE"
+                            name="Top UE"
+                            stroke="#10B981"
                             strokeWidth={2}
+                            strokeDasharray="4 4"
                             dot={{ r: 3 }}
                             connectNulls
                           />
@@ -468,15 +609,21 @@ const EvolucionTemporal = () => {
                         <div key={item.year} className="text-center min-w-[5rem]">
                           <p className="text-sm font-semibold text-gray-900">{item.year}</p>
                           <p className="text-xs text-teal-600">
-                            Valencia: {item.valor != null ? item.valor : "—"}
+                            Val.: {item.valencia != null ? item.valencia : "—"}
+                          </p>
+                          <p className="text-xs text-violet-600">
+                            Cast.: {item.castellon != null ? item.castellon : "—"}
+                          </p>
+                          <p className="text-xs text-amber-600">
+                            Alic.: {item.alicante != null ? item.alicante : "—"}
                           </p>
                           <p className="text-xs text-blue-600">
                             ES: {item.espana != null ? item.espana : "—"}
                           </p>
-                          <p className="text-xs text-orange-600">
-                            EU: {item.europa != null ? item.europa : "—"}
+                          <p className="text-xs text-emerald-600">
+                            Top UE: {item.topUE != null ? item.topUE : "—"}
                           </p>
-                          {item.cambio && item.valor != null && (
+                          {item.cambio && item.valencia != null && (
                             <p className="text-xs text-green-600 mt-0.5">Δ Valencia {item.cambio}</p>
                           )}
                         </div>
@@ -490,82 +637,91 @@ const EvolucionTemporal = () => {
             {/* Evolución por Dimensiones */}
             <Card className="bg-white">
               <CardHeader>
-                <CardTitle className="text-xl font-bold text-gray-900">
-                  Evolución por dimensiones BRAINNOVA
-                </CardTitle>
-                <p className="text-sm text-gray-600">
-                  Trayectoria de las siete dimensiones del Índice BRAINNOVA (referencia)
-                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle className="text-xl font-bold text-gray-900">
+                      Evolución por dimensiones BRAINNOVA
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Trayectoria por dimensión según territorio (scores 0–100 desde datos BRAINNOVA).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm text-gray-600 whitespace-nowrap">Territorio</span>
+                    <Select
+                      value={territorioDimensiones}
+                      onValueChange={(v) =>
+                        setTerritorioDimensiones(v as TerritorioEvolucionDimensiones)
+                      }
+                    >
+                      <SelectTrigger className="w-[min(100%,14rem)] bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TERRITORIO_DIMENSIONES_OPCIONES.map((op) => (
+                          <SelectItem key={op.value} value={op.value}>
+                            {op.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLineChart data={dimensionesData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="year" 
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <YAxis 
-                        domain={[40, 80]}
-                        stroke="#6b7280"
-                        tick={{ fill: '#6b7280' }}
-                      />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Capital Humano" 
-                        stroke="#3B82F6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Ecosistema" 
-                        stroke="#F97316" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Emprendimiento" 
-                        stroke="#EF4444" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Infraestructura" 
-                        stroke="#10B981" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Servicios Públicos" 
-                        stroke="#8B5CF6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Sostenibilidad" 
-                        stroke="#EAB308" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="Transformación Digital" 
-                        stroke="#14B8A6" 
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                      />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
-                </div>
+                {dimensionesEvolucionError ? (
+                  <div className="h-96 flex flex-col items-center justify-center gap-2 text-center px-4">
+                    <p className="text-red-600 font-medium">No se pudieron cargar las dimensiones.</p>
+                    <p className="text-sm text-gray-600">
+                      {dimensionesEvolucionErrorDetail instanceof Error
+                        ? dimensionesEvolucionErrorDetail.message
+                        : String(dimensionesEvolucionErrorDetail ?? "Error desconocido")}
+                    </p>
+                  </div>
+                ) : dimensionesEvolucionLoading ? (
+                  <div className="h-96 flex items-center justify-center text-gray-500">
+                    Cargando dimensiones por territorio…
+                  </div>
+                ) : dimensionNombresChart.length === 0 ||
+                  dimensionesChartRows.every((row) =>
+                    dimensionNombresChart.every((n) => row[n] == null)
+                  ) ? (
+                  <div className="h-96 flex items-center justify-center text-gray-500 text-center px-4">
+                    No hay datos de dimensiones para este territorio en los años mostrados.
+                  </div>
+                ) : (
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsLineChart data={dimensionesChartRows}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="year"
+                          stroke="#6b7280"
+                          tick={{ fill: "#6b7280" }}
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                          stroke="#6b7280"
+                          tick={{ fill: "#6b7280" }}
+                        />
+                        <Tooltip />
+                        <Legend />
+                        {dimensionNombresChart.map((nombre, idx) => (
+                          <Line
+                            key={nombre}
+                            type="monotone"
+                            dataKey={nombre}
+                            name={nombre}
+                            stroke={DIMENSION_LINE_COLORS[idx % DIMENSION_LINE_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ r: 4 }}
+                            connectNulls
+                          />
+                        ))}
+                      </RechartsLineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -608,16 +764,6 @@ const EvolucionTemporal = () => {
                         </div>
                       )}
                     </div>
-                    <Select value={selectedComparacionTerritorio} onValueChange={setSelectedComparacionTerritorio}>
-                      <SelectTrigger className="w-44 bg-white">
-                        <SelectValue placeholder="Territorio" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(["Valencia", "Castellón", "Alicante"] as const).map((t) => (
-                          <SelectItem key={t} value={t}>{t}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     <Select value={indicadorActual} onValueChange={setSelectedIndicador}>
                     <SelectTrigger className="w-96 bg-white">
                       <SelectValue placeholder="Seleccionar indicador..." />
@@ -634,91 +780,76 @@ const EvolucionTemporal = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                {indicadorData.length === 0 ? (
+                {historicoIndicadorLoading ? (
+                  <div className="h-80 flex items-center justify-center text-gray-500">
+                    Cargando series por territorio…
+                  </div>
+                ) : indicadorData.length === 0 ? (
                   <div className="h-80 flex items-center justify-center text-gray-500">
                     <p>{indicadorActual ? "No hay datos históricos para este indicador." : "Selecciona un indicador para ver su evolución."}</p>
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                      {([selectedComparacionTerritorio, "Comunitat Valenciana", "España", "Top UE (Alemania)"] as const).map((serie, idx) => {
-                        const values = indicadorData.map(d => d[serie]).filter((v): v is number => v !== null && v !== undefined);
+                    <p className="text-sm text-gray-600 mb-4">
+                      Comparativa fija: Valencia, Castellón, Alicante, España y Top UE (máximo entre España, Alemania, Francia, Italia y Países Bajos por año).
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                      {EVOLUCION_INDICADOR_SERIES.map(({ dataKey, name, cardClass }) => {
+                        const values = indicadorData
+                          .map((d) => d[dataKey])
+                          .filter((v): v is number => v !== null && v !== undefined);
                         const first = values[0];
                         const last = values[values.length - 1];
-                        const growth = first && last && first !== 0
-                          ? (((last - first) / Math.abs(first)) * 100).toFixed(1)
-                          : null;
-                        const bgColors = [
-                          "bg-indigo-50 border-indigo-200",
-                          "bg-blue-50 border-blue-200",
-                          "bg-blue-50 border-blue-200",
-                          "bg-green-50 border-green-200",
-                        ];
-                        const years = indicadorData.map(d => d.year);
+                        const growth =
+                          first != null && last != null && first !== 0
+                            ? (((last - first) / Math.abs(first)) * 100).toFixed(1)
+                            : null;
+                        const years = indicadorData.map((d) => d.year);
                         return (
-                          <Card key={serie} className={bgColors[idx] || "bg-gray-50 border-gray-200"}>
+                          <Card key={dataKey} className={cardClass}>
                             <CardContent className="p-4">
-                              <p className="text-sm text-gray-600 mb-1">{serie}</p>
+                              <p className="text-sm text-gray-600 mb-1">{name}</p>
                               <h3 className="text-2xl font-bold text-gray-900">
-                                {growth !== null ? `${Number(growth) >= 0 ? '+' : ''}${growth}%` : "—"}
+                                {growth !== null
+                                  ? `${Number(growth) >= 0 ? "+" : ""}${growth}%`
+                                  : "—"}
                               </h3>
                               <p className="text-xs text-gray-600 mt-1">
-                                {years.length >= 2 ? `${years[0]}-${years[years.length - 1]}` : ""}
+                                {years.length >= 2
+                                  ? `${years[0]}-${years[years.length - 1]}`
+                                  : ""}
                               </p>
                             </CardContent>
                           </Card>
                         );
                       })}
                     </div>
-                    
+
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
                         <RechartsLineChart data={indicadorData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis 
-                            dataKey="year" 
+                          <XAxis
+                            dataKey="year"
                             stroke="#6b7280"
-                            tick={{ fill: '#6b7280' }}
+                            tick={{ fill: "#6b7280" }}
                           />
-                          <YAxis 
-                            stroke="#6b7280"
-                            tick={{ fill: '#6b7280' }}
-                          />
+                          <YAxis stroke="#6b7280" tick={{ fill: "#6b7280" }} />
                           <Tooltip />
                           <Legend />
-                          <Line
-                            type="monotone"
-                            dataKey={selectedComparacionTerritorio}
-                            stroke="#6366F1"
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            connectNulls
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="Comunitat Valenciana" 
-                            stroke="#0c6c8b" 
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            connectNulls
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="España" 
-                            stroke="#3B82F6" 
-                            strokeWidth={2}
-                            dot={{ r: 4 }}
-                            connectNulls
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="Top UE (Alemania)" 
-                            stroke="#10B981" 
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={{ r: 4 }}
-                            connectNulls
-                          />
+                          {EVOLUCION_INDICADOR_SERIES.map(({ dataKey, name, stroke }) => (
+                            <Line
+                              key={dataKey}
+                              type="monotone"
+                              dataKey={dataKey}
+                              name={name}
+                              stroke={stroke}
+                              strokeWidth={2}
+                              strokeDasharray={dataKey === "Top UE" ? "5 5" : undefined}
+                              dot={{ r: 4 }}
+                              connectNulls
+                            />
+                          ))}
                         </RechartsLineChart>
                       </ResponsiveContainer>
                     </div>

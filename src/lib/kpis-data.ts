@@ -469,11 +469,20 @@ export async function getIndicadores(): Promise<Indicador[]> {
 
 /**
  * Obtiene indicadores con datos agregados (valores, resultados, etc.)
+ * @param opts Si se indica `pais` y/o `periodo`, el último valor y el conteo se limitan a ese contexto (misma lógica que resultados por territorio/año).
  */
 export async function getIndicadoresConDatos(
-  nombreDimension?: string
+  nombreDimension?: string,
+  opts?: { pais?: string; periodo?: number }
 ): Promise<IndicadorConDatos[]> {
   try {
+    const resultadoFilters: { pais?: string; periodo?: number } = {};
+    if (opts?.pais != null && String(opts.pais).trim() !== "") {
+      resultadoFilters.pais = String(opts.pais).trim();
+    }
+    if (opts?.periodo != null && !Number.isNaN(Number(opts.periodo))) {
+      resultadoFilters.periodo = Math.floor(Number(opts.periodo));
+    }
     // Obtener indicadores
     let indicadores = await getIndicadores();
     
@@ -524,20 +533,34 @@ export async function getIndicadoresConDatos(
     const indicadoresConDatos = await Promise.all(
       indicadoresUnicos.map(async (ind) => {
         const nombresConsulta = (ind as { _nombresConsulta?: string[] })._nombresConsulta ?? [ind.nombre];
-        const resultadosRows = await fetchResultadoIndicador(nombresConsulta, ind.id, {});
+        const resultadosRows = await fetchResultadoIndicador(
+          nombresConsulta,
+          ind.id,
+          resultadoFilters
+        );
         const resultados = resultadosRows.length > 0 ? [resultadosRows[0]] : null;
 
         let count: number | null = null;
-        const { count: countByNombre } = await supabase
+        let countQ = supabase
           .from("resultado_indicadores")
           .select("id", { count: "exact", head: true })
           .in("nombre_indicador", nombresConsulta);
+        if (resultadoFilters.pais != null) countQ = countQ.eq("pais", resultadoFilters.pais);
+        if (resultadoFilters.periodo != null) {
+          countQ = countQ.in("periodo", periodoFilterValues(resultadoFilters.periodo));
+        }
+        const { count: countByNombre } = await countQ;
         count = countByNombre ?? 0;
         if (count === 0 && ind.id != null) {
-          const { count: countById } = await supabase
+          let countIdQ = supabase
             .from("resultado_indicadores")
             .select("id", { count: "exact", head: true })
             .eq("id_indicador", ind.id);
+          if (resultadoFilters.pais != null) countIdQ = countIdQ.eq("pais", resultadoFilters.pais);
+          if (resultadoFilters.periodo != null) {
+            countIdQ = countIdQ.in("periodo", periodoFilterValues(resultadoFilters.periodo));
+          }
+          const { count: countById } = await countIdQ;
           count = countById ?? 0;
         }
 
@@ -1019,6 +1042,314 @@ export async function getDimensionScore(
   }
 }
 
+export type TerritorioEvolucionDimensiones =
+  | "Valencia"
+  | "Castellón"
+  | "Alicante"
+  | "Comunitat Valenciana"
+  | "España"
+  | "Top UE";
+
+export type DimensionesHistoricoEvolucionResult = {
+  dimensionNombres: string[];
+  rows: Array<{ year: number } & Record<string, number | null>>;
+};
+
+type ResultadoBulkRow = {
+  id?: number | null;
+  nombre_indicador: string | null;
+  id_indicador: number | null;
+  pais: string | null;
+  periodo: unknown;
+  valor_calculado: unknown;
+};
+
+const PAIS_VARIATIONS_DIM: Record<string, string[]> = {
+  "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
+  "España": ["España", "Spain", "Esp"],
+  Valencia: ["Valencia", "Comunitat Valenciana"],
+  Alicante: ["Alicante"],
+  "Castellón": ["Castellón", "Castellon"],
+  Alemania: ["Alemania", "Germany", "Deutschland"],
+  Francia: ["Francia", "France"],
+  Italia: ["Italia", "Italy"],
+  "Países Bajos": ["Países Bajos", "Netherlands", "Holanda"],
+};
+
+const UE_SCORE_PAIS_GROUPS: readonly (readonly string[])[] = [
+  ["España", "Spain", "Esp"],
+  ["Alemania", "Germany", "Deutschland"],
+  ["Francia", "France"],
+  ["Italia", "Italy"],
+  ["Países Bajos", "Netherlands", "Holanda"],
+] as const;
+
+function variacionesPaisDim(pais: string): string[] {
+  return PAIS_VARIATIONS_DIM[pais] ?? [pais];
+}
+
+function filaCoincideIndicador(row: ResultadoBulkRow, ind: Indicador): boolean {
+  const aliases = getIndicadorNombresParaConsulta(ind.nombre);
+  const nm = String(row.nombre_indicador ?? "").trim();
+  if (nm && aliases.some((a) => normalizeName(a) === normalizeName(nm))) return true;
+  if (ind.id != null && row.id_indicador != null) {
+    const rid = Number(row.id_indicador);
+    const iid = Number(ind.id);
+    if (Number.isFinite(rid) && Number.isFinite(iid) && rid === iid) return true;
+  }
+  return false;
+}
+
+function pickValorTerritorio(
+  rows: ResultadoBulkRow[],
+  ind: Indicador,
+  paisCandidates: string[],
+  year: number
+): number | null {
+  const pool = rows.filter(
+    (r) =>
+      filaCoincideIndicador(r, ind) &&
+      periodoToYear(r.periodo) === year &&
+      paisCandidates.some((pv) => normalizeName(String(r.pais ?? "")) === normalizeName(pv))
+  );
+  pool.sort((a, b) => String(b.periodo ?? "").localeCompare(String(a.periodo ?? "")));
+  for (const r of pool) {
+    const v = Number(r.valor_calculado);
+    if (Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
+function minMaxIndicadorAno(rows: ResultadoBulkRow[], ind: Indicador, year: number): { min: number; max: number } | null {
+  const vals: number[] = [];
+  for (const r of rows) {
+    if (periodoToYear(r.periodo) !== year) continue;
+    if (!filaCoincideIndicador(r, ind)) continue;
+    const v = Number(r.valor_calculado);
+    if (Number.isFinite(v)) vals.push(v);
+  }
+  if (vals.length === 0) return null;
+  return { min: Math.min(...vals), max: Math.max(...vals) };
+}
+
+function minMaxIndicadorTodosPeriodos(rows: ResultadoBulkRow[], ind: Indicador): { min: number; max: number } | null {
+  const vals: number[] = [];
+  for (const r of rows) {
+    if (!filaCoincideIndicador(r, ind)) continue;
+    const v = Number(r.valor_calculado);
+    if (Number.isFinite(v)) vals.push(v);
+  }
+  if (vals.length === 0) return null;
+  return { min: Math.min(...vals), max: Math.max(...vals) };
+}
+
+const BULK_PAGE_SIZE = 2500;
+
+async function fetchResultadosIndicadoresBulk(
+  years: number[],
+  _nombresIndicadores: string[],
+  _idsIndicadores: number[]
+): Promise<ResultadoBulkRow[]> {
+  const sortedY = [...new Set(years)].filter((y) => Number.isFinite(y) && y > 0).sort((a, b) => a - b);
+  if (sortedY.length === 0) return [];
+  const yearSet = new Set(sortedY);
+  const minY = sortedY[0];
+  const maxY = sortedY[sortedY.length - 1];
+  const rangeStart = `${minY}-01-01`;
+  const rangeEnd = `${maxY}-12-31`;
+
+  const acc: ResultadoBulkRow[] = [];
+
+  const pullPaged = async (useDateStrings: boolean): Promise<boolean> => {
+    acc.length = 0;
+    // PostgREST/Supabase suele capar respuestas (p. ej. max-rows=1000). Hay que avanzar el offset
+    // por las filas realmente devueltas; si no, se corta tras la primera página y faltan países
+    // (p. ej. Valencia) aunque existan en la tabla.
+    const MAX_PAGES = 500;
+    for (let offset = 0, page = 0; page < MAX_PAGES; page += 1) {
+      const to = offset + BULK_PAGE_SIZE - 1;
+      let q = supabase
+        .from("resultado_indicadores")
+        .select("id, nombre_indicador, id_indicador, pais, periodo, valor_calculado")
+        .not("nombre_indicador", "is", null)
+        .neq("nombre_indicador", "")
+        .order("id", { ascending: true })
+        .range(offset, to);
+      q = useDateStrings ? q.gte("periodo", rangeStart).lte("periodo", rangeEnd) : q.gte("periodo", minY).lte("periodo", maxY);
+      const { data, error } = await q;
+      if (error) {
+        console.error(
+          `fetchResultadosIndicadoresBulk (${useDateStrings ? "periodo fecha" : "periodo num"}):`,
+          error.message
+        );
+        return false;
+      }
+      if (!data?.length) break;
+      for (const r of data as ResultadoBulkRow[]) {
+        if (!yearSet.has(periodoToYear(r.periodo))) continue;
+        acc.push(r);
+      }
+      offset += data.length;
+    }
+    return acc.length > 0;
+  };
+
+  let ok = await pullPaged(true);
+  if (!ok) {
+    await pullPaged(false);
+  }
+
+  const seen = new Set<string>();
+  const out: ResultadoBulkRow[] = [];
+  for (const r of acc) {
+    const k = `${r.id ?? ""}\0${r.nombre_indicador ?? ""}\0${r.id_indicador ?? ""}\0${r.pais ?? ""}\0${String(r.periodo)}\0${r.valor_calculado}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+
+function scoreSubdimensionDesdeBulk(
+  rows: ResultadoBulkRow[],
+  indicadores: Indicador[],
+  paisVarsTerritorio: string[],
+  year: number
+): number {
+  if (!indicadores.length) return 0;
+
+  const valoresTerritorio = indicadores.map((ind) =>
+    pickValorTerritorio(rows, ind, paisVarsTerritorio, year)
+  );
+
+  const minMaxGlobal = new Map<string, { min: number; max: number }>();
+  for (const ind of indicadores) {
+    const mm = minMaxIndicadorAno(rows, ind, year);
+    if (mm) minMaxGlobal.set(ind.nombre, mm);
+  }
+  const conValorSinMinMax = indicadores.filter(
+    (ind, idx) => valoresTerritorio[idx] != null && !minMaxGlobal.has(ind.nombre)
+  );
+  for (const ind of conValorSinMinMax) {
+    const mm = minMaxIndicadorTodosPeriodos(rows, ind);
+    if (mm) minMaxGlobal.set(ind.nombre, mm);
+  }
+
+  const calcularScorePonderado = (valores: (number | null)[]): number => {
+    let sumaPonderada = 0;
+    let sumaPesos = 0;
+    indicadores.forEach((ind, idx) => {
+      const valor = valores[idx];
+      if (valor === null || valor === undefined || isNaN(valor)) return;
+      const mm = minMaxGlobal.get(ind.nombre);
+      const max = mm ? mm.max : valor > 0 ? valor : 1;
+      const scoreI = scoreIndicadorPorMax(valor, max);
+      const peso = pesoImportancia(ind.importancia);
+      sumaPonderada += scoreI * peso;
+      sumaPesos += peso;
+    });
+    if (sumaPesos === 0) return 0;
+    return Math.round(sumaPonderada / sumaPesos);
+  };
+
+  const score = Math.min(100, Math.max(0, calcularScorePonderado(valoresTerritorio)));
+  return score;
+}
+
+function dimensionScoreDesdeBulk(
+  nombreDimension: string,
+  paisTerritorio: string,
+  year: number,
+  rows: ResultadoBulkRow[],
+  todosIndicadores: Indicador[],
+  subdimensiones: Subdimension[],
+  dimensionId: number | undefined
+): number {
+  const subsFiltradas = filterSubdimensionesByDimension(
+    subdimensiones,
+    nombreDimension,
+    dimensionId
+  );
+  const seenSub = new Set<string>();
+  const subdimensionesUnicas = subsFiltradas.filter((sub) => {
+    const key = normalizeName(sub.nombre ?? "");
+    if (seenSub.has(key)) return false;
+    seenSub.add(key);
+    return true;
+  });
+
+  const paisVars = variacionesPaisDim(paisTerritorio);
+  const subScores: number[] = [];
+  for (const sub of subdimensionesUnicas) {
+    let indicadores = todosIndicadores.filter(
+      (ind) =>
+        (ind.id_subdimension != null && sub.id != null && ind.id_subdimension === sub.id) ||
+        subdimensionMatch(ind.nombre_subdimension, sub.nombre)
+    );
+    const byCanonicalSub = new Map<string, Indicador>();
+    for (const ind of indicadores) {
+      const key = getIndicadorCanonicalKey(ind.nombre);
+      if (!byCanonicalSub.has(key)) byCanonicalSub.set(key, ind);
+    }
+    indicadores = Array.from(byCanonicalSub.values());
+    if (!indicadores.length) continue;
+    const s = scoreSubdimensionDesdeBulk(rows, indicadores, paisVars, year);
+    if (s > 0) subScores.push(s);
+  }
+  if (subScores.length === 0) return 0;
+  return Math.round(subScores.reduce((a, b) => a + b, 0) / subScores.length);
+}
+
+/**
+ * Scores por dimensión (0–100) para cada año, según territorio o Top UE (máximo entre países de referencia).
+ * Una carga paginada de `resultado_indicadores` por rango de periodo (sin `.in` masivo de nombres).
+ */
+export async function getDimensionesHistoricoEvolucion(
+  territorio: TerritorioEvolucionDimensiones,
+  years: number[]
+): Promise<DimensionesHistoricoEvolucionResult> {
+  const dimensiones = await getDimensiones();
+  const sortedYears = [...new Set(years)].sort((a, b) => a - b);
+  const dimensionNombres = dimensiones.map((d) => d.nombre);
+
+  if (!dimensiones.length) {
+    return {
+      dimensionNombres: [],
+      rows: sortedYears.map((y) => ({ year: y })),
+    };
+  }
+
+  const [subdimensiones, todosIndicadores, dimensionIds] = await Promise.all([
+    getSubdimensiones(),
+    getIndicadores(),
+    Promise.all(dimensiones.map((d) => getDimensionIdByName(d.nombre))),
+  ]);
+
+  const bulkRows = await fetchResultadosIndicadoresBulk(sortedYears, [], []);
+
+  const scoreDimAno = (nombreDim: string, pais: string, year: number): number => {
+    const dimIdx = dimensiones.findIndex((d) => dimensionMatch(d.nombre, nombreDim));
+    const dimId = dimIdx >= 0 ? dimensionIds[dimIdx] : undefined;
+    return dimensionScoreDesdeBulk(nombreDim, pais, year, bulkRows, todosIndicadores, subdimensiones, dimId);
+  };
+
+  const rows = sortedYears.map((year) => {
+    const entries = dimensiones.map((dim) => {
+      const name = dim.nombre;
+      if (territorio === "Top UE") {
+        const scores = UE_SCORE_PAIS_GROUPS.map((grp) => scoreDimAno(name, grp[0], year));
+        const pos = scores.filter((s) => s > 0);
+        return [name, pos.length > 0 ? Math.max(...pos) : null] as const;
+      }
+      const s = scoreDimAno(name, territorio, year);
+      return [name, s > 0 ? s : null] as const;
+    });
+    return { year, ...Object.fromEntries(entries) } as { year: number } & Record<string, number | null>;
+  });
+
+  return { dimensionNombres, rows };
+}
+
 /**
  * Obtiene el índice global BRAINNOVA para un territorio y periodo (consultando Supabase).
  * Es la media ponderada de los scores de las 7 dimensiones; si no hay pesos, usa media simple.
@@ -1068,17 +1399,23 @@ export async function getIndiceGlobalTerritorio(
   }
 }
 
-/** Fila para gráfico de evolución: Comunitat Valenciana vs España vs referencia europea (Unión Europea). */
+/** Fila para gráfico de evolución: provincias CV, España y Top UE (máx. entre referencia UE por año). */
 export type IndiceGlobalHistoricoComparativoRow = {
   year: number;
   /** Índice global para Comunitat Valenciana */
   comunitatValenciana: number | null;
   /** Índice global para provincia de Valencia */
   valencia: number | null;
+  /** Índice global para provincia de Alicante */
+  alicante: number | null;
+  /** Índice global para provincia de Castellón */
+  castellon: number | null;
   /** Índice global para España */
   espana: number | null;
-  /** Índice global para Unión Europea (si no hay dato, se intenta Alemania como proxy UE) */
+  /** Índice global para Unión Europea (si no hay dato, se intenta Alemania como proxy) */
   europa: number | null;
+  /** Mejor valor entre referencia UE (España, Alemania, Francia, Italia, Países Bajos) en ese año */
+  topUE: number | null;
 };
 
 async function getIndiceGlobalPromedioPorPais(
@@ -1127,21 +1464,46 @@ export async function getIndiceGlobalHistoricoComparativo(
   const uniqueYears = [...new Set(years)].sort((a, b) => a - b);
   if (uniqueYears.length === 0) return [];
 
-  // Versión optimizada: pocas consultas agregadas para evitar bucles/red saturada.
-  const [cvMap, valenciaMap, espMap, ueMap, deMap] = await Promise.all([
+  const [
+    cvMap,
+    valenciaMap,
+    alicanteMap,
+    castellonMap,
+    espMap,
+    ueMap,
+    deMap,
+    frMap,
+    itMap,
+    nlMap,
+  ] = await Promise.all([
     getIndiceGlobalPromedioPorPais("Comunitat Valenciana", uniqueYears),
     getIndiceGlobalPromedioPorPais("Valencia", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Alicante", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Castellón", uniqueYears),
     getIndiceGlobalPromedioPorPais("España", uniqueYears),
     getIndiceGlobalPromedioPorPais("Unión Europea", uniqueYears),
     getIndiceGlobalPromedioPorPais("Alemania", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Francia", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Italia", uniqueYears),
+    getIndiceGlobalPromedioPorPais("Países Bajos", uniqueYears),
   ]);
+
+  const topUeForYear = (year: number): number | null => {
+    const vals = [espMap, deMap, frMap, itMap, nlMap]
+      .map((m) => m.get(year))
+      .filter((v): v is number => v != null && Number.isFinite(v));
+    return vals.length > 0 ? Math.max(...vals) : null;
+  };
 
   return uniqueYears.map((year) => ({
     year,
     comunitatValenciana: cvMap.get(year) ?? null,
     valencia: valenciaMap.get(year) ?? null,
+    alicante: alicanteMap.get(year) ?? null,
+    castellon: castellonMap.get(year) ?? null,
     espana: espMap.get(year) ?? null,
     europa: ueMap.get(year) ?? deMap.get(year) ?? null,
+    topUE: topUeForYear(year),
   }));
 }
 
