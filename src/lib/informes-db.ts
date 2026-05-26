@@ -99,3 +99,11 @@ export async function insertInformeCreateRow(params: {
   }
   return { error: lastErr };
 }
+
+/** Elimina un informe de la tabla `informes` por id. */
+export async function deleteInformeById(
+  id: string
+): Promise<{ error: { message: string; code?: string } | null }> {
+  const { error } = await supabase.from("informes" as any).delete().eq("id", id);
+  return { error: error ?? null };
+}

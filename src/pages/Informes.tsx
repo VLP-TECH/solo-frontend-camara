@@ -18,12 +18,23 @@ import {
   Upload,
   Loader2,
   Plus,
-  AlertCircle
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import CreateInformeDialog from "@/components/CreateInformeDialog";
-import { insertInformeCompatible } from "@/lib/informes-db";
+import { insertInformeCompatible, deleteInformeById } from "@/lib/informes-db";
 
 interface Informe {
   id: string;
@@ -71,8 +82,12 @@ const Informes = () => {
   const [pdfCacheBuster, setPdfCacheBuster] = useState(0);
   const [informesLoading, setInformesLoading] = useState(true);
   const [retryingPdf, setRetryingPdf] = useState(false);
+  const [informeToDelete, setInformeToDelete] = useState<Informe | null>(null);
+  const [deletingInforme, setDeletingInforme] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [informes, setInformes] = useState<Informe[]>(DEFAULT_INFORMES);
+
+  const INFORME_NO_ELIMINABLE_ID = "brainnova-2025";
 
   // Buscar PDF en Storage por id de informe (nombre tipo "brainnova-2025-123.pdf")
   const getPdfUrlFromStorage = async (informeId: string): Promise<string | undefined> => {
@@ -234,6 +249,106 @@ const Informes = () => {
     setSelectedInforme(informe);
     setShowUploadDialog(true);
     setSelectedFile(null);
+  };
+
+  const storagePathFromPdfUrl = (pdfUrl?: string): string | undefined => {
+    if (!pdfUrl) return undefined;
+    const marker = "/storage/v1/object/public/informes/";
+    const idx = pdfUrl.indexOf(marker);
+    if (idx === -1) return undefined;
+    return decodeURIComponent(pdfUrl.slice(idx + marker.length).split("?")[0]);
+  };
+
+  const deleteInformePdfsFromStorage = async (informeId: string, pdfUrl?: string) => {
+    const paths = new Set<string>();
+    const fromUrl = storagePathFromPdfUrl(pdfUrl);
+    if (fromUrl) paths.add(fromUrl);
+
+    const collectMatches = (items: { name?: string }[] | null, prefix: string) => {
+      if (!items) return;
+      for (const item of items) {
+        const name = item?.name;
+        if (typeof name === "string" && name.startsWith(prefix) && name.endsWith(".pdf")) {
+          paths.add(name);
+        }
+      }
+    };
+
+    try {
+      const { data: rootFiles } = await supabase.storage.from("informes").list("", { limit: 200 });
+      collectMatches(rootFiles, `${informeId}-`);
+      if (rootFiles && Array.isArray(rootFiles)) {
+        for (const item of rootFiles) {
+          const folder = item?.name;
+          if (typeof folder === "string" && folder && !folder.includes(".")) {
+            const { data: subFiles } = await supabase.storage.from("informes").list(folder, { limit: 200 });
+            if (subFiles) {
+              for (const f of subFiles) {
+                const name = f?.name;
+                if (typeof name === "string" && name.startsWith(`${informeId}-`) && name.endsWith(".pdf")) {
+                  paths.add(`${folder}/${name}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Informes] No se pudo listar Storage al eliminar:", e);
+    }
+
+    if (paths.size === 0) return;
+    const { error } = await supabase.storage.from("informes").remove([...paths]);
+    if (error) console.warn("[Informes] Error borrando PDFs en Storage:", error.message);
+  };
+
+  const handleDeleteInforme = async () => {
+    if (!informeToDelete) return;
+    if (informeToDelete.id === INFORME_NO_ELIMINABLE_ID) {
+      toast({
+        title: "No se puede eliminar",
+        description: "El informe BRAINNOVA 2025 es el informe principal del repositorio.",
+        variant: "destructive",
+      });
+      setInformeToDelete(null);
+      return;
+    }
+
+    setDeletingInforme(true);
+    try {
+      await deleteInformePdfsFromStorage(informeToDelete.id, informeToDelete.pdfUrl);
+
+      const { error } = await deleteInformeById(informeToDelete.id);
+      if (error) {
+        toast({
+          title: "Error al eliminar",
+          description: error.message || "No se pudo eliminar el informe de la base de datos.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setInformes((prev) => prev.filter((inf) => inf.id !== informeToDelete.id));
+      if (selectedInforme?.id === informeToDelete.id) {
+        setShowPreview(false);
+        setSelectedInforme(null);
+      }
+
+      toast({
+        title: "Informe eliminado",
+        description: `«${informeToDelete.title}» se ha eliminado del repositorio.`,
+      });
+      setInformeToDelete(null);
+    } catch (e) {
+      console.error("Error eliminando informe:", e);
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "No se pudo eliminar el informe.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingInforme(false);
+    }
   };
 
   const slugIdDesdeTitulo = (titulo: string) => {
@@ -678,15 +793,34 @@ const Informes = () => {
                           <Download className="h-4 w-4" />
                         </Button>
                         {isAdmin && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="px-3 border-green-500 text-green-700 hover:bg-green-50"
-                            onClick={(e) => handleUploadClick(informe, e)}
-                            title="Actualizar el PDF de este informe (admin)"
-                          >
-                            <Upload className="h-4 w-4" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="px-3 border-green-500 text-green-700 hover:bg-green-50"
+                              onClick={(e) => handleUploadClick(informe, e)}
+                              title="Actualizar el PDF de este informe (admin)"
+                            >
+                              <Upload className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="px-3 border-red-300 text-red-700 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInformeToDelete(informe);
+                              }}
+                              title={
+                                informe.id === INFORME_NO_ELIMINABLE_ID
+                                  ? "El informe principal no se puede eliminar"
+                                  : "Eliminar informe"
+                              }
+                              disabled={informe.id === INFORME_NO_ELIMINABLE_ID}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -813,6 +947,16 @@ const Informes = () => {
                     Abrir PDF en nueva pestaña
                   </Button>
                 )}
+                {isAdmin && selectedInforme && selectedInforme.id !== INFORME_NO_ELIMINABLE_ID && (
+                  <Button
+                    variant="outline"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={() => setInformeToDelete(selectedInforme)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar informe
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setShowPreview(false)}
@@ -823,6 +967,43 @@ const Informes = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog
+          open={!!informeToDelete}
+          onOpenChange={(open) => {
+            if (!open && !deletingInforme) setInformeToDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar este informe?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se eliminará «{informeToDelete?.title}» de la base de datos y se intentará borrar su PDF en Storage.
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingInforme}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deletingInforme}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleDeleteInforme();
+                }}
+              >
+                {deletingInforme ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Eliminando…
+                  </>
+                ) : (
+                  "Sí, eliminar"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Dialog para subir PDF (solo admin) */}
         <Dialog

@@ -46,7 +46,7 @@ import {
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
 
 const NORMALIZADO_COLUMNA_AYUDA =
-  "Muestra el valor del indicador en una escala de 0 a 100 (como porcentaje) para poder compararlo de un vistazo con otros KPI. Se obtiene acotando el valor numérico del indicador entre 0 y 100; la barra de progreso refleja ese mismo porcentaje. No sustituye a la metodología Min-Max del índice BRAINNOVA en otras pantallas, pero aquí sirve como referencia visual homogénea.";
+  "El valor indicado (0-100) muestra la distancia del territorio seleccionado con respecto al valor máximo existente en el indicador consultado. Este valor se calcula mediante una metodología min-max.";
 
 const KPIsDashboard = () => {
   const navigate = useNavigate();
