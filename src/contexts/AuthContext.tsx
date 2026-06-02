@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Update profile with razon_social and cif after user creation
     // Ensure active is set to false for new users (admin must activate them)
-    if (!error && data.user) {
+    if (!error && data?.user) {
       // Build update object with only essential fields first
       // Optional fields will be added conditionally and errors handled gracefully
       const updateData: any = {
@@ -103,6 +103,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           console.error('Error updating profile:', profileError);
         }
+      }
+    }
+
+    // Correos tras registro público (Edge Function notify-registration en Supabase).
+    // Requiere: función desplegada + secretos SMTP_* en el proyecto.
+    if (!error) {
+      try {
+        const { data: notifyData, error: notifyError } = await supabase.functions.invoke(
+          'notify-registration',
+          {
+            body: {
+              email,
+              firstName: firstName || '',
+              lastName: lastName || '',
+              razonSocial: razonSocial || '',
+              cif: cif || '',
+              role: 'user',
+            },
+          },
+        );
+        const notifyResult = notifyData as { ok?: boolean; welcome?: { error?: string }; notify?: { error?: string } } | null;
+        if (notifyError || notifyResult?.ok === false) {
+          console.warn(
+            'notify-registration failed (registro no afectado):',
+            notifyError?.message || notifyResult?.welcome?.error || notifyResult?.notify?.error || notifyData,
+          );
+        }
+      } catch (notifyEx) {
+        console.warn('notify-registration exception (registro no afectado):', notifyEx);
       }
     }
 

@@ -50,6 +50,23 @@ export function buildUserCreatedHtml(payload: UserNotificationPayload): string {
 `;
 }
 
+export function buildUserWelcomeHtml(payload: UserNotificationPayload): string {
+  const nombre = `${payload.firstName} ${payload.lastName || ""}`.trim();
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Hemos recibido tu registro</title></head>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h2 style="color: #0c6c8b;">¡Gracias por registrarte en Brainnova!</h2>
+  <p>Hola${nombre ? ` ${nombre}` : ""},</p>
+  <p>Hemos recibido tu solicitud de registro en la plataforma Brainnova. Validaremos tu acceso y te daremos de alta en el sistema.</p>
+  <p>Recibirás una notificación cuando tu cuenta esté activa y puedas acceder con tu correo <strong>${payload.email}</strong>.</p>
+  <p style="color: #666; font-size: 12px; margin-top: 24px;">Este correo se ha generado automáticamente desde la plataforma Brainnova. Si no has solicitado este registro, puedes ignorar este mensaje.</p>
+</body>
+</html>
+`;
+}
+
 export interface SendEmailParams {
   to: string[];
   subject: string;
@@ -154,4 +171,30 @@ export async function sendUserCreatedEmail(
     subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
     html: buildUserCreatedHtml(payload),
   });
+}
+
+/** Correo de bienvenida al propio usuario que se registra ("te daremos de alta en el sistema"). */
+export async function sendUserWelcomeEmail(
+  payload: UserNotificationPayload,
+): Promise<SendEmailResult> {
+  return await sendEmailSmtp({
+    to: [payload.email],
+    subject: "Hemos recibido tu registro en Brainnova",
+    html: buildUserWelcomeHtml(payload),
+  });
+}
+
+/**
+ * Envía, en un registro, los dos correos: bienvenida al usuario y aviso al equipo
+ * (contacto@brainnova.info, …). Cada envío es independiente para que un fallo no
+ * bloquee al otro; devuelve ok solo si ambos se envían correctamente.
+ */
+export async function sendRegistrationEmails(
+  payload: UserNotificationPayload,
+): Promise<{ welcome: SendEmailResult; notify: SendEmailResult; ok: boolean }> {
+  const [welcome, notify] = await Promise.all([
+    sendUserWelcomeEmail(payload),
+    sendUserCreatedEmail(payload),
+  ]);
+  return { welcome, notify, ok: welcome.ok && notify.ok };
 }

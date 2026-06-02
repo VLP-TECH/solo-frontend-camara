@@ -2,7 +2,7 @@
 // Solo admins/superadmins pueden llamarla. Tras crear el usuario envía correo SMTP.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { sendUserCreatedEmail } from "../_shared/email.ts";
+import { sendRegistrationEmails } from "../_shared/email.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -138,18 +138,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (insertError) console.warn("Profile insert fallback:", insertError.message);
   }
 
-  // Enviar correo de notificación (fire-and-forget, errores no bloquean la creación)
+  // Enviar correos (fire-and-forget, errores no bloquean la creación):
+  //   - aviso al equipo (contacto@brainnova.info, …)
+  //   - bienvenida al usuario creado
+  const notificationPayload = {
+    email: payload.email,
+    firstName: payload.firstName,
+    lastName: payload.lastName,
+    razonSocial: payload.razonSocial,
+    cif: payload.cif,
+    role: payload.role || "user",
+  };
   try {
-    const emailResult = await sendUserCreatedEmail({
-      email: payload.email,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      razonSocial: payload.razonSocial,
-      cif: payload.cif,
-      role: payload.role || "user",
-    });
-    if (!emailResult.ok) {
-      console.error("Email notification failed:", emailResult.error);
+    const emailResult = await sendRegistrationEmails(notificationPayload);
+    if (!emailResult.notify.ok) {
+      console.error("Email notification failed:", emailResult.notify.error);
+    }
+    if (!emailResult.welcome.ok) {
+      console.error("Welcome email failed:", emailResult.welcome.error);
     }
   } catch (err) {
     console.error("Email notification error:", err);

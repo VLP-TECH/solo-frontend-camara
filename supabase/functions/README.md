@@ -2,11 +2,20 @@
 
 ## create-user
 
-Crea usuarios desde admin-usuarios usando `auth.admin.createUser`, **sin cambiar la sesión** del administrador. Solo usuarios con rol admin/superadmin pueden llamarla. Tras crear el usuario, envía el correo de notificación.
+Crea usuarios desde admin-usuarios usando `auth.admin.createUser`, **sin cambiar la sesión** del administrador. Solo usuarios con rol admin/superadmin pueden llamarla. Tras crear el usuario, envía **bienvenida al usuario** y **aviso al equipo** (mismo par de correos que el registro público).
 
 ## notify-user-created
 
 Envía un correo a **contacto@brainnova.info** y **chaume@vlptech.es** cuando se crea un usuario (usado internamente por `create-user`, también expuesto como endpoint independiente).
+
+## notify-registration
+
+Se llama desde el **registro público** (`Auth.tsx` → `AuthContext.signUp`) tras un `signUp` correcto. Envía **dos correos**:
+
+1. **Bienvenida al usuario** que se registra ("validaremos tu acceso y te daremos de alta en el sistema").
+2. **Aviso al equipo** (`contacto@brainnova.info`, `chaume@vlptech.es`) de que hay un nuevo registro.
+
+`verify_jwt = false` porque se invoca con la clave anon desde el navegador, justo después del alta. El envío es _fire-and-forget_: un fallo de correo no bloquea ni invalida el registro.
 
 El envío se realiza por **SMTP (AWS SES)** usando la librería [`denomailer`](https://deno.land/x/denomailer). El módulo compartido vive en `supabase/functions/_shared/email.ts`.
 
@@ -48,6 +57,7 @@ supabase secrets list
 ```bash
 supabase functions deploy create-user
 supabase functions deploy notify-user-created
+supabase functions deploy notify-registration
 ```
 
 ### Prueba local
@@ -65,6 +75,16 @@ curl -X POST http://localhost:54321/functions/v1/notify-user-created \
   -H "Content-Type: application/json" \
   -d '{"email":"test@test.com","firstName":"Test","razonSocial":"Test SA","cif":"B12345678","role":"user"}'
 ```
+
+Prueba del registro público (dos correos):
+
+```bash
+curl -X POST http://localhost:54321/functions/v1/notify-registration \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","firstName":"Test","razonSocial":"Test SA","cif":"B12345678","role":"user"}'
+```
+
+Guía para el dueño del proyecto: `supabase/SETUP_EMAIL.md`.
 
 ### Migración desde Postmark
 
