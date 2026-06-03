@@ -2,8 +2,18 @@
 
 El frontend **no** guarda credenciales SMTP. Todo el envío va por **Edge Functions** en Supabase (`aoykpiievtadhwssugvs`).
 
-**Cuenta con acceso al proyecto (deploy / Owner):** `javier.olmo@thinkia.com`  
-La CLI debe hacer `supabase login` con **esa** cuenta (no con otros emails de la org).
+**Cuenta con acceso al proyecto (deploy / Owner):** `javi@thinkia.com` / `javier.olmo@thinkia.com`  
+La CLI debe hacer `supabase login` con **esa** cuenta (no con `chaume@vlptech.es`).
+
+### Limpiar sesión CLI + volver a entrar
+
+```bash
+chmod +x scripts/clear-supabase-session.sh
+./scripts/clear-supabase-session.sh
+supabase login
+```
+
+**Navegador (manual):** en Chrome/Safari/Firefox → borrar datos de sitio solo para `supabase.com` (cookies + almacenamiento), o ventana de incógnito al hacer `supabase login`. Así no reutiliza la sesión de `chaume@vlptech.es`.
 
 **AWS SES:** credenciales SMTP en secretos del proyecto (ya configurado por el dueño).
 
