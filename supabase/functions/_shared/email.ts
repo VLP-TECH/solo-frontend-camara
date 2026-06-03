@@ -91,6 +91,17 @@ function readSmtpConfig(): SmtpConfig | { error: string } {
   };
 }
 
+const SMTP_SEND_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms);
+    }),
+  ]);
+}
+
 export async function sendEmailSmtp(
   params: SendEmailParams,
 ): Promise<SendEmailResult> {
@@ -100,9 +111,7 @@ export async function sendEmailSmtp(
     return { ok: false, error: cfg.error };
   }
 
-  // Puerto 465 -> TLS implícito; resto (587, 25, 2587) -> STARTTLS.
   const useImplicitTls = cfg.port === 465;
-
   const client = new SMTPClient({
     connection: {
       hostname: cfg.host,
@@ -116,13 +125,17 @@ export async function sendEmailSmtp(
   });
 
   try {
-    await client.send({
-      from: cfg.from,
-      to: params.to,
-      subject: params.subject,
-      content: "Notificación Brainnova",
-      html: params.html,
-    });
+    await withTimeout(
+      client.send({
+        from: cfg.from,
+        to: params.to,
+        subject: params.subject,
+        content: "Notificación Brainnova",
+        html: params.html,
+      }),
+      SMTP_SEND_TIMEOUT_MS,
+      "SMTP send",
+    );
     return { ok: true };
   } catch (err) {
     console.error("SMTP send error:", err);
@@ -168,9 +181,8 @@ export async function sendRegistrationEmails(
   payload: UserNotificationPayload,
 ): Promise<{ welcome: SendEmailResult; copy: SendEmailResult; ok: boolean }> {
   const html = buildUserWelcomeHtml(payload);
-  const [welcome, copy] = await Promise.all([
-    sendUserWelcomeEmail(payload, html),
-    sendRegistrationCopyEmail(payload, html),
-  ]);
+  // Secuencial: dos conexiones SMTP en paralelo suelen provocar 503/timeout en Edge Functions.
+  const welcome = await sendUserWelcomeEmail(payload, html);
+  const copy = await sendRegistrationCopyEmail(payload, html);
   return { welcome, copy, ok: welcome.ok && copy.ok };
 }

@@ -24,53 +24,49 @@ export function normalizeRegistrationPayload(
 }
 
 /** Envía bienvenida al usuario + aviso al equipo (contacto@brainnova.info, …). */
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" },
+  });
+}
+
 export async function handleRegistrationNotifyRequest(
   req: Request,
 ): Promise<Response> {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: REGISTRATION_NOTIFY_CORS });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" },
-    });
-  }
-
-  let payload: UserNotificationPayload;
   try {
-    payload = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" },
-    });
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: REGISTRATION_NOTIFY_CORS });
+    }
+
+    if (req.method !== "POST") {
+      return jsonResponse({ error: "Method not allowed" }, 405);
+    }
+
+    let payload: UserNotificationPayload;
+    try {
+      payload = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!payload.email) {
+      return jsonResponse({ error: "Missing required field: email" }, 400);
+    }
+
+    const normalized = normalizeRegistrationPayload(payload);
+    const result = await sendRegistrationEmails(normalized);
+
+    if (!result.ok) {
+      return jsonResponse(
+        { ok: false, welcome: result.welcome, copy: result.copy },
+        502,
+      );
+    }
+
+    return jsonResponse({ ok: true }, 200);
+  } catch (err) {
+    console.error("handleRegistrationNotifyRequest error:", err);
+    return jsonResponse({ ok: false, error: String(err) }, 502);
   }
-
-  if (!payload.email) {
-    return new Response(
-      JSON.stringify({ error: "Missing required field: email" }),
-      { status: 400, headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" } },
-    );
-  }
-
-  const normalized = normalizeRegistrationPayload(payload);
-  const result = await sendRegistrationEmails(normalized);
-
-  if (!result.ok) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        welcome: result.welcome,
-        copy: result.copy,
-      }),
-      { status: 502, headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" } },
-    );
-  }
-
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" },
-  });
 }

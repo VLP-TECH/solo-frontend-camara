@@ -36,12 +36,13 @@ Si la cuenta SES está en **sandbox**, el correo al usuario solo llega a emails 
 Dashboard → **Project Settings → Edge Functions → Secrets**, o CLI con cuenta con permisos:
 
 ```bash
-supabase secrets set \
+# --project-ref va PRIMERO (si va al final: "Invalid secret pair: --project-ref")
+supabase secrets set --project-ref aoykpiievtadhwssugvs \
   SMTP_HOST=email-smtp.eu-west-1.amazonaws.com \
   SMTP_PORT=587 \
   SMTP_USER='<SMTP_ACCESS_KEY_ID>' \
   SMTP_PASSWORD='<SMTP_SECRET>' \
-  FROM_EMAIL='Brainnova <contacto@brainnova.info>'
+  'FROM_EMAIL=Brainnova <contacto@brainnova.info>'
 ```
 
 Usar credenciales **SMTP de SES** (Create SMTP credentials), no la Secret Key IAM genérica.
@@ -90,6 +91,7 @@ supabase login
 
 ```bash
 export SUPABASE_ACCESS_TOKEN='sbp_...'
+supabase secrets set --project-ref aoykpiievtadhwssugvs SMTP_HOST=... SMTP_PASSWORD=...
 supabase functions deploy notify-user-created --project-ref aoykpiievtadhwssugvs
 supabase functions deploy create-user --project-ref aoykpiievtadhwssugvs
 ```
