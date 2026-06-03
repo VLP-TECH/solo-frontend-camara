@@ -10,8 +10,11 @@ La CLI debe hacer `supabase login` con **esa** cuenta (no con `chaume@vlptech.es
 ```bash
 chmod +x scripts/clear-supabase-session.sh
 ./scripts/clear-supabase-session.sh
+unset SUPABASE_ACCESS_TOKEN
 supabase login
 ```
+
+`supabase login` **sin flags** abre el navegador. Si entra al momento sin abrirlo, aún hay token en caché: repite `clear-supabase-session.sh`. No uses `--no-browser` ni `--token` si quieres elegir cuenta en la web.
 
 **Navegador (manual):** en Chrome/Safari/Firefox → borrar datos de sitio solo para `supabase.com` (cookies + almacenamiento), o ventana de incógnito al hacer `supabase login`. Así no reutiliza la sesión de `chaume@vlptech.es`.
 
