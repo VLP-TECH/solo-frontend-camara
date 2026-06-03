@@ -25,6 +25,7 @@ import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { Navigate } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { sendActivationNotifyEmail } from '@/lib/activation-notify';
 
 interface Profile {
   id: string;
@@ -108,10 +109,11 @@ const AdminDashboard = () => {
     setLoadingProfiles(false);
   };
 
-  const toggleUserActive = async (userId: string, currentActive: boolean) => {
+  const toggleUserActive = async (userProfile: Profile) => {
+    const currentActive = userProfile.active;
     const { error } = await supabase.from('profiles').update({
       active: !currentActive
-    }).eq('user_id', userId);
+    }).eq('user_id', userProfile.user_id);
     if (error) {
       toast({
         title: "Error",
@@ -119,13 +121,33 @@ const AdminDashboard = () => {
         variant: "destructive"
       });
       console.error('Error updating user status:', error);
-    } else {
-      toast({
-        title: "Éxito",
-        description: `Usuario ${!currentActive ? 'activado' : 'desactivado'} correctamente`
-      });
-      fetchProfiles();
+      return;
     }
+
+    const wasActivated = !currentActive;
+    toast({
+      title: "Éxito",
+      description: `Usuario ${wasActivated ? 'activado' : 'desactivado'} correctamente`
+    });
+
+    // Al activar, avisar al usuario por correo (no bloquea el cambio de estado).
+    if (wasActivated && userProfile.email) {
+      const notify = await sendActivationNotifyEmail({
+        email: userProfile.email,
+        firstName: userProfile.first_name || '',
+        lastName: userProfile.last_name || '',
+      });
+      if (!notify.ok) {
+        console.warn('[activation-notify] correo no enviado:', notify.detail);
+        toast({
+          title: "Aviso",
+          description: "Usuario activado, pero no se pudo enviar el correo de aviso.",
+          variant: "destructive"
+        });
+      }
+    }
+
+    fetchProfiles();
   };
 
   const updateUserRole = async (userId: string, newRole: string) => {
@@ -575,7 +597,7 @@ const AdminDashboard = () => {
                             <Button 
                               size="sm" 
                               variant={userProfile.active ? "destructive" : "default"} 
-                              onClick={() => toggleUserActive(userProfile.user_id, userProfile.active)} 
+                              onClick={() => toggleUserActive(userProfile)}
                               disabled={userProfile.user_id === profile?.user_id}
                               className={userProfile.active ? "bg-red-600 hover:bg-red-700" : "bg-[#0c6c8b] hover:bg-[#0a5a73]"}
                             >

@@ -15,6 +15,10 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 /** Copia del correo de registro enviada al equipo (mismo dominio que FROM en sandbox SES). */
 export const REGISTRATION_COPY_EMAIL = "contacto@brainnova.info";
 
+const ACTIVATION_SUBJECT = "Tu acceso a Brainnova ya está activo";
+const PLATFORM_URL = "https://brainnova.info/";
+const CONTACT_EMAIL = "contacto@brainnova.info";
+
 const WELCOME_SUBJECT = "Hemos recibido tu registro en Brainnova";
 
 export interface UserNotificationPayload {
@@ -187,4 +191,45 @@ export async function sendRegistrationEmails(
   const welcome = await sendUserWelcomeEmail(payload, html);
   const copy = await sendRegistrationCopyEmail(payload, html);
   return { welcome, copy, ok: welcome.ok && copy.ok };
+}
+
+export interface UserActivationPayload {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export function buildUserActivatedHtml(payload: UserActivationPayload): string {
+  const nombre = `${payload.firstName || ""} ${payload.lastName || ""}`.trim();
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${ACTIVATION_SUBJECT}</title></head>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
+  <h2 style="color: #0c6c8b;">Tu acceso a Brainnova ya está activo</h2>
+  <p>Estimado/a${nombre ? ` ${nombre}` : ""},</p>
+  <p>Te informamos que tu cuenta de usuario se ha activado correctamente en <strong>Brainnova</strong>, el Panel de Economía Digital impulsado por Cámara Valencia.</p>
+  <p>A partir de ahora puedes acceder a la plataforma y:</p>
+  <ul>
+    <li>Explorar dashboards interactivos de economía digital.</li>
+    <li>Analizar indicadores por territorio y periodo.</li>
+    <li>Descargar informes y contenidos diseñados para apoyar la toma de decisiones.</li>
+  </ul>
+  <p>Acceso a la plataforma: <a href="${PLATFORM_URL}" style="color: #0c6c8b;">Brainnova | Ecosistema Digital de la Comunidad Valenciana</a></p>
+  <p>Si tienes cualquier duda sobre el acceso o el uso de la plataforma, puedes contactar con nosotros a través de <a href="mailto:${CONTACT_EMAIL}" style="color: #0c6c8b;">${CONTACT_EMAIL}</a>.</p>
+  <p style="margin-top: 24px;">Un saludo cordial,<br>Equipo Brainnova<br>Cámara Valencia</p>
+</body>
+</html>
+`;
+}
+
+/** Correo al usuario cuando un admin activa su cuenta. */
+export async function sendUserActivatedEmail(
+  payload: UserActivationPayload,
+): Promise<SendEmailResult> {
+  return await sendEmailSmtp({
+    to: [payload.email],
+    subject: ACTIVATION_SUBJECT,
+    html: buildUserActivatedHtml(payload),
+  });
 }
