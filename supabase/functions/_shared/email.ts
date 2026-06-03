@@ -40,8 +40,11 @@ export function buildUserWelcomeHtml(payload: UserNotificationPayload): string {
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #0c6c8b;">¡Gracias por registrarte en Brainnova!</h2>
   <p>Hola${nombre ? ` ${nombre}` : ""},</p>
-  <p>Hemos recibido tu solicitud de registro en la plataforma Brainnova. Validaremos tu acceso y te daremos de alta en el sistema.</p>
-  <p>Recibirás una notificación cuando tu cuenta esté activa y puedas acceder con tu correo <strong>${payload.email}</strong>.</p>
+  <p>Hemos recibido correctamente tu solicitud de registro en <strong>Brainnova</strong>, el Panel de Economía Digital impulsado por Cámara Valencia.</p>
+  <p>Tu cuenta queda <strong>pendiente de validación</strong>. El administrador revisará tu solicitud, validará tu acceso y se pondrá en contacto contigo para darte las indicaciones y el acceso a la plataforma.</p>
+  <p>No necesitas hacer nada más por ahora. Recibirás un nuevo correo en cuanto tu cuenta esté activa y puedas acceder con tu correo <strong>${payload.email}</strong>.</p>
+  <p>Si tienes cualquier duda, puedes escribirnos a <a href="mailto:${CONTACT_EMAIL}" style="color: #0c6c8b;">${CONTACT_EMAIL}</a>.</p>
+  <p style="margin-top: 24px;">Un saludo cordial,<br>Equipo Brainnova<br>Cámara Valencia</p>
   <p style="color: #666; font-size: 12px; margin-top: 24px;">Este correo se ha generado automáticamente desde la plataforma Brainnova. Si no has solicitado este registro, puedes ignorar este mensaje.</p>
 </body>
 </html>

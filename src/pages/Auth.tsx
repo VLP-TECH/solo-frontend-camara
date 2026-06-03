@@ -140,9 +140,9 @@ const Auth = () => {
           }
         } else {
           toast({
-            title: "¡Registro exitoso!",
+            title: "¡Registro recibido!",
             description:
-              "Hemos recibido tu solicitud. Te hemos enviado un correo de confirmación y validaremos tu acceso en breve.",
+              "Tu cuenta queda pendiente de validación. El administrador revisará tu solicitud y se pondrá en contacto contigo para darte el acceso. Te hemos enviado un correo con los detalles.",
           });
           // Clear form and switch to login tab
           setEmail('');
