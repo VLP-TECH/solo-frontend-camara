@@ -48,7 +48,20 @@ Mensaje: *"Your account does not have the necessary privileges to access this en
      ```
 2. Tras la invitación, en tu máquina: `supabase login` de nuevo y comprueba que `aoykpiievtadhwssugvs` sale en `supabase projects list` antes de desplegar.
 
+3. **Alternativa (sin CLI local):** GitHub Actions en este repo (`.github/workflows/deploy-supabase-functions.yml`). El **Owner** de Supabase añade en GitHub → *Settings → Secrets and variables → Actions*:
+   - `SUPABASE_ACCESS_TOKEN` — token personal en [Account → Access Tokens](https://supabase.com/dashboard/account/tokens)
+   - `SUPABASE_PROJECT_REF` = `aoykpiievtadhwssugvs`  
+   Luego: *Actions → Deploy Supabase Edge Functions (email) → Run workflow*.
+
 El aviso `Docker is not running` **no** provoca el 403; el bloqueo es solo de permisos en la plataforma.
+
+**Comprobar tu acceso ahora:**
+
+```bash
+supabase projects list | grep aoykpiievtadhwssugvs
+```
+
+Si no imprime nada, el 403 seguirá aunque hagas `supabase login` otra vez.
 
 ## Despliegue de funciones (obligatorio tras cambios en código)
 

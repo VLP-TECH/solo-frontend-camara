@@ -1,0 +1,35 @@
+# Despliega Edge Functions de correo en el proyecto Brainnova.
+# Requiere secrets del repo (los configura el Owner de Supabase):
+#   SUPABASE_ACCESS_TOKEN — https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF  — aoykpiievtadhwssugvs
+name: Deploy Supabase Edge Functions (email)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy email functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::Faltan secrets SUPABASE_ACCESS_TOKEN y/o SUPABASE_PROJECT_REF en GitHub (Settings → Secrets)."
+            exit 1
+          fi
+          supabase functions deploy notify-user-created --project-ref "$SUPABASE_PROJECT_REF"
+          supabase functions deploy create-user --project-ref "$SUPABASE_PROJECT_REF"
+          supabase functions deploy notify-registration --project-ref "$SUPABASE_PROJECT_REF" || true
