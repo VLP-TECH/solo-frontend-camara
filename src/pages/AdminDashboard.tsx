@@ -130,18 +130,19 @@ const AdminDashboard = () => {
       description: `Usuario ${wasActivated ? 'activado' : 'desactivado'} correctamente`
     });
 
-    // Al activar, avisar al usuario por correo (no bloquea el cambio de estado).
-    if (wasActivated && userProfile.email) {
+    // Avisar al usuario por correo del cambio de estado (no bloquea el cambio).
+    if (userProfile.email) {
       const notify = await sendActivationNotifyEmail({
         email: userProfile.email,
         firstName: userProfile.first_name || '',
         lastName: userProfile.last_name || '',
+        action: wasActivated ? 'activated' : 'deactivated',
       });
       if (!notify.ok) {
         console.warn('[activation-notify] correo no enviado:', notify.detail);
         toast({
           title: "Aviso",
-          description: "Usuario activado, pero no se pudo enviar el correo de aviso.",
+          description: `Usuario ${wasActivated ? 'activado' : 'desactivado'}, pero no se pudo enviar el correo de aviso.`,
           variant: "destructive"
         });
       }

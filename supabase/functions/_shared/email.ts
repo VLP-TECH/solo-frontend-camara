@@ -16,6 +16,7 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 export const REGISTRATION_COPY_EMAIL = "contacto@brainnova.info";
 
 const ACTIVATION_SUBJECT = "Tu acceso a Brainnova ya está activo";
+const DEACTIVATION_SUBJECT = "Desactivación de tu cuenta de usuario en Brainnova";
 const PLATFORM_URL = "https://brainnova.info/";
 const CONTACT_EMAIL = "contacto@brainnova.info";
 
@@ -231,5 +232,35 @@ export async function sendUserActivatedEmail(
     to: [payload.email],
     subject: ACTIVATION_SUBJECT,
     html: buildUserActivatedHtml(payload),
+  });
+}
+
+export function buildUserDeactivatedHtml(payload: UserActivationPayload): string {
+  const nombre = `${payload.firstName || ""} ${payload.lastName || ""}`.trim();
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${DEACTIVATION_SUBJECT}</title></head>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
+  <h2 style="color: #0c6c8b;">Desactivación de tu cuenta de usuario en Brainnova</h2>
+  <p>Estimado/a${nombre ? ` ${nombre}` : ""},</p>
+  <p>Te informamos que tu cuenta de usuario en <strong>Brainnova</strong> ha sido desactivada correctamente.</p>
+  <p>Desde este momento, ya no tendrás acceso al Panel de Economía Digital ni a sus contenidos y funcionalidades asociadas.</p>
+  <p>Si consideras que esta desactivación se ha realizado por error o necesitas volver a acceder a la plataforma en el futuro, puedes ponerte en contacto con nosotros a través de <a href="mailto:${CONTACT_EMAIL}" style="color: #0c6c8b;">${CONTACT_EMAIL}</a>.</p>
+  <p>Gracias por tu interés y esperamos tenerte de vuelta pronto.</p>
+  <p style="margin-top: 24px;">Un saludo cordial,<br>Equipo Brainnova<br>Cámara Valencia</p>
+</body>
+</html>
+`;
+}
+
+/** Correo al usuario cuando un admin desactiva su cuenta. */
+export async function sendUserDeactivatedEmail(
+  payload: UserActivationPayload,
+): Promise<SendEmailResult> {
+  return await sendEmailSmtp({
+    to: [payload.email],
+    subject: DEACTIVATION_SUBJECT,
+    html: buildUserDeactivatedHtml(payload),
   });
 }

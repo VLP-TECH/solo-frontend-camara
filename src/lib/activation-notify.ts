@@ -4,12 +4,16 @@ export interface ActivationNotifyBody {
   email: string;
   firstName: string;
   lastName: string;
+  /** "activated" (por defecto) o "deactivated". */
+  action?: "activated" | "deactivated";
 }
 
 /**
- * Envía al usuario el correo "Tu acceso a Brainnova ya está activo"
- * cuando un admin activa su cuenta. No bloquea el cambio de estado:
- * devuelve { ok: false } si falla, para que la UI lo avise sin romper.
+ * Avisa al usuario por correo cuando un admin cambia el estado de su cuenta:
+ *   - action "activated":   "Tu acceso a Brainnova ya está activo"
+ *   - action "deactivated": "Desactivación de tu cuenta de usuario en Brainnova"
+ * No bloquea el cambio de estado: devuelve { ok: false } si falla, para que
+ * la UI lo avise sin romper.
  */
 export async function sendActivationNotifyEmail(
   body: ActivationNotifyBody,

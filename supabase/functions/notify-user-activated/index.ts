@@ -1,8 +1,16 @@
-// Aviso al usuario cuando un admin activa su cuenta desde /admin-usuarios.
+// Aviso al usuario cuando un admin cambia el estado de su cuenta en /admin-usuarios.
+//   action: "activated"   -> "Tu acceso a Brainnova ya está activo"
+//   action: "deactivated" -> "Desactivación de tu cuenta de usuario en Brainnova"
+// (action por defecto: "activated", para compatibilidad con llamadas previas.)
 import {
   sendUserActivatedEmail,
+  sendUserDeactivatedEmail,
   type UserActivationPayload,
 } from "../_shared/email.ts";
+
+interface ActivationRequest extends UserActivationPayload {
+  action?: "activated" | "deactivated";
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +35,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    let payload: UserActivationPayload;
+    let payload: ActivationRequest;
     try {
       payload = await req.json();
     } catch {
@@ -38,11 +46,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "Missing required field: email" }, 400);
     }
 
-    const result = await sendUserActivatedEmail({
+    const emailPayload: UserActivationPayload = {
       email: payload.email,
       firstName: payload.firstName || "",
       lastName: payload.lastName || "",
-    });
+    };
+
+    const result = payload.action === "deactivated"
+      ? await sendUserDeactivatedEmail(emailPayload)
+      : await sendUserActivatedEmail(emailPayload);
 
     if (!result.ok) {
       return jsonResponse({ ok: false, error: result.error }, 502);
