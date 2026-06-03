@@ -39,13 +39,15 @@ Dashboard → **Project Settings → Edge Functions → Secrets**, o CLI con cue
 # --project-ref va PRIMERO (si va al final: "Invalid secret pair: --project-ref")
 supabase secrets set --project-ref aoykpiievtadhwssugvs \
   SMTP_HOST=email-smtp.eu-west-1.amazonaws.com \
-  SMTP_PORT=587 \
+  SMTP_PORT=2587 \
   SMTP_USER='<SMTP_ACCESS_KEY_ID>' \
   SMTP_PASSWORD='<SMTP_SECRET>' \
   'FROM_EMAIL=Brainnova <contacto@brainnova.info>'
 ```
 
 Usar credenciales **SMTP de SES** (Create SMTP credentials), no la Secret Key IAM genérica.
+
+**Puerto 2587 (obligatorio en Edge Functions):** Supabase/Deno **bloquean** salida SMTP en **25, 587 y 465**. AWS SES expone **2587** (STARTTLS, mismo host). Si usas `SMTP_PORT=587`, el POST devuelve **503** vacío en ~300 ms aunque el deploy sea correcto.
 
 ## Error 403 al hacer `supabase functions deploy`
 
@@ -129,7 +131,7 @@ curl -X POST "https://aoykpiievtadhwssugvs.supabase.co/functions/v1/notify-user-
   -d '{"email":"tu@email.com","firstName":"Test","razonSocial":"Test SA","cif":"B12345678","role":"user"}'
 ```
 
-Respuesta esperada: `{"ok":true}`. Si falta SMTP: `502` con detalle en `welcome` / `copy`.
+Respuesta esperada: `{"ok":true}`. Si falta SMTP: `502` con detalle en `welcome` / `copy`. Si **503** sin body: casi siempre `SMTP_PORT=587` — cámbialo a **2587** y vuelve a desplegar.
 
 ## Logs
 

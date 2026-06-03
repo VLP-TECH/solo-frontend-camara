@@ -27,7 +27,7 @@ O CLI:
 ```bash
 supabase secrets set \
   SMTP_HOST=email-smtp.eu-west-1.amazonaws.com \
-  SMTP_PORT=587 \
+  SMTP_PORT=2587 \
   SMTP_USER='<SES_SMTP_USER>' \
   SMTP_PASSWORD='<SES_SMTP_PASSWORD>' \
   FROM_EMAIL='Brainnova <contacto@brainnova.info>' \

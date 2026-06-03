@@ -26,7 +26,7 @@ Datos del proveedor SMTP actual:
 | Variable        | Valor                                       |
 | --------------- | ------------------------------------------- |
 | `SMTP_HOST`     | `email-smtp.eu-west-1.amazonaws.com`        |
-| `SMTP_PORT`     | `587` (STARTTLS) — alternativa `465` (TLS)  |
+| `SMTP_PORT`     | `2587` en producción (Edge Functions; 587/465 bloqueados)  |
 | `SMTP_USER`     | Access Key ID **SMTP** de SES               |
 | `SMTP_PASSWORD` | Secret SMTP de SES (NO la Secret Key de IAM)|
 | `FROM_EMAIL`    | `Brainnova <contacto@brainnova.info>`       |
@@ -40,7 +40,7 @@ Datos del proveedor SMTP actual:
 ```bash
 supabase secrets set \
   SMTP_HOST=email-smtp.eu-west-1.amazonaws.com \
-  SMTP_PORT=587 \
+  SMTP_PORT=2587 \
   SMTP_USER=AKIAXXXXXXXXXXXXXXXX \
   SMTP_PASSWORD='********' \
   FROM_EMAIL='Brainnova <contacto@brainnova.info>'
