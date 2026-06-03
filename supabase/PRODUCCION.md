@@ -27,7 +27,7 @@ O CLI:
 ```bash
 supabase secrets set \
   SMTP_HOST=email-smtp.eu-west-1.amazonaws.com \
-  SMTP_PORT=2587 \
+  SMTP_PORT=465 \
   SMTP_USER='<SES_SMTP_USER>' \
   SMTP_PASSWORD='<SES_SMTP_PASSWORD>' \
   FROM_EMAIL='Brainnova <contacto@brainnova.info>' \
@@ -53,6 +53,6 @@ Esperado: `HTTP 200` y `{"ok":true}`.
 - [ ] `main` en GitHub actualizado
 - [ ] EasyPanel rebuild hecho
 - [ ] Secretos SMTP en Supabase
-- [ ] `notify-user-created` y `create-user` desplegadas
+- [ ] Funciones desplegadas: `notify-user-created`, `notify-registration`, `notify-user-activated`, `create-user`
 - [ ] Test `node scripts/test-notify-registration.mjs` OK
 - [ ] Registro de prueba en `/auth` y correo recibido
