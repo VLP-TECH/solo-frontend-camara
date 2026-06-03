@@ -4,6 +4,8 @@ El frontend **no** guarda credenciales SMTP. Todo el envío va por **Edge Functi
 
 **AWS SES:** credenciales SMTP en secretos del proyecto (ya configurado por el dueño).
 
+Si la cuenta SES está en **sandbox**, solo se puede enviar a direcciones del dominio `brainnova.info` (p. ej. `contacto@brainnova.info`). Para añadir `chaume@vlptech.es` cuando salgáis de sandbox: secreto `NOTIFY_TEAM_EMAILS=chaume@vlptech.es`.
+
 **Paso pendiente habitual:** redesplegar funciones tras cambios en código (ver abajo).
 
 ## Flujos
