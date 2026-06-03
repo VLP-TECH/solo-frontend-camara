@@ -71,28 +71,52 @@ async function fetchResultadoIndicador(
   filters: { pais?: string; periodo?: number } = {}
 ): Promise<{ valor_calculado: unknown; periodo?: number }[]> {
   const periodos = filters.periodo != null ? periodoFilterValues(filters.periodo) : [null];
-  for (const per of periodos) {
-    let q = supabase
-      .from("resultado_indicadores")
-      .select("valor_calculado, periodo")
-      .in("nombre_indicador", nombresConsulta);
-    if (filters.pais != null) q = q.eq("pais", filters.pais);
-    if (per != null) q = q.eq("periodo", per);
-    const { data: byNombre } = await q.order("periodo", { ascending: false }).limit(10);
-    if (byNombre && byNombre.length > 0) return byNombre;
+  const paisVariants: (string | null)[] =
+    filters.pais != null && String(filters.pais).trim() !== ""
+      ? variacionesPaisConsulta(filters.pais)
+      : [null];
+
+  for (const paisVar of paisVariants) {
+    for (const per of periodos) {
+      let q = supabase
+        .from("resultado_indicadores")
+        .select("valor_calculado, periodo")
+        .in("nombre_indicador", nombresConsulta);
+      if (paisVar != null) q = q.eq("pais", paisVar);
+      if (per != null) q = q.eq("periodo", per);
+      const { data: byNombre } = await q.order("periodo", { ascending: false }).limit(10);
+      if (byNombre && byNombre.length > 0) return byNombre;
+    }
   }
   if (idIndicador == null) return [];
-  for (const per of periodos) {
-    let qId = supabase
-      .from("resultado_indicadores")
-      .select("valor_calculado, periodo")
-      .eq("id_indicador", idIndicador);
-    if (filters.pais != null) qId = qId.eq("pais", filters.pais);
-    if (per != null) qId = qId.eq("periodo", per);
-    const { data: byId } = await qId.order("periodo", { ascending: false }).limit(10);
-    if (byId && byId.length > 0) return byId;
+  for (const paisVar of paisVariants) {
+    for (const per of periodos) {
+      let qId = supabase
+        .from("resultado_indicadores")
+        .select("valor_calculado, periodo")
+        .eq("id_indicador", idIndicador);
+      if (paisVar != null) qId = qId.eq("pais", paisVar);
+      if (per != null) qId = qId.eq("periodo", per);
+      const { data: byId } = await qId.order("periodo", { ascending: false }).limit(10);
+      if (byId && byId.length > 0) return byId;
+    }
   }
   return [];
+}
+
+/** Variantes de `pais` en BD para un territorio mostrado en la UI (CV, Comunidad vs Comunitat, etc.). */
+function variacionesPaisConsulta(pais: string): string[] {
+  const t = String(pais || "").trim();
+  if (!t) return [];
+  const norm = normalizeName(t);
+  if (norm === "comunitat valenciana" || norm === "comunidad valenciana" || norm === "cv") {
+    return ["Comunitat Valenciana", "Comunidad Valenciana", "CV"];
+  }
+  if (norm === "valencia") return ["Valencia", "Comunitat Valenciana", "Comunidad Valenciana"];
+  if (norm === "alicante") return ["Alicante"];
+  if (norm === "castellon" || norm === "castellón") return ["Castellón", "Castellon"];
+  if (norm === "espana" || norm === "españa" || norm === "spain") return ["España", "Spain"];
+  return [t];
 }
 
 /** Obtiene mínimo y máximo global por indicador (por nombre_indicador y opcionalmente por id_indicador).
@@ -545,7 +569,9 @@ export async function getIndicadoresConDatos(
           .from("resultado_indicadores")
           .select("id", { count: "exact", head: true })
           .in("nombre_indicador", nombresConsulta);
-        if (resultadoFilters.pais != null) countQ = countQ.eq("pais", resultadoFilters.pais);
+        if (resultadoFilters.pais != null) {
+          countQ = countQ.in("pais", variacionesPaisConsulta(resultadoFilters.pais));
+        }
         if (resultadoFilters.periodo != null) {
           countQ = countQ.in("periodo", periodoFilterValues(resultadoFilters.periodo));
         }
@@ -556,7 +582,9 @@ export async function getIndicadoresConDatos(
             .from("resultado_indicadores")
             .select("id", { count: "exact", head: true })
             .eq("id_indicador", ind.id);
-          if (resultadoFilters.pais != null) countIdQ = countIdQ.eq("pais", resultadoFilters.pais);
+          if (resultadoFilters.pais != null) {
+            countIdQ = countIdQ.in("pais", variacionesPaisConsulta(resultadoFilters.pais));
+          }
           if (resultadoFilters.periodo != null) {
             countIdQ = countIdQ.in("periodo", periodoFilterValues(resultadoFilters.periodo));
           }
@@ -633,20 +661,25 @@ export async function getDatosHistoricosIndicador(
   limit: number = 10
 ): Promise<Array<{ periodo: number; valor: number }>> {
   try {
-    const { data, error } = await supabase
-      .from("resultado_indicadores")
-      .select("periodo, valor_calculado")
-      .eq("nombre_indicador", nombreIndicador)
-      .eq("pais", pais)
-      .order("periodo", { ascending: true })
-      .limit(limit);
+    const nombres = getIndicadorNombresParaConsulta(nombreIndicador);
+    for (const paisVar of variacionesPaisConsulta(pais)) {
+      const { data, error } = await supabase
+        .from("resultado_indicadores")
+        .select("periodo, valor_calculado")
+        .in("nombre_indicador", nombres)
+        .eq("pais", paisVar)
+        .order("periodo", { ascending: true })
+        .limit(limit);
 
-    if (error) throw error;
-
-    return (data || []).map((item) => ({
-      periodo: periodoToYear(item.periodo),
-      valor: Number(item.valor_calculado) || 0,
-    }));
+      if (error) throw error;
+      if (data && data.length > 0) {
+        return data.map((item) => ({
+          periodo: periodoToYear(item.periodo),
+          valor: Number(item.valor_calculado) || 0,
+        }));
+      }
+    }
+    return [];
   } catch (error) {
     console.error("Error fetching datos históricos:", error);
     return [];
@@ -1100,6 +1133,7 @@ type ResultadoBulkRow = {
 
 const PAIS_VARIATIONS_DIM: Record<string, string[]> = {
   "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
+  "Comunidad Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "Valencia", "CV"],
   "España": ["España", "Spain", "Esp"],
   Valencia: ["Valencia", "Comunitat Valenciana"],
   Alicante: ["Alicante"],
@@ -1119,7 +1153,14 @@ const UE_SCORE_PAIS_GROUPS: readonly (readonly string[])[] = [
 ] as const;
 
 function variacionesPaisDim(pais: string): string[] {
-  return PAIS_VARIATIONS_DIM[pais] ?? [pais];
+  const t = String(pais || "").trim();
+  if (PAIS_VARIATIONS_DIM[t]) return PAIS_VARIATIONS_DIM[t];
+  const norm = normalizeName(t);
+  for (const [key, vars] of Object.entries(PAIS_VARIATIONS_DIM)) {
+    if (normalizeName(key) === norm) return vars;
+    if (vars.some((v) => normalizeName(v) === norm)) return vars;
+  }
+  return variacionesPaisConsulta(t);
 }
 
 function filaCoincideIndicador(row: ResultadoBulkRow, ind: Indicador): boolean {
