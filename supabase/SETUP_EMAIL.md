@@ -30,7 +30,29 @@ supabase secrets set \
 
 Usar credenciales **SMTP de SES** (Create SMTP credentials), no la Secret Key IAM genérica.
 
+## Error 403 al hacer `supabase functions deploy`
+
+Mensaje: *"Your account does not have the necessary privileges to access this endpoint"*.
+
+**Causa:** la CLI está logueada con una cuenta que **no es Owner/Admin** del proyecto `aoykpiievtadhwssugvs` (Brainnova). En `supabase projects list` ese proyecto **no debe aparecer** en tu lista; solo lo puede desplegar quien tenga acceso en la organización del proyecto.
+
+**Qué hacer:**
+
+1. **Dueño del proyecto Brainnova** (cuenta que creó `aoykpiievtadhwssugvs`):
+   - Supabase Dashboard → **Organization Settings → Members** → invitar tu usuario con rol **Owner** o **Administrator**, **o**
+   - Clonar el repo, ejecutar en su máquina:
+     ```bash
+     supabase login
+     supabase functions deploy notify-user-created --project-ref aoykpiievtadhwssugvs
+     supabase functions deploy create-user --project-ref aoykpiievtadhwssugvs
+     ```
+2. Tras la invitación, en tu máquina: `supabase login` de nuevo y comprueba que `aoykpiievtadhwssugvs` sale en `supabase projects list` antes de desplegar.
+
+El aviso `Docker is not running` **no** provoca el 403; el bloqueo es solo de permisos en la plataforma.
+
 ## Despliegue de funciones (obligatorio tras cambios en código)
+
+Solo si tu usuario tiene acceso al proyecto:
 
 ```bash
 supabase login
@@ -61,7 +83,7 @@ curl -X POST "https://aoykpiievtadhwssugvs.supabase.co/functions/v1/notify-user-
   -d '{"email":"tu@email.com","firstName":"Test","razonSocial":"Test SA","cif":"B12345678","role":"user"}'
 ```
 
-Respuesta esperada: `{"ok":true}`. Si falta SMTP: `502` con detalle en `welcome` / `notify`.
+Respuesta esperada: `{"ok":true}`. Si falta SMTP: `502` con detalle en `welcome` / `copy`.
 
 ## Logs
 
