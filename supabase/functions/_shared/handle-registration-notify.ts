@@ -63,7 +63,7 @@ export async function handleRegistrationNotifyRequest(
       JSON.stringify({
         ok: false,
         welcome: result.welcome,
-        notify: result.notify,
+        copy: result.copy,
       }),
       { status: 502, headers: { ...REGISTRATION_NOTIFY_CORS, "Content-Type": "application/json" } },
     );

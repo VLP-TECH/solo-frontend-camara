@@ -4,7 +4,7 @@ El frontend **no** guarda credenciales SMTP. Todo el envío va por **Edge Functi
 
 **AWS SES:** credenciales SMTP en secretos del proyecto (ya configurado por el dueño).
 
-Si la cuenta SES está en **sandbox**, solo se puede enviar a direcciones del dominio `brainnova.info` (p. ej. `contacto@brainnova.info`). Para añadir `chaume@vlptech.es` cuando salgáis de sandbox: secreto `NOTIFY_TEAM_EMAILS=chaume@vlptech.es`.
+Si la cuenta SES está en **sandbox**, el correo al usuario solo llega a emails verificados o del dominio permitido; la **copia** a `contacto@brainnova.info` sí puede enviarse (mismo dominio que el remitente).
 
 **Paso pendiente habitual:** redesplegar funciones tras cambios en código (ver abajo).
 
@@ -12,8 +12,8 @@ Si la cuenta SES está en **sandbox**, solo se puede enviar a direcciones del do
 
 | Origen | Función | Correos |
 |--------|---------|---------|
-| Registro público `/auth` | `notify-user-created` (primario) o `notify-registration` (respaldo) | Bienvenida al usuario + aviso a `contacto@brainnova.info` (y `chaume@vlptech.es`) |
-| Admin `/admin-usuarios` | `create-user` | Los mismos dos correos |
+| Registro público `/auth` | `notify-user-created` (primario) o `notify-registration` (respaldo) | Bienvenida al usuario + **copia** del mismo correo a `contacto@brainnova.info` |
+| Admin `/admin-usuarios` | `create-user` | Igual: bienvenida + copia a `contacto@brainnova.info` |
 
 ## Secretos (solo dueño del proyecto en Supabase)
 

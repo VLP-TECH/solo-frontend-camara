@@ -12,7 +12,7 @@ export interface RegistrationNotifyBody {
 type NotifyResult = {
   ok?: boolean;
   welcome?: { error?: string };
-  notify?: { error?: string };
+  copy?: { error?: string };
   error?: string;
 };
 
@@ -37,7 +37,7 @@ async function invokeOnce(
   return {
     ok: false,
     functionName,
-    detail: error?.message || result?.welcome?.error || result?.notify?.error || result || data,
+    detail: error?.message || result?.welcome?.error || result?.copy?.error || result || data,
   };
 }
 

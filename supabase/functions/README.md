@@ -6,14 +6,14 @@ Crea usuarios desde admin-usuarios usando `auth.admin.createUser`, **sin cambiar
 
 ## notify-user-created
 
-Envía un correo a **contacto@brainnova.info** y **chaume@vlptech.es** cuando se crea un usuario (usado internamente por `create-user`, también expuesto como endpoint independiente).
+Envía la bienvenida al usuario y una **copia** del mismo correo a **contacto@brainnova.info** (también usado por el registro público).
 
 ## notify-registration
 
 Se llama desde el **registro público** (`Auth.tsx` → `AuthContext.signUp`) tras un `signUp` correcto. Envía **dos correos**:
 
 1. **Bienvenida al usuario** que se registra ("validaremos tu acceso y te daremos de alta en el sistema").
-2. **Aviso al equipo** (`contacto@brainnova.info`, `chaume@vlptech.es`) de que hay un nuevo registro.
+2. **Copia** del mismo mensaje a `contacto@brainnova.info`.
 
 `verify_jwt = false` porque se invoca con la clave anon desde el navegador, justo después del alta. El envío es _fire-and-forget_: un fallo de correo no bloquea ni invalida el registro.
 

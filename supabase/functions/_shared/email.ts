@@ -10,18 +10,10 @@
 
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-/** Destinatarios del aviso interno (mismo dominio que FROM en sandbox SES). */
-export function getNotificationRecipients(): string[] {
-  const extra = Deno.env.get("NOTIFY_TEAM_EMAILS");
-  const list = ["contacto@brainnova.info"];
-  if (extra) {
-    for (const e of extra.split(",")) {
-      const t = e.trim();
-      if (t && !list.includes(t)) list.push(t);
-    }
-  }
-  return list;
-}
+/** Copia del correo de registro enviada al equipo (mismo dominio que FROM en sandbox SES). */
+export const REGISTRATION_COPY_EMAIL = "contacto@brainnova.info";
+
+const WELCOME_SUBJECT = "Hemos recibido tu registro en Brainnova";
 
 export interface UserNotificationPayload {
   email: string;
@@ -30,32 +22,6 @@ export interface UserNotificationPayload {
   razonSocial: string;
   cif: string;
   role: string;
-}
-
-export function buildUserCreatedHtml(payload: UserNotificationPayload): string {
-  const fecha = new Date().toLocaleString("es-ES", {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Nuevo usuario registrado</title></head>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #0c6c8b;">Nuevo usuario registrado en Brainnova</h2>
-  <p>Se ha dado de alta un nuevo usuario en la plataforma.</p>
-  <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #ddd;">${payload.email}</td></tr>
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Nombre</td><td style="padding: 8px; border: 1px solid #ddd;">${payload.firstName} ${payload.lastName || ""}</td></tr>
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Razón Social</td><td style="padding: 8px; border: 1px solid #ddd;">${payload.razonSocial}</td></tr>
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">CIF</td><td style="padding: 8px; border: 1px solid #ddd;">${payload.cif}</td></tr>
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Rol</td><td style="padding: 8px; border: 1px solid #ddd;">${payload.role}</td></tr>
-    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Fecha de alta</td><td style="padding: 8px; border: 1px solid #ddd;">${fecha}</td></tr>
-  </table>
-  <p style="color: #666; font-size: 12px;">Este correo se ha generado automáticamente desde la plataforma Brainnova.</p>
-</body>
-</html>
-`;
 }
 
 export function buildUserWelcomeHtml(payload: UserNotificationPayload): string {
@@ -170,40 +136,41 @@ export async function sendEmailSmtp(
   }
 }
 
-export async function sendUserCreatedEmail(
+/** Copia del mismo correo de bienvenida para contacto@brainnova.info. */
+export async function sendRegistrationCopyEmail(
   payload: UserNotificationPayload,
-  recipients: string[] = getNotificationRecipients(),
+  html: string,
 ): Promise<SendEmailResult> {
   return await sendEmailSmtp({
-    to: recipients,
-    subject: `[Brainnova] Nuevo usuario registrado: ${payload.email}`,
-    html: buildUserCreatedHtml(payload),
+    to: [REGISTRATION_COPY_EMAIL],
+    subject: `[Copia registro] ${WELCOME_SUBJECT} — ${payload.email}`,
+    html,
   });
 }
 
-/** Correo de bienvenida al propio usuario que se registra ("te daremos de alta en el sistema"). */
+/** Correo de bienvenida al usuario que se registra. */
 export async function sendUserWelcomeEmail(
   payload: UserNotificationPayload,
+  html?: string,
 ): Promise<SendEmailResult> {
+  const body = html ?? buildUserWelcomeHtml(payload);
   return await sendEmailSmtp({
     to: [payload.email],
-    subject: "Hemos recibido tu registro en Brainnova",
-    html: buildUserWelcomeHtml(payload),
+    subject: WELCOME_SUBJECT,
+    html: body,
   });
 }
 
 /**
- * Envía, en un registro, los dos correos: bienvenida al usuario y aviso al equipo
- * (contacto@brainnova.info, …). Cada envío es independiente para que un fallo no
- * bloquee al otro; devuelve ok solo si ambos se envían correctamente.
+ * Bienvenida al usuario + copia idéntica a contacto@brainnova.info.
  */
 export async function sendRegistrationEmails(
   payload: UserNotificationPayload,
-): Promise<{ welcome: SendEmailResult; notify: SendEmailResult; ok: boolean }> {
-  const [welcome, notify] = await Promise.all([
-    sendUserWelcomeEmail(payload),
-    sendUserCreatedEmail(payload),
+): Promise<{ welcome: SendEmailResult; copy: SendEmailResult; ok: boolean }> {
+  const html = buildUserWelcomeHtml(payload);
+  const [welcome, copy] = await Promise.all([
+    sendUserWelcomeEmail(payload, html),
+    sendRegistrationCopyEmail(payload, html),
   ]);
-  // El aviso a contacto@brainnova.info es obligatorio; la bienvenida al usuario también.
-  return { welcome, notify, ok: welcome.ok && notify.ok };
+  return { welcome, copy, ok: welcome.ok && copy.ok };
 }

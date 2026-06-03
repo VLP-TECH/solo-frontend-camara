@@ -151,8 +151,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   };
   try {
     const emailResult = await sendRegistrationEmails(notificationPayload);
-    if (!emailResult.notify.ok) {
-      console.error("Email notification failed:", emailResult.notify.error);
+    if (!emailResult.copy.ok) {
+      console.error("Registration copy email failed:", emailResult.copy.error);
     }
     if (!emailResult.welcome.ok) {
       console.error("Welcome email failed:", emailResult.welcome.error);
