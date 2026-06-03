@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { sendRegistrationNotifyEmails } from '@/lib/registration-notify';
 
 interface AuthContextType {
   user: User | null;
@@ -106,32 +107,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Correos tras registro público (Edge Function notify-registration en Supabase).
-    // Requiere: función desplegada + secretos SMTP_* en el proyecto.
     if (!error) {
-      try {
-        const { data: notifyData, error: notifyError } = await supabase.functions.invoke(
-          'notify-registration',
-          {
-            body: {
-              email,
-              firstName: firstName || '',
-              lastName: lastName || '',
-              razonSocial: razonSocial || '',
-              cif: cif || '',
-              role: 'user',
-            },
-          },
+      const emailNotify = await sendRegistrationNotifyEmails({
+        email,
+        firstName: firstName || '',
+        lastName: lastName || '',
+        razonSocial: razonSocial || '',
+        cif: cif || '',
+        role: 'user',
+      });
+      if (!emailNotify.ok) {
+        console.warn(
+          'Correos de registro no enviados (registro no afectado). Redespliega notify-user-created en Supabase.',
         );
-        const notifyResult = notifyData as { ok?: boolean; welcome?: { error?: string }; notify?: { error?: string } } | null;
-        if (notifyError || notifyResult?.ok === false) {
-          console.warn(
-            'notify-registration failed (registro no afectado):',
-            notifyError?.message || notifyResult?.welcome?.error || notifyResult?.notify?.error || notifyData,
-          );
-        }
-      } catch (notifyEx) {
-        console.warn('notify-registration exception (registro no afectado):', notifyEx);
       }
     }
 

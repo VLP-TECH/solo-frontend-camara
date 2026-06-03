@@ -10,10 +10,18 @@
 
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-export const NOTIFICATION_RECIPIENTS = [
-  "contacto@brainnova.info",
-  "chaume@vlptech.es",
-];
+/** Destinatarios del aviso interno (mismo dominio que FROM en sandbox SES). */
+export function getNotificationRecipients(): string[] {
+  const extra = Deno.env.get("NOTIFY_TEAM_EMAILS");
+  const list = ["contacto@brainnova.info"];
+  if (extra) {
+    for (const e of extra.split(",")) {
+      const t = e.trim();
+      if (t && !list.includes(t)) list.push(t);
+    }
+  }
+  return list;
+}
 
 export interface UserNotificationPayload {
   email: string;
@@ -164,7 +172,7 @@ export async function sendEmailSmtp(
 
 export async function sendUserCreatedEmail(
   payload: UserNotificationPayload,
-  recipients: string[] = NOTIFICATION_RECIPIENTS,
+  recipients: string[] = getNotificationRecipients(),
 ): Promise<SendEmailResult> {
   return await sendEmailSmtp({
     to: recipients,
@@ -196,5 +204,6 @@ export async function sendRegistrationEmails(
     sendUserWelcomeEmail(payload),
     sendUserCreatedEmail(payload),
   ]);
+  // El aviso a contacto@brainnova.info es obligatorio; la bienvenida al usuario también.
   return { welcome, notify, ok: welcome.ok && notify.ok };
 }

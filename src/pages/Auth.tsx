@@ -141,7 +141,8 @@ const Auth = () => {
         } else {
           toast({
             title: "¡Registro exitoso!",
-            description: "En breve validaremos tu acceso. Recibirás una notificación cuando tu cuenta esté activa.",
+            description:
+              "Hemos recibido tu solicitud. Te hemos enviado un correo de confirmación y validaremos tu acceso en breve.",
           });
           // Clear form and switch to login tab
           setEmail('');

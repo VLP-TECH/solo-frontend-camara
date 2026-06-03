@@ -2,11 +2,15 @@
 
 El frontend **no** guarda credenciales SMTP. Todo el envío va por **Edge Functions** en Supabase (`aoykpiievtadhwssugvs`).
 
+**AWS SES:** credenciales SMTP en secretos del proyecto (ya configurado por el dueño).
+
+**Paso pendiente habitual:** redesplegar funciones tras cambios en código (ver abajo).
+
 ## Flujos
 
 | Origen | Función | Correos |
 |--------|---------|---------|
-| Registro público `/auth` | `notify-registration` | Bienvenida al usuario + aviso a `contacto@brainnova.info` (y `chaume@vlptech.es`) |
+| Registro público `/auth` | `notify-user-created` (primario) o `notify-registration` (respaldo) | Bienvenida al usuario + aviso a `contacto@brainnova.info` (y `chaume@vlptech.es`) |
 | Admin `/admin-usuarios` | `create-user` | Los mismos dos correos |
 
 ## Secretos (solo dueño del proyecto en Supabase)
@@ -27,18 +31,29 @@ Usar credenciales **SMTP de SES** (Create SMTP credentials), no la Secret Key IA
 ## Despliegue de funciones (obligatorio tras cambios en código)
 
 ```bash
-supabase link --project-ref aoykpiievtadhwssugvs
-supabase functions deploy notify-registration
-supabase functions deploy create-user
-supabase functions deploy notify-user-created
+supabase login
+chmod +x scripts/deploy-email-functions.sh
+./scripts/deploy-email-functions.sh
 ```
 
-Sin `notify-registration` desplegada, el registro público **no enviará** correos (el alta en Auth sigue funcionando).
+O manualmente:
+
+```bash
+supabase functions deploy notify-user-created --project-ref aoykpiievtadhwssugvs
+supabase functions deploy notify-registration --project-ref aoykpiievtadhwssugvs
+supabase functions deploy create-user --project-ref aoykpiievtadhwssugvs
+```
+
+Sin redesplegar `notify-user-created` con la versión actual, el registro público solo enviará el aviso interno (versión antigua), no el correo de bienvenida al usuario.
 
 ## Prueba rápida
 
 ```bash
-curl -X POST "https://aoykpiievtadhwssugvs.supabase.co/functions/v1/notify-registration" \
+node scripts/test-notify-registration.mjs tu@email.com
+```
+
+```bash
+curl -X POST "https://aoykpiievtadhwssugvs.supabase.co/functions/v1/notify-user-created" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <SUPABASE_ANON_KEY>" \
   -d '{"email":"tu@email.com","firstName":"Test","razonSocial":"Test SA","cif":"B12345678","role":"user"}'
