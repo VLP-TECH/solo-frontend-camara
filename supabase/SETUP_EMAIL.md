@@ -2,6 +2,9 @@
 
 El frontend **no** guarda credenciales SMTP. Todo el envío va por **Edge Functions** en Supabase (`aoykpiievtadhwssugvs`).
 
+**Cuenta con acceso al proyecto (deploy / Owner):** `javier.olmo@thinkia.com`  
+La CLI debe hacer `supabase login` con **esa** cuenta (no con otros emails de la org).
+
 **AWS SES:** credenciales SMTP en secretos del proyecto (ya configurado por el dueño).
 
 Si la cuenta SES está en **sandbox**, el correo al usuario solo llega a emails verificados o del dominio permitido; la **copia** a `contacto@brainnova.info` sí puede enviarse (mismo dominio que el remitente).
@@ -38,8 +41,8 @@ Mensaje: *"Your account does not have the necessary privileges to access this en
 
 **Qué hacer:**
 
-1. **Dueño del proyecto Brainnova** (cuenta que creó `aoykpiievtadhwssugvs`):
-   - Supabase Dashboard → **Organization Settings → Members** → invitar tu usuario con rol **Owner** o **Administrator**, **o**
+1. **Dueño / deploy:** `javier.olmo@thinkia.com` (proyecto `aoykpiievtadhwssugvs`):
+   - Si otro desarrollador necesita desplegar: invitar su email en **Organization Settings → Members** (Owner/Admin), **o**
    - Clonar el repo, ejecutar en su máquina:
      ```bash
      supabase login
