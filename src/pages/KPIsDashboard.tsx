@@ -41,6 +41,7 @@ import {
   getIndicadoresConDatos,
   getDatosHistoricosIndicador,
   getComparativaIndicadoresKPIs,
+  COMPARATIVA_TERRITORIOS_KPIS,
   type IndicadorConDatos,
 } from "@/lib/kpis-data";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
@@ -115,8 +116,8 @@ const KPIsDashboard = () => {
   });
 
   const { data: comparativaIndicadores = {} } = useQuery({
-    queryKey: ["comparativa-indicadores-kpis", filteredIndicadores?.map((i) => i.nombre)],
-    queryFn: () => getComparativaIndicadoresKPIs((filteredIndicadores || []).map((i) => i.nombre)),
+    queryKey: ["comparativa-indicadores-kpis", selectedTerritorio, filteredIndicadores?.map((i) => i.nombre)],
+    queryFn: () => getComparativaIndicadoresKPIs((filteredIndicadores || []).map((i) => i.nombre), selectedTerritorio),
     enabled: !!filteredIndicadores && filteredIndicadores.length > 0,
     staleTime: 5 * 60 * 1000,
   });
@@ -125,7 +126,7 @@ const KPIsDashboard = () => {
     if (!filteredIndicadores?.length) return [];
     const hasComparativaData = (nombre: string): boolean => {
       const c = comparativaIndicadores?.[nombre];
-      return c?.valencia != null || c?.espana != null;
+      return c?.territorio != null || c?.espana != null;
     };
     return [...filteredIndicadores].sort((a, b) => {
       const aCmp = hasComparativaData(a.nombre);
@@ -268,7 +269,20 @@ const KPIsDashboard = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                
+
+                <Select value={selectedTerritorio} onValueChange={setSelectedTerritorio}>
+                  <SelectTrigger className="w-56 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPARATIVA_TERRITORIOS_KPIS.map((territorio) => (
+                      <SelectItem key={territorio} value={territorio}>
+                        {territorio}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
                 <Button
                   onClick={handleExport}
                   className="bg-[#0c6c8b] text-white hover:bg-[#0a5a73]"
@@ -323,7 +337,7 @@ const KPIsDashboard = () => {
                             </Popover>
                           </div>
                         </th>
-                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Valencia</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">{selectedTerritorio}</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">TOP UE</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Tendencia</th>
@@ -385,7 +399,7 @@ const KPIsDashboard = () => {
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                {comparativa?.valencia != null ? Number(comparativa.valencia).toFixed(1) : "—"}
+                                {comparativa?.territorio != null ? Number(comparativa.territorio).toFixed(1) : "—"}
                               </span>
                             </td>
                             <td className="py-4 px-4 text-center">

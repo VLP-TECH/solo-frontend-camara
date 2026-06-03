@@ -654,17 +654,46 @@ export async function getDatosHistoricosIndicador(
 }
 
 export type IndicadorComparativaTerritorial = {
-  valencia: number | null;
+  /** Valor del territorio seleccionado (Comunitat Valenciana por defecto, o una provincia). */
+  territorio: number | null;
   espana: number | null;
   topUE: number | null;
 };
 
+/** Territorios disponibles para la comparativa de KPIs: comunidad completa o cada provincia. */
+export type ComparativaTerritorioKPIs =
+  | "Comunitat Valenciana"
+  | "Valencia"
+  | "Castellón"
+  | "Alicante";
+
+export const COMPARATIVA_TERRITORIOS_KPIS: ComparativaTerritorioKPIs[] = [
+  "Comunitat Valenciana",
+  "Valencia",
+  "Castellón",
+  "Alicante",
+];
+
+/** Variaciones de nombre de país/provincia en BD para cada territorio de la comparativa. */
+const COMPARATIVA_TERRITORIO_VARIATIONS: Record<string, string[]> = {
+  "Comunitat Valenciana": ["Comunitat Valenciana", "Comunidad Valenciana", "CV"],
+  Valencia: ["Valencia"],
+  "Castellón": ["Castellón", "Castellon"],
+  Alicante: ["Alicante"],
+};
+
+function variacionesTerritorioComparativa(territorio: string): string[] {
+  return COMPARATIVA_TERRITORIO_VARIATIONS[territorio] ?? [territorio];
+}
+
 /**
- * Obtiene, para un conjunto de indicadores, el último valor disponible en Valencia y España.
- * TOP UE se entrega como referencia fija normalizada a 100.
+ * Obtiene, para un conjunto de indicadores, el último valor disponible en el territorio
+ * seleccionado (Comunitat Valenciana por defecto, o una provincia) y en España.
+ * TOP UE se calcula como el máximo entre los países UE de referencia en el mismo período.
  */
 export async function getComparativaIndicadoresKPIs(
-  nombresIndicadores: string[]
+  nombresIndicadores: string[],
+  territorio: string = "Comunitat Valenciana"
 ): Promise<Record<string, IndicadorComparativaTerritorial>> {
   const out: Record<string, IndicadorComparativaTerritorial> = {};
   if (!nombresIndicadores?.length) return out;
@@ -676,9 +705,14 @@ export async function getComparativaIndicadoresKPIs(
     chunks.push(uniqueNames.slice(i, i + chunkSize));
   }
 
+  const territorioVars = variacionesTerritorioComparativa(territorio);
+  const territorioVarsNorm = territorioVars.map((v) => normalizeName(v));
   // Países UE (según seed/migraciones del proyecto; no usamos “Unión Europea” agregado).
   const paisesUE = ["Alemania", "Francia", "Italia", "Países Bajos"] as const;
-  const paisesObjetivo = ["Valencia", "España", ...paisesUE] as const;
+  const paisesObjetivo = [...territorioVars, "España", ...paisesUE];
+
+  const esTerritorio = (pais: string) => territorioVarsNorm.includes(normalizeName(pais));
+  const esEspana = (pais: string) => normalizeName(pais) === normalizeName("España");
 
   try {
     const rowsAll = await Promise.all(
@@ -687,7 +721,7 @@ export async function getComparativaIndicadoresKPIs(
           .from("resultado_indicadores")
           .select("nombre_indicador, pais, periodo, valor_calculado")
           .in("nombre_indicador", namesChunk)
-          .in("pais", paisesObjetivo as unknown as string[]);
+          .in("pais", paisesObjetivo);
         if (error) throw error;
         return data || [];
       })
@@ -713,38 +747,38 @@ export async function getComparativaIndicadoresKPIs(
     for (const name of uniqueNames) {
       const rows = byIndicador.get(name) ?? [];
       if (!rows.length) {
-        out[name] = { valencia: null, espana: null, topUE: null };
+        out[name] = { territorio: null, espana: null, topUE: null };
         continue;
       }
 
       // “Período” de referencia del indicador en la comparativa:
-      // tomamos el año máximo entre Valencia/España (para que TOP UE sea el máximo UE
+      // tomamos el año máximo entre territorio/España (para que TOP UE sea el máximo UE
       // en el mismo período que el que estás comparando).
       const yearsVE = rows
-        .filter((r) => r.pais === "Valencia" || r.pais === "España")
+        .filter((r) => esTerritorio(r.pais) || esEspana(r.pais))
         .map((r) => r.year);
       const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
       if (chosenYear <= 0) {
-        out[name] = { valencia: null, espana: null, topUE: null };
+        out[name] = { territorio: null, espana: null, topUE: null };
         continue;
       }
-      const valRow = rows.filter((r) => r.pais === "Valencia" && r.year === chosenYear);
-      const espRow = rows.filter((r) => r.pais === "España" && r.year === chosenYear);
+      const terrRow = rows.filter((r) => esTerritorio(r.pais) && r.year === chosenYear);
+      const espRow = rows.filter((r) => esEspana(r.pais) && r.year === chosenYear);
       const ueRows = rows.filter(
         (r) => (paisesUE as readonly string[]).includes(r.pais) && r.year === chosenYear
       );
 
-      const valencia = valRow.length ? Math.max(...valRow.map((r) => r.value)) : null;
+      const territorioValor = terrRow.length ? Math.max(...terrRow.map((r) => r.value)) : null;
       const espana = espRow.length ? Math.max(...espRow.map((r) => r.value)) : null;
       const topUE = ueRows.length ? Math.max(...ueRows.map((r) => r.value)) : null;
 
-      out[name] = { valencia, espana, topUE };
+      out[name] = { territorio: territorioValor, espana, topUE };
     }
     return out;
   } catch (error) {
     console.error("Error fetching comparativa indicadores KPIs:", error);
     for (const name of uniqueNames) {
-      out[name] = { valencia: null, espana: null, topUE: null };
+      out[name] = { territorio: null, espana: null, topUE: null };
     }
     return out;
   }
