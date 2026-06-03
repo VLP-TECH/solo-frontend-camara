@@ -3,7 +3,9 @@
 //
 // Variables de entorno requeridas (Supabase Secrets):
 //   - SMTP_HOST     (p. ej. email-smtp.eu-west-1.amazonaws.com)
-//   - SMTP_PORT     (2587 STARTTLS en Edge Functions; 587/465 bloqueados en Supabase)
+//   - SMTP_PORT     (465 TLS implícito. NO usar 587/2587: STARTTLS falla en el
+//                    runtime Edge con "BadResource: Bad resource ID" en Deno.startTls,
+//                    lo que crashea el isolate y devuelve 503.)
 //   - SMTP_USER     (Access Key ID SMTP de SES, NO la de IAM general)
 //   - SMTP_PASSWORD (Secret SMTP de SES)
 //   - FROM_EMAIL    (remitente verificado en SES, p. ej. "Brainnova <contacto@brainnova.info>")
@@ -62,7 +64,7 @@ interface SmtpConfig {
 
 function readSmtpConfig(): SmtpConfig | { error: string } {
   const host = Deno.env.get("SMTP_HOST");
-  const portStr = Deno.env.get("SMTP_PORT") ?? "2587";
+  const portStr = Deno.env.get("SMTP_PORT") ?? "465";
   const user = Deno.env.get("SMTP_USER");
   const password = Deno.env.get("SMTP_PASSWORD");
   const from =
