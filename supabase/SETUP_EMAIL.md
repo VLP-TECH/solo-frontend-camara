@@ -61,10 +61,25 @@ El aviso `Docker is not running` **no** provoca el 403; el bloqueo es solo de pe
 **Comprobar tu acceso ahora:**
 
 ```bash
-supabase projects list | grep aoykpiievtadhwssugvs
+chmod +x scripts/verify-supabase-access.sh
+./scripts/verify-supabase-access.sh
 ```
 
-Si no imprime nada, el 403 seguirá aunque hagas `supabase login` otra vez.
+Si ves `chaume@vlptech.es's Project` pero **no** `aoykpiievtadhwssugvs`, el 403 es porque la CLI **no** está con `javier.olmo@thinkia.com`:
+
+```bash
+supabase logout
+supabase login
+# → en el navegador: javier.olmo@thinkia.com
+```
+
+**Deploy con token (sin cambiar login global)** — Javier crea el token en [Access Tokens](https://supabase.com/dashboard/account/tokens):
+
+```bash
+export SUPABASE_ACCESS_TOKEN='sbp_...'
+supabase functions deploy notify-user-created --project-ref aoykpiievtadhwssugvs
+supabase functions deploy create-user --project-ref aoykpiievtadhwssugvs
+```
 
 ## Despliegue de funciones (obligatorio tras cambios en código)
 
