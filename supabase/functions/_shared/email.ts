@@ -36,14 +36,13 @@ export function buildUserWelcomeHtml(payload: UserNotificationPayload): string {
   return `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Hemos recibido tu registro</title></head>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+<head><meta charset="utf-8"><title>${WELCOME_SUBJECT}</title></head>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
   <h2 style="color: #0c6c8b;">¡Gracias por registrarte en Brainnova!</h2>
-  <p>Hola${nombre ? ` ${nombre}` : ""},</p>
-  <p>Hemos recibido correctamente tu solicitud de registro en <strong>Brainnova</strong>, el Panel de Economía Digital impulsado por Cámara Valencia.</p>
-  <p>Tu cuenta queda <strong>pendiente de validación</strong>. El administrador revisará tu solicitud, validará tu acceso y se pondrá en contacto contigo para darte las indicaciones y el acceso a la plataforma.</p>
-  <p>No necesitas hacer nada más por ahora. Recibirás un nuevo correo en cuanto tu cuenta esté activa y puedas acceder con tu correo <strong>${payload.email}</strong>.</p>
-  <p>Si tienes cualquier duda, puedes escribirnos a <a href="mailto:${CONTACT_EMAIL}" style="color: #0c6c8b;">${CONTACT_EMAIL}</a>.</p>
+  <p>Estimado/a${nombre ? ` ${nombre}` : ""},</p>
+  <p>Tu solicitud ha sido recibida correctamente y se encuentra actualmente <strong>pendiente de validación</strong> por parte de nuestro equipo.</p>
+  <p>La activación del acceso se realizará en un plazo máximo de <strong>48 horas</strong>. Una vez completado este proceso, recibirás un correo de confirmación con las indicaciones para acceder a la plataforma.</p>
+  <p>Agradecemos tu interés y quedamos a tu disposición para cualquier consulta adicional.</p>
   <p style="margin-top: 24px;">Un saludo cordial,<br>Equipo Brainnova<br>Cámara Valencia</p>
   <p style="color: #666; font-size: 12px; margin-top: 24px;">Este correo se ha generado automáticamente desde la plataforma Brainnova. Si no has solicitado este registro, puedes ignorar este mensaje.</p>
 </body>
@@ -203,8 +202,27 @@ export interface UserActivationPayload {
   lastName?: string;
 }
 
-export function buildUserActivatedHtml(payload: UserActivationPayload): string {
+export function buildUserActivatedHtml(
+  payload: UserActivationPayload,
+  accessLink?: string,
+): string {
   const nombre = `${payload.firstName || ""} ${payload.lastName || ""}`.trim();
+  const accesoSection = accessLink
+    ? `
+  <p>Para acceder por primera vez, establece tu contraseña a través del siguiente enlace de acceso único. Por seguridad, <strong>este enlace caduca a las 6 horas</strong>:</p>
+  <p style="text-align: center; margin: 28px 0;">
+    <a href="${accessLink}" style="background: #0c6c8b; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; display: inline-block;">Establecer mi contraseña</a>
+  </p>
+  <p style="font-size: 13px; color: #555;">Si el botón no funciona, copia y pega esta dirección en tu navegador:<br><a href="${accessLink}" style="color: #0c6c8b; word-break: break-all;">${accessLink}</a></p>
+  <p style="font-size: 13px; color: #555;">Si el enlace ha caducado, contacta con nosotros y te enviaremos uno nuevo.</p>`
+    : `
+  <p>A partir de ahora puedes acceder a la plataforma y:</p>
+  <ul>
+    <li>Explorar dashboards interactivos de economía digital.</li>
+    <li>Analizar indicadores por territorio y periodo.</li>
+    <li>Descargar informes y contenidos diseñados para apoyar la toma de decisiones.</li>
+  </ul>
+  <p>Acceso a la plataforma: <a href="${PLATFORM_URL}" style="color: #0c6c8b;">Brainnova | Ecosistema Digital de la Comunidad Valenciana</a></p>`;
   return `
 <!DOCTYPE html>
 <html>
@@ -213,28 +231,25 @@ export function buildUserActivatedHtml(payload: UserActivationPayload): string {
   <h2 style="color: #0c6c8b;">Tu acceso a Brainnova ya está activo</h2>
   <p>Estimado/a${nombre ? ` ${nombre}` : ""},</p>
   <p>Te informamos que tu cuenta de usuario se ha activado correctamente en <strong>Brainnova</strong>, el Panel de Economía Digital impulsado por Cámara Valencia.</p>
-  <p>A partir de ahora puedes acceder a la plataforma y:</p>
-  <ul>
-    <li>Explorar dashboards interactivos de economía digital.</li>
-    <li>Analizar indicadores por territorio y periodo.</li>
-    <li>Descargar informes y contenidos diseñados para apoyar la toma de decisiones.</li>
-  </ul>
-  <p>Acceso a la plataforma: <a href="${PLATFORM_URL}" style="color: #0c6c8b;">Brainnova | Ecosistema Digital de la Comunidad Valenciana</a></p>
+${accesoSection}
   <p>Si tienes cualquier duda sobre el acceso o el uso de la plataforma, puedes contactar con nosotros a través de <a href="mailto:${CONTACT_EMAIL}" style="color: #0c6c8b;">${CONTACT_EMAIL}</a>.</p>
   <p style="margin-top: 24px;">Un saludo cordial,<br>Equipo Brainnova<br>Cámara Valencia</p>
+  <p style="color: #666; font-size: 12px; margin-top: 24px;">Este correo se ha generado automáticamente desde la plataforma Brainnova.</p>
 </body>
 </html>
 `;
 }
 
-/** Correo al usuario cuando un admin activa su cuenta. */
+/** Correo al usuario cuando un admin activa su cuenta. Si se pasa accessLink,
+ * incluye el botón para establecer contraseña (enlace único válido 6 horas). */
 export async function sendUserActivatedEmail(
   payload: UserActivationPayload,
+  accessLink?: string,
 ): Promise<SendEmailResult> {
   return await sendEmailSmtp({
     to: [payload.email],
     subject: ACTIVATION_SUBJECT,
-    html: buildUserActivatedHtml(payload),
+    html: buildUserActivatedHtml(payload, accessLink),
   });
 }
 

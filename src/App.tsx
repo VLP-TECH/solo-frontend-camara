@@ -29,6 +29,7 @@ import Dimensiones from "./pages/Dimensiones";
 import DimensionDetail from "./pages/DimensionDetail";
 import SubdimensionDashboard from "./pages/SubdimensionDashboard";
 import EditarUsuario from "./pages/EditarUsuario";
+import EstablecerPassword from "./pages/EstablecerPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -54,6 +55,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/establecer-password" element={<EstablecerPassword />} />
               <Route 
                 path="/dashboard" 
                 element={

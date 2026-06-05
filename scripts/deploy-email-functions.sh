@@ -17,6 +17,7 @@ echo "Desplegando funciones de correo en proyecto ${PROJECT_REF}..."
 supabase functions deploy notify-user-created --project-ref "$PROJECT_REF"
 supabase functions deploy notify-registration --project-ref "$PROJECT_REF"
 supabase functions deploy notify-user-activated --project-ref "$PROJECT_REF"
+supabase functions deploy set-password --project-ref "$PROJECT_REF"
 supabase functions deploy create-user --project-ref "$PROJECT_REF"
 
 echo "Listo. Prueba con: node scripts/test-notify-registration.mjs"

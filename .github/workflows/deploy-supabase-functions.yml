@@ -33,4 +33,5 @@ jobs:
           supabase functions deploy notify-user-created --project-ref "$SUPABASE_PROJECT_REF"
           supabase functions deploy notify-registration --project-ref "$SUPABASE_PROJECT_REF"
           supabase functions deploy notify-user-activated --project-ref "$SUPABASE_PROJECT_REF"
+          supabase functions deploy set-password --project-ref "$SUPABASE_PROJECT_REF"
           supabase functions deploy create-user --project-ref "$SUPABASE_PROJECT_REF"
