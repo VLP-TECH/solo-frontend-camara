@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEvent } from "react";
+import { useState, useRef, ChangeEvent, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -9,17 +9,246 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Database, Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react";
+import { Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { downloadCSV, convertToCSV } from "@/lib/csv-export";
 import { useToast } from "@/hooks/use-toast";
 
-type SupportedTable =
-  | "definicion_indicadores"
-  | "resultado_indicadores"
-  | "datos_crudos"
-  | "datos_macro";
+// ───────────────────────────────────────────────────────────────────────────
+// Configuración por tabla: columnas REALES del esquema, tipos, requeridos y
+// estrategia de carga (append vs upsert). Mantener sincronizado con la BD.
+// ───────────────────────────────────────────────────────────────────────────
+type ColType = "text" | "int" | "numeric" | "date" | "bool";
+interface ColSpec {
+  name: string;
+  type: ColType;
+  required?: boolean;
+}
+interface TableSpec {
+  label: string;
+  description: string;
+  columns: ColSpec[];
+  /** Columna PK para upsert. */
+  pk: string;
+  /** true si el PK lo genera la BD (secuencia): se omite del CSV salvo para actualizar. */
+  pkAuto: boolean;
+  example: Record<string, unknown>[];
+}
+
+const TABLE_SPECS = {
+  resultado_indicadores: {
+    label: "resultado_indicadores (resultados calculados — dashboards)",
+    description:
+      "Valores calculados por periodo y territorio. Es lo que muestran los dashboards. Sube sin columna 'id' para añadir filas nuevas; incluye 'id' solo si quieres actualizar filas existentes.",
+    pk: "id",
+    pkAuto: true,
+    columns: [
+      { name: "nombre_indicador", type: "text", required: true },
+      { name: "valor_calculado", type: "numeric" },
+      { name: "pais", type: "text" },
+      { name: "provincia", type: "text" },
+      { name: "periodo", type: "int", required: true },
+      { name: "id_indicador", type: "int" },
+      { name: "fecha_calculo", type: "date" },
+      { name: "unidad_tipo", type: "text" },
+      { name: "unidad_display", type: "text" },
+      { name: "sector", type: "text" },
+      { name: "tamano_empresa", type: "text" },
+    ],
+    example: [
+      {
+        nombre_indicador: "Densidad de startups",
+        valor_calculado: 34.86,
+        pais: "España",
+        provincia: "Valencia",
+        periodo: 2024,
+        id_indicador: 4,
+        fecha_calculo: "2024-01-15",
+        unidad_tipo: "PORCENTAJE",
+        unidad_display: "% Población 16-74 años",
+        sector: "Servicios",
+        tamano_empresa: "Grande",
+      },
+      {
+        nombre_indicador: "Densidad de startups",
+        valor_calculado: 28.1,
+        pais: "España",
+        provincia: "Alicante",
+        periodo: 2024,
+        id_indicador: 4,
+        fecha_calculo: "2024-01-15",
+        unidad_tipo: "PORCENTAJE",
+        unidad_display: "% Población 16-74 años",
+        sector: "Industria",
+        tamano_empresa: "Mediana",
+      },
+    ],
+  },
+  definiciones_indicadores: {
+    label: "definiciones_indicadores (alta/edición de indicadores)",
+    description:
+      "Catálogo de indicadores. La columna 'id' es obligatoria (no se autogenera) y 'nombre' es único: si subes un nombre ya existente, se actualiza esa definición (upsert por id).",
+    pk: "id",
+    pkAuto: false,
+    columns: [
+      { name: "id", type: "int", required: true },
+      { name: "nombre", type: "text", required: true },
+      { name: "id_subdimension", type: "int" },
+      { name: "origen_indicador", type: "text" },
+      { name: "formula", type: "text", required: true },
+      { name: "importancia", type: "text", required: true },
+      { name: "fuente", type: "text" },
+    ],
+    example: [
+      {
+        id: 1001,
+        nombre: "Nuevo indicador de ejemplo",
+        id_subdimension: 2,
+        origen_indicador: "EIDES",
+        formula: "RATIO",
+        importancia: "Media",
+        fuente: "https://ejemplo.org",
+      },
+    ],
+  },
+  datos_crudos: {
+    label: "datos_crudos (datos fuente originales)",
+    description:
+      "Datos sin procesar por indicador. 'id' se autogenera: súbelo solo para actualizar. 'periodo' (año) es obligatorio.",
+    pk: "id",
+    pkAuto: true,
+    columns: [
+      { name: "nombre_indicador", type: "text" },
+      { name: "valor", type: "numeric" },
+      { name: "unidad", type: "text" },
+      { name: "pais", type: "text" },
+      { name: "provincia", type: "text" },
+      { name: "periodo", type: "int", required: true },
+      { name: "descripcion_dato", type: "text" },
+      { name: "id_indicador", type: "int" },
+      { name: "tamano_empresa", type: "text" },
+      { name: "sector", type: "text" },
+      { name: "procesado", type: "bool" },
+    ],
+    example: [
+      {
+        nombre_indicador: "Empresas con web propia",
+        valor: 8.84,
+        unidad: "%(empresas)",
+        pais: "España",
+        provincia: "Valencia",
+        periodo: 2024,
+        descripcion_dato: "Porcentaje de empresas con web",
+        id_indicador: 75,
+        tamano_empresa: "10 persons employed or more",
+        sector: "Servicios",
+        procesado: false,
+      },
+    ],
+  },
+  datos_macro: {
+    label: "datos_macro (indicadores macroeconómicos)",
+    description:
+      "Datos macro por territorio. 'id' se autogenera: súbelo solo para actualizar. 'periodo' (año) es obligatorio.",
+    pk: "id",
+    pkAuto: true,
+    columns: [
+      { name: "valor", type: "numeric" },
+      { name: "unidad", type: "text" },
+      { name: "pais", type: "text" },
+      { name: "provincia", type: "text" },
+      { name: "periodo", type: "int", required: true },
+      { name: "descripcion_dato", type: "text" },
+      { name: "sector", type: "text" },
+      { name: "tamano_empresa", type: "text" },
+    ],
+    example: [
+      {
+        valor: 218317,
+        unidad: "poblacion",
+        pais: "España",
+        provincia: "Valencia",
+        periodo: 2024,
+        descripcion_dato: "Población total entre 16 y 74 años",
+        sector: "",
+        tamano_empresa: "",
+      },
+    ],
+  },
+} satisfies Record<string, TableSpec>;
+
+type SupportedTable = keyof typeof TABLE_SPECS;
+
+// ── Parser CSV con soporte de comillas y delimitador ; o , ────────────────────
+function detectDelimiter(line: string): ";" | "," {
+  const semis = (line.match(/;/g) || []).length;
+  const commas = (line.match(/,/g) || []).length;
+  if (semis === 0 && commas === 0) return ";";
+  return semis >= commas ? ";" : ",";
+}
+
+function parseCsvLine(line: string, delimiter: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = false;
+      } else cur += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      out.push(cur); cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((c) => c.trim());
+}
+
+function parseCsv(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) throw new Error("El archivo CSV está vacío.");
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = parseCsvLine(lines[0], delimiter).map((h) => h.trim());
+  const rows = lines.slice(1).map((l) => parseCsvLine(l, delimiter));
+  return { headers, rows };
+}
+
+// ── Coerción/validación por tipo ──────────────────────────────────────────────
+function coerce(value: string, type: ColType): { ok: boolean; value?: unknown; msg?: string } {
+  const v = (value ?? "").trim();
+  if (v === "") return { ok: true, value: null };
+  switch (type) {
+    case "int": {
+      const n = Number(v.replace(/\./g, "").replace(",", "."));
+      if (!Number.isFinite(n) || !Number.isInteger(n)) return { ok: false, msg: `"${v}" no es un entero` };
+      return { ok: true, value: n };
+    }
+    case "numeric": {
+      const n = Number(v.replace(",", "."));
+      if (!Number.isFinite(n)) return { ok: false, msg: `"${v}" no es un número` };
+      return { ok: true, value: n };
+    }
+    case "date": {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return { ok: true, value: v };
+      const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (m) return { ok: true, value: `${m[3]}-${m[2]}-${m[1]}` };
+      return { ok: false, msg: `"${v}" no es una fecha válida (usa AAAA-MM-DD)` };
+    }
+    case "bool": {
+      const low = v.toLowerCase();
+      if (["true", "1", "si", "sí", "t", "yes"].includes(low)) return { ok: true, value: true };
+      if (["false", "0", "no", "f"].includes(low)) return { ok: true, value: false };
+      return { ok: false, msg: `"${v}" no es booleano (true/false)` };
+    }
+    default:
+      return { ok: true, value: v };
+  }
+}
 
 const DataUpload = () => {
   const navigate = useNavigate();
@@ -31,362 +260,178 @@ const DataUpload = () => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [rowsInserted, setRowsInserted] = useState<number | null>(null);
+  const [rowsAffected, setRowsAffected] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Verificación robusta: usar isAdmin del hook (que ya incluye admin y superadmin)
-  // o verificar directamente el rol del perfil como fallback
   const role = profile?.role?.toLowerCase().trim();
-  const isAdminLike = isAdmin || roles.isAdmin || roles.isSuperAdmin || role === 'admin' || role === 'superadmin';
+  const isAdminLike = isAdmin || roles.isAdmin || roles.isSuperAdmin || role === "admin" || role === "superadmin";
   const isLoading = permissionsLoading || profileLoading;
   const menuItems = useAppMenuItems();
 
-  // Debug: log para troubleshooting
-  console.log('🔍 DataUpload - Permissions check:', {
-    profileRole: profile?.role,
-    roleLowercase: role,
-    isAdmin,
-    rolesIsAdmin: roles.isAdmin,
-    rolesIsSuperAdmin: roles.isSuperAdmin,
-    isAdminLike,
-    isLoading,
-    permissionsLoading,
-    profileLoading
-  });
+  const spec = selectedTable ? TABLE_SPECS[selectedTable] : null;
+
+  const resetMessages = () => {
+    setError(null);
+    setValidationErrors([]);
+    setSuccessMessage(null);
+    setRowsAffected(null);
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = event.target.files?.[0] || null;
-    setFile(selected);
-    setError(null);
-    setSuccessMessage(null);
-    setRowsInserted(null);
-  };
-
-  const handleSelectFileClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const generateExampleCSV = (table: SupportedTable): string => {
-    const examples: Record<SupportedTable, any[]> = {
-      definicion_indicadores: [
-        {
-          nombre: "Ejemplo Indicador 1",
-          dimension: "Transformación Digital",
-          subdimension: "Adopción Tecnológica",
-          descripcion: "Descripción del indicador ejemplo",
-          formula: "valor1 / valor2 * 100",
-          unidad_medida: "Porcentaje",
-          fuente: "INE",
-          periodicidad: "Anual",
-          importancia: "Alta"
-        },
-        {
-          nombre: "Ejemplo Indicador 2",
-          dimension: "Capital Humano",
-          subdimension: "Competencias Digitales",
-          descripcion: "Descripción del segundo indicador ejemplo",
-          formula: "suma(valores) / total",
-          unidad_medida: "Índice",
-          fuente: "Eurostat",
-          periodicidad: "Semestral",
-          importancia: "Media"
-        }
-      ],
-      resultado_indicadores: [
-        {
-          nombre_indicador: "Ejemplo Indicador 1",
-          periodo: 2024,
-          valor_calculado: 65.5,
-          pais: "España",
-          provincia: "Valencia",
-          sector: "Servicios",
-          tamano_empresa: "Grande",
-          fecha_calculo: "2024-01-15"
-        },
-        {
-          nombre_indicador: "Ejemplo Indicador 2",
-          periodo: 2024,
-          valor_calculado: 72.3,
-          pais: "España",
-          provincia: "Alicante",
-          sector: "Industria",
-          tamano_empresa: "Mediana",
-          fecha_calculo: "2024-01-15"
-        }
-      ],
-      datos_crudos: [
-        {
-          nombre_dato: "Población total",
-          valor: 2500000,
-          unidad: "Personas",
-          fecha: "2024-01-01",
-          fuente: "INE",
-          territorio: "Comunitat Valenciana",
-          categoria: "Demografía"
-        },
-        {
-          nombre_dato: "Empresas TIC",
-          valor: 1250,
-          unidad: "Empresas",
-          fecha: "2024-01-01",
-          fuente: "DIRCE",
-          territorio: "Comunitat Valenciana",
-          categoria: "Empresarial"
-        }
-      ],
-      datos_macro: [
-        {
-          indicador: "PIB per cápita",
-          valor: 25000,
-          unidad: "Euros",
-          año: 2024,
-          territorio: "Comunitat Valenciana",
-          fuente: "INE",
-          tipo: "Macroeconómico"
-        },
-        {
-          indicador: "Tasa de desempleo",
-          valor: 12.5,
-          unidad: "Porcentaje",
-          año: 2024,
-          territorio: "Comunitat Valenciana",
-          fuente: "EPA",
-          tipo: "Laboral"
-        }
-      ]
-    };
-
-    const exampleData = examples[table];
-    return convertToCSV(exampleData);
+    setFile(event.target.files?.[0] || null);
+    resetMessages();
   };
 
   const handleDownloadExample = (table: SupportedTable) => {
-    const csvContent = generateExampleCSV(table);
-    const filename = `ejemplo_${table}_${new Date().toISOString().split("T")[0]}.csv`;
-    downloadCSV(csvContent, filename);
+    const csv = convertToCSV(TABLE_SPECS[table].example as Record<string, unknown>[]);
+    downloadCSV(csv, `plantilla_${table}_${new Date().toISOString().split("T")[0]}.csv`);
   };
 
-  const parseCsvText = (text: string): { headers: string[]; rows: string[][] } => {
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
+  // Valida cabeceras + filas. Devuelve payload listo o lanza con lista de errores.
+  const validate = (
+    headers: string[],
+    rows: string[][],
+    tableSpec: TableSpec,
+  ): { payload: Record<string, unknown>[]; hasId: boolean } => {
+    const errs: string[] = [];
+    const allowed = new Set(tableSpec.columns.map((c) => c.name));
+    if (tableSpec.pkAuto) allowed.add("id"); // 'id' opcional para actualizar
 
-    if (lines.length === 0) {
-      throw new Error("El archivo CSV está vacío.");
+    // Cabeceras desconocidas
+    const unknown = headers.filter((h) => h && !allowed.has(h));
+    if (unknown.length) errs.push(`Columnas no reconocidas (corrígelas o usa la plantilla): ${unknown.join(", ")}`);
+
+    // Requeridos ausentes
+    const missing = tableSpec.columns.filter((c) => c.required && !headers.includes(c.name)).map((c) => c.name);
+    if (missing.length) errs.push(`Faltan columnas obligatorias: ${missing.join(", ")}`);
+
+    if (errs.length) {
+      const e = new Error("validation");
+      (e as Error & { list?: string[] }).list = errs;
+      throw e;
     }
 
-    // Detectar delimitador: primero punto y coma, luego coma
-    const detectDelimiter = (line: string): ";" | "," => {
-      const semicolons = (line.match(/;/g) || []).length;
-      const commas = (line.match(/,/g) || []).length;
-      if (semicolons === 0 && commas === 0) return ";";
-      return semicolons >= commas ? ";" : ",";
-    };
+    const colType = new Map(tableSpec.columns.map((c) => [c.name, c.type] as const));
+    colType.set("id", "int");
+    const requiredCols = tableSpec.columns.filter((c) => c.required).map((c) => c.name);
 
-    const delimiter = detectDelimiter(lines[0]);
-    const headers = lines[0].split(delimiter).map((h) => h.trim());
-
-    const rows = lines.slice(1).map((line) => {
-      const cols = line.split(delimiter).map((c) => c.trim());
-      // Rellenar columnas faltantes con null
-      while (cols.length < headers.length) {
-        cols.push("");
+    const payload: Record<string, unknown>[] = [];
+    rows.forEach((cols, idx) => {
+      const lineNo = idx + 2; // +1 cabecera, +1 base-1
+      const obj: Record<string, unknown> = {};
+      let empty = true;
+      headers.forEach((h, i) => {
+        if (!h || !allowed.has(h)) return;
+        const raw = cols[i] ?? "";
+        if (raw.trim() !== "") empty = false;
+        const res = coerce(raw, colType.get(h) || "text");
+        if (!res.ok) {
+          if (errs.length < 25) errs.push(`Fila ${lineNo}, columna "${h}": ${res.msg}`);
+          return;
+        }
+        obj[h] = res.value;
+      });
+      if (empty) return; // saltar filas vacías
+      // requeridos no nulos
+      for (const rc of requiredCols) {
+        if (obj[rc] === null || obj[rc] === undefined) {
+          if (errs.length < 25) errs.push(`Fila ${lineNo}: falta el valor obligatorio "${rc}"`);
+        }
       }
-      return cols;
+      payload.push(obj);
     });
 
-    return { headers, rows };
+    if (errs.length) {
+      const e = new Error("validation");
+      (e as Error & { list?: string[] }).list = errs;
+      throw e;
+    }
+    if (payload.length === 0) throw new Error("No hay filas de datos válidas en el CSV.");
+
+    return { payload, hasId: headers.includes("id") };
   };
 
   const handleUpload = async () => {
-    setError(null);
-    setSuccessMessage(null);
-    setRowsInserted(null);
-
-    if (!isAdminLike) {
-      setError("Solo los usuarios administradores pueden subir datos.");
-      return;
-    }
-
-    if (!selectedTable) {
-      setError("Selecciona primero la tabla de destino.");
-      return;
-    }
-
-    if (!file) {
-      setError("Selecciona un archivo CSV para continuar.");
-      return;
-    }
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setError("El archivo debe tener extensión .csv");
-      return;
-    }
+    resetMessages();
+    if (!isAdminLike) return setError("Solo los administradores pueden subir datos.");
+    if (!selectedTable || !spec) return setError("Selecciona primero la tabla de destino.");
+    if (!file) return setError("Selecciona un archivo CSV.");
+    if (!file.name.toLowerCase().endsWith(".csv")) return setError("El archivo debe tener extensión .csv");
 
     try {
       setUploading(true);
-
-      // Leer el archivo CSV
       const text = await file.text();
-      const { headers, rows } = parseCsvText(text);
+      const { headers, rows } = parseCsv(text);
 
-      if (headers.length === 0) {
-        throw new Error("No se han detectado columnas en el CSV.");
-      }
+      const { payload, hasId } = validate(headers, rows, spec);
 
-      console.log(`📊 Procesando CSV: ${headers.length} columnas, ${rows.length} filas`);
+      // Estrategia: upsert si el PK viene en el CSV (o el PK no es autogenerado); si no, insert.
+      const useUpsert = hasId || !spec.pkAuto;
 
-      // Construir objetos { columna: valor }
-      // Limpiar y normalizar los datos
-      const payload = rows
-        .map((cols, rowIndex) => {
-          const row: Record<string, any> = {};
-          headers.forEach((header, index) => {
-            const key = header.trim();
-            if (!key) return;
-            
-            let value = cols[index]?.trim() || null;
-            
-            // Intentar convertir valores numéricos
-            if (value !== null && value !== '') {
-              // Si parece un número, intentar convertirlo
-              const numValue = Number(value);
-              if (!isNaN(numValue) && value !== '') {
-                value = numValue;
-              }
-            }
-            
-            row[key] = value;
-          });
-          
-          // Filtrar filas completamente vacías
-          const hasData = Object.values(row).some(v => v !== null && v !== '');
-          return hasData ? row : null;
-        })
-        .filter((row): row is Record<string, any> => row !== null);
-
-      if (payload.length === 0) {
-        throw new Error("No se han encontrado filas de datos válidas en el CSV.");
-      }
-
-      console.log(`✅ Datos procesados: ${payload.length} filas válidas para insertar`);
-
-      // Insertar en Supabase en bloques para evitar límites de tamaño
       const chunkSize = 500;
-      let totalInserted = 0;
-      let totalErrors = 0;
+      let affected = 0;
       const errors: string[] = [];
 
       for (let i = 0; i < payload.length; i += chunkSize) {
         const chunk = payload.slice(i, i + chunkSize);
-        const chunkNumber = Math.floor(i / chunkSize) + 1;
-        const totalChunks = Math.ceil(payload.length / chunkSize);
-        
-        console.log(`📤 Insertando chunk ${chunkNumber}/${totalChunks} (${chunk.length} filas)...`);
-
+        const n = Math.floor(i / chunkSize) + 1;
         try {
-          const { data, error: insertError } = await supabase
-            .from(selectedTable)
-            // @ts-ignore: tablas administrativas no tipadas en el cliente actual
-            .insert(chunk)
-            .select();
+          // El cliente tipado no conoce estas tablas administrativas:
+          const query = (supabase.from(selectedTable as never) as never) as {
+            insert: (rows: unknown[]) => { select: () => Promise<{ data: unknown[] | null; error: { message: string; code?: string } | null }> };
+            upsert: (rows: unknown[], opts: { onConflict: string }) => { select: () => Promise<{ data: unknown[] | null; error: { message: string; code?: string } | null }> };
+          };
+          const resp = useUpsert
+            ? await query.upsert(chunk, { onConflict: spec.pk }).select()
+            : await query.insert(chunk).select();
 
-          if (insertError) {
-            console.error(`❌ Error en chunk ${chunkNumber}:`, insertError);
-            errors.push(`Chunk ${chunkNumber}: ${insertError.message}`);
-            totalErrors += chunk.length;
-            
-            // Si es un error crítico (no de validación), detener
-            if (insertError.code === 'PGRST116' || insertError.code === '23505') {
-              // Error de constraint o duplicado - continuar con siguiente chunk
-              continue;
-            } else if (insertError.code && !insertError.code.startsWith('23')) {
-              // Error no relacionado con constraints - lanzar error
-              throw insertError;
-            }
+          if (resp.error) {
+            errors.push(`Bloque ${n}: ${resp.error.message}`);
           } else {
-            const insertedCount = data?.length || chunk.length;
-            totalInserted += insertedCount;
-            console.log(`✅ Chunk ${chunkNumber} insertado: ${insertedCount} filas`);
+            affected += resp.data?.length || chunk.length;
           }
-        } catch (chunkError: any) {
-          console.error(`❌ Error crítico en chunk ${chunkNumber}:`, chunkError);
-          errors.push(`Chunk ${chunkNumber}: ${chunkError.message || 'Error desconocido'}`);
-          totalErrors += chunk.length;
-          
-          // Si es un error crítico, detener el proceso
-          if (chunkError.code && !chunkError.code.startsWith('23')) {
-            throw chunkError;
-          }
+        } catch (e) {
+          errors.push(`Bloque ${n}: ${(e as Error).message || "error"}`);
         }
       }
 
-      // Mostrar resultado final
-      if (totalInserted > 0) {
-        setRowsInserted(totalInserted);
-        if (totalErrors > 0) {
-          const message = `Se han subido correctamente ${totalInserted} filas a la tabla "${selectedTable}". ${totalErrors} filas tuvieron errores.`;
-          setSuccessMessage(message);
-          toast({
-            title: "Subida parcialmente exitosa",
-            description: message,
-            variant: "default",
-          });
-          if (errors.length > 0) {
-            console.warn('Errores parciales:', errors);
-          }
-        } else {
-          const message = `✅ Se han subido correctamente ${totalInserted} filas a la tabla "${selectedTable}".`;
-          setSuccessMessage(message);
-          toast({
-            title: "Subida exitosa",
-            description: `Se insertaron ${totalInserted} filas en la tabla "${selectedTable}".`,
-          });
-        }
-        
-        // Limpiar el archivo seleccionado después de una subida exitosa
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+      if (affected > 0) {
+        setRowsAffected(affected);
+        const verb = useUpsert ? "insertadas/actualizadas" : "insertadas";
+        const msg = errors.length
+          ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} bloque(s) con errores.`
+          : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".`;
+        setSuccessMessage(msg);
+        if (errors.length) setValidationErrors(errors);
+        toast({ title: errors.length ? "Subida parcial" : "Subida exitosa", description: msg });
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setFile(null);
       } else {
-        throw new Error(
-          `No se pudieron insertar datos. Errores: ${errors.join('; ')}`
-        );
+        setError("No se insertó ninguna fila.");
+        setValidationErrors(errors);
       }
-    } catch (err: any) {
-      console.error("❌ Error uploading CSV:", err);
-      const errorMessage = err.message || "Ha ocurrido un error al procesar el CSV.";
-      setError(`Error: ${errorMessage}`);
-      
-      toast({
-        title: "Error al subir CSV",
-        description: errorMessage,
-        variant: "destructive",
-      });
-      
-      // Mostrar detalles adicionales en consola para debugging
-      if (err.details) {
-        console.error("Detalles del error:", err.details);
-      }
-      if (err.hint) {
-        console.error("Hint:", err.hint);
+    } catch (err) {
+      const list = (err as Error & { list?: string[] }).list;
+      if (list?.length) {
+        setError("El CSV no pasó la validación. Corrige estos puntos y vuelve a intentarlo:");
+        setValidationErrors(list);
+      } else {
+        setError((err as Error).message || "Error al procesar el CSV.");
       }
     } finally {
       setUploading(false);
     }
   };
 
-  // Mostrar loading mientras se verifican los permisos
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
         <Card className="max-w-lg w-full">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0c6c8b] mx-auto mb-4"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0c6c8b] mx-auto mb-4" />
               <p className="text-muted-foreground">Verificando permisos...</p>
             </div>
           </CardContent>
@@ -395,7 +440,6 @@ const DataUpload = () => {
     );
   }
 
-  // Verificar acceso solo después de que termine la carga
   if (!isAdminLike) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
@@ -410,15 +454,8 @@ const DataUpload = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Si crees que esto es un error, contacta con el administrador del sistema.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Rol actual: {profile?.role || 'No disponible'}
-            </p>
-            <Button variant="outline" onClick={() => navigate("/dashboard")}>
-              Volver al dashboard
-            </Button>
+            <p className="text-xs text-muted-foreground">Rol actual: {profile?.role || "No disponible"}</p>
+            <Button variant="outline" onClick={() => navigate("/dashboard")}>Volver al dashboard</Button>
           </CardContent>
         </Card>
       </div>
@@ -429,154 +466,93 @@ const DataUpload = () => {
     <>
       <FloatingCamaraLogo />
       <div className="min-h-screen bg-gray-100 flex">
-      {/* Sidebar: mismo menú que en el resto de secciones */}
-      <aside className="hidden md:flex w-64 bg-[#0c6c8b] text-white flex-col">
-        <div className="p-6">
-          <nav className="space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.active;
-              const isDisabled = item.disabled;
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => !isDisabled && item.href && navigate(item.href)}
-                  disabled={isDisabled}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                    isActive ? "bg-[#0a5a73] text-white" : isDisabled ? "text-blue-300 opacity-50 cursor-not-allowed" : "text-blue-100 hover:bg-[#0a5a73]/50"
-                  }`}
-                  style={isActive ? { borderLeft: "4px solid #4FD1C7" } : {}}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="text-sm font-medium">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="mt-auto p-6">
-          <p className="text-xs text-blue-200">Versión 2026</p>
-          <p className="text-xs text-blue-200">Actualizado Febrero 2026</p>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Header */}
-        <header className="bg-[#0c6c8b] text-white px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold">Carga de datos (CSV)</h2>
-            </div>
+        <aside className="hidden md:flex w-64 bg-[#0c6c8b] text-white flex-col">
+          <div className="p-6">
+            <nav className="space-y-2">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const active = item.active;
+                const disabled = item.disabled;
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => !disabled && item.href && navigate(item.href)}
+                    disabled={disabled}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                      active ? "bg-[#0a5a73] text-white" : disabled ? "text-blue-300 opacity-50 cursor-not-allowed" : "text-blue-100 hover:bg-[#0a5a73]/50"
+                    }`}
+                    style={active ? { borderLeft: "4px solid #4FD1C7" } : {}}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="text-sm font-medium">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-        </header>
+          <div className="mt-auto p-6">
+            <p className="text-xs text-blue-200">Versión 2026</p>
+          </div>
+        </aside>
 
-        {/* Main Content Area */}
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto bg-gray-50">
-          <div className="max-w-3xl mx-auto space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5 text-[#0c6c8b]" />
-                  Subir CSV a la base de datos
-                </CardTitle>
-                <CardDescription>
-                  Selecciona la tabla de destino y el archivo CSV. Las cabeceras del CSV deben coincidir con los
-                  nombres de columnas de la tabla en Supabase.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-4">
+        <div className="flex-1 flex flex-col">
+          <header className="bg-[#0c6c8b] text-white px-6 py-4">
+            <h2 className="text-lg font-semibold">Carga de datos (CSV)</h2>
+          </header>
+
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto bg-gray-50">
+            <div className="max-w-3xl mx-auto space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Upload className="h-5 w-5 text-[#0c6c8b]" />
+                    Subir CSV a la base de datos
+                  </CardTitle>
+                  <CardDescription>
+                    Selecciona la tabla de destino y el archivo CSV. Descarga la plantilla de esa tabla para
+                    asegurar que las columnas coinciden con la base de datos.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
                   <div className="space-y-3">
-                    <Label>Tabla de destino en Supabase</Label>
-                    <Select
-                      value={selectedTable}
-                      onValueChange={(value) => setSelectedTable(value as SupportedTable)}
-                    >
+                    <Label>Tabla de destino</Label>
+                    <Select value={selectedTable} onValueChange={(v) => { setSelectedTable(v as SupportedTable); resetMessages(); }}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecciona la tabla donde quieres cargar los datos" />
+                        <SelectValue placeholder="Selecciona la tabla donde cargar los datos" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="definicion_indicadores">
-                          definicion_indicadores (definición de indicadores)
-                        </SelectItem>
-                        <SelectItem value="resultado_indicadores">
-                          resultado_indicadores (resultados calculados)
-                        </SelectItem>
-                        <SelectItem value="datos_crudos">
-                          datos_crudos (datos fuente originales)
-                        </SelectItem>
-                        <SelectItem value="datos_macro">
-                          datos_macro (indicadores macroeconómicos)
-                        </SelectItem>
+                        {(Object.keys(TABLE_SPECS) as SupportedTable[]).map((t) => (
+                          <SelectItem key={t} value={t}>{TABLE_SPECS[t].label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
-                    
-                    {/* Plantillas con botones de descarga */}
-                    <div className="space-y-2">
-                      <Label className="text-sm text-muted-foreground">Descargar plantilla CSV de ejemplo:</Label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadExample("definicion_indicadores")}
-                          className="justify-start"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          <span className="text-xs">definicion_indicadores</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadExample("resultado_indicadores")}
-                          className="justify-start"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          <span className="text-xs">resultado_indicadores</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadExample("datos_crudos")}
-                          className="justify-start"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          <span className="text-xs">datos_crudos</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadExample("datos_macro")}
-                          className="justify-start"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          <span className="text-xs">datos_macro</span>
-                        </Button>
-                      </div>
-                    </div>
+
+                    {spec && (
+                      <Alert className="bg-muted/60">
+                        <Info className="h-4 w-4 text-primary" />
+                        <AlertTitle className="text-sm">Cómo se cargan estos datos</AlertTitle>
+                        <AlertDescription className="text-xs space-y-2">
+                          <p>{spec.description}</p>
+                          <p>
+                            <span className="font-medium">Columnas válidas:</span>{" "}
+                            {spec.columns.map((c) => `${c.name}${c.required ? "*" : ""}`).join(", ")}
+                            {spec.pkAuto ? "  (id opcional)" : ""}
+                          </p>
+                          <p className="text-muted-foreground">* = obligatoria</p>
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleDownloadExample(selectedTable as SupportedTable)}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Descargar plantilla de {selectedTable}
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <Label>Archivo CSV</Label>
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={handleFileChange}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleSelectFileClick}
-                        className="flex items-center gap-2"
-                      >
+                      <Input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                         <Upload className="h-4 w-4" />
                         Seleccionar CSV
                       </Button>
@@ -585,68 +561,54 @@ const DataUpload = () => {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Asegúrate de que el archivo esté en formato CSV (.csv) y que la primera fila contenga los
-                      nombres de las columnas.
+                      Primera fila = nombres de columnas. Separador ; o , (autodetectado). Decimales con . o ,.
                     </p>
                   </div>
-                </div>
 
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    onClick={handleUpload}
-                    disabled={uploading || !file || !selectedTable}
-                    className="bg-[#0c6c8b] hover:bg-[#0a5a73]"
-                  >
-                    {uploading ? "Subiendo..." : "Subir a base de datos"}
-                  </Button>
-                </div>
+                  <div className="flex justify-end">
+                    <Button type="button" onClick={handleUpload} disabled={uploading || !file || !selectedTable} className="bg-[#0c6c8b] hover:bg-[#0a5a73]">
+                      {uploading ? "Procesando..." : "Validar y subir"}
+                    </Button>
+                  </div>
 
-                <Card className="bg-muted/60">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Info className="h-4 w-4 text-primary" />
-                      Requisitos del CSV
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground space-y-1">
-                    <p>• La primera fila debe contener los nombres de las columnas exactamente como en la base de datos.</p>
-                    <p>• El separador puede ser punto y coma (;) o coma (,), se detecta automáticamente.</p>
-                    <p>• Las columnas que no existan en la tabla serán ignoradas por Supabase.</p>
-                    <p>• Los tipos de datos deben ser compatibles (por ejemplo, números donde se esperan números).</p>
-                  </CardContent>
-                </Card>
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Error</AlertTitle>
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
 
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error al subir CSV</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
+                  {validationErrors.length > 0 && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Detalle ({validationErrors.length})</AlertTitle>
+                      <AlertDescription>
+                        <ul className="list-disc pl-4 space-y-1 text-xs max-h-48 overflow-y-auto">
+                          {validationErrors.map((e, i) => <li key={i}>{e}</li>)}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
-                {successMessage && (
-                  <Alert>
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <AlertTitle>Datos cargados correctamente</AlertTitle>
-                    <AlertDescription>{successMessage}</AlertDescription>
-                  </Alert>
-                )}
-
-                {rowsInserted !== null && !error && (
-                  <p className="text-xs text-muted-foreground">
-                    Filas insertadas: <span className="font-semibold">{rowsInserted}</span>
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                  {successMessage && (
+                    <Alert>
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      <AlertTitle>Resultado</AlertTitle>
+                      <AlertDescription>
+                        {successMessage}
+                        {rowsAffected !== null && <span className="block text-xs mt-1">Filas afectadas: <span className="font-semibold">{rowsAffected}</span></span>}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
     </>
   );
 };
 
 export default DataUpload;
-
