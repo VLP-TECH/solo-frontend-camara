@@ -196,21 +196,19 @@ async function getMinMaxPorIndicador(
   return result;
 }
 
-/** Normalización Min-Max: (valor - min) / (max - min). Usado donde se requiera rango 0-1. */
-function normalizarMinMax(valor: number, min: number, max: number): number {
-  if (max === min) return valor > 0 ? 1 : 0;
-  const n = (valor - min) / (max - min);
-  return Math.max(0, Math.min(1, n));
-}
-
 /**
- * Score por indicador según doc API Cámara: Score_i = (Valor_i / Max_i) × 100 ("más es mejor").
- * Max_i = máximo del indicador entre todos los países en ese año. Resultado en [0, 100].
+ * Normalización Min-Max a escala 0-100 (metodología BRAINNOVA, doc 3.2.1):
+ *   Score_i = ((Valor_i − Mín_i) / (Máx_i − Mín_i)) × 100
+ * Mín_i / Máx_i = mínimo y máximo del indicador en el conjunto de referencia
+ * (territorios/países disponibles para ese indicador y periodo). "Más es mejor".
+ * Si Máx = Mín (un único dato o todos iguales), devuelve 100 si hay valor, 0 si no.
+ * NOTA: los indicadores inversos ("más es peor") aún no se invierten; ver doc 3.2.1.
  */
-function scoreIndicadorPorMax(valor: number, max: number): number {
-  if (max <= 0 || !Number.isFinite(max)) return 0;
-  if (!Number.isFinite(valor) || valor < 0) return 0;
-  return Math.min(100, (valor / max) * 100);
+export function scoreIndicadorMinMax(valor: number, min: number, max: number): number {
+  if (!Number.isFinite(valor) || !Number.isFinite(min) || !Number.isFinite(max)) return 0;
+  if (max <= min) return valor > 0 ? 100 : 0;
+  const n = ((valor - min) / (max - min)) * 100;
+  return Math.max(0, Math.min(100, n));
 }
 
 export interface Dimension {
@@ -1013,8 +1011,9 @@ export async function getSubdimensionesConScores(
           }
         }
 
-        /** Score según doc API Cámara: Score_i = (Valor_i / Max_i)×100; Score_D = Σ(Score_i × peso_i) / Σ(peso).
-         * Indicadores sin datos se excluyen. Si no hay Max_i (solo un territorio), se usa valor como max → Score_i=100.
+        /** Score Min-Max (doc BRAINNOVA 3.2.1): Score_i = ((Valor_i − Mín_i)/(Máx_i − Mín_i))×100;
+         * Score_D = Σ(Score_i × peso_i) / Σ(peso). Indicadores sin datos se excluyen.
+         * Si no hay Mín/Máx de referencia (solo un territorio), Máx = valor y Mín = 0 → Score_i=100.
          */
         const calcularScorePonderado = (valores: (number | null)[]): number => {
           let sumaPonderada = 0;
@@ -1024,7 +1023,8 @@ export async function getSubdimensionesConScores(
             if (valor === null || valor === undefined || isNaN(valor)) return;
             const mm = minMaxGlobal.get(ind.nombre);
             const max = mm ? mm.max : (valor > 0 ? valor : 1);
-            const scoreI = scoreIndicadorPorMax(valor, max);
+            const min = mm ? mm.min : 0;
+            const scoreI = scoreIndicadorMinMax(valor, min, max);
             const peso = pesoImportancia(ind.importancia);
             sumaPonderada += scoreI * peso;
             sumaPesos += peso;
@@ -1318,7 +1318,8 @@ function scoreSubdimensionDesdeBulk(
       if (valor === null || valor === undefined || isNaN(valor)) return;
       const mm = minMaxGlobal.get(ind.nombre);
       const max = mm ? mm.max : valor > 0 ? valor : 1;
-      const scoreI = scoreIndicadorPorMax(valor, max);
+      const min = mm ? mm.min : 0;
+      const scoreI = scoreIndicadorMinMax(valor, min, max);
       const peso = pesoImportancia(ind.importancia);
       sumaPonderada += scoreI * peso;
       sumaPesos += peso;

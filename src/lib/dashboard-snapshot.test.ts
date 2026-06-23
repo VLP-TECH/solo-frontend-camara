@@ -262,6 +262,28 @@ describe("getDashboardSnapshot - invariantes de consistencia", () => {
     expect(habDig!.scoresPorTerritorio.paisesBajos.score).toBeLessThan(100);
   });
 
+  it("usa normalización Min-Max real (no Valor/Máx): scores Habilidades digitales fijados a mano", async () => {
+    const { getDashboardSnapshot } = await importSnapshot();
+    const snap = await getDashboardSnapshot(2024);
+
+    const capHumano = snap.dimensiones.find((d) => d.nombre === "Capital humano")!;
+    const habDig = capHumano.subdimensiones.find((s) => s.nombre === "Habilidades digitales")!;
+
+    // Conjunto de referencia (todas las filas del periodo) por indicador:
+    //   101 "% Habilidades básicas":   min=55 (Castellón), max=100 (Suecia)
+    //   102 "% Habilidades avanzadas": min=25 (Italia/Castellón), max=60 (Países Bajos)
+    // Pesos: 101 Alta=3, 102 Media=2.
+    //
+    // España → ind101=(70-55)/(100-55)*100=33.33 ; ind102=(35-25)/(60-25)*100=28.57
+    //   S = (33.33*3 + 28.57*2) / 5 = 31.43 → 31
+    // (Con la fórmula vieja Valor/Máx daría (70 y 58.33) → S=65. Este test lo descarta.)
+    expect(habDig.scoresPorTerritorio.espana.score).toBe(31);
+
+    // Países Bajos → ind101=(90-55)/45*100=77.78 ; ind102 es el máximo → 100
+    //   S = (77.78*3 + 100*2) / 5 = 86.67 → 87
+    expect(habDig.scoresPorTerritorio.paisesBajos.score).toBe(87);
+  });
+
   it("índice global ponderado: España con scores conocidos da el resultado esperado", async () => {
     const { getDashboardSnapshot } = await importSnapshot();
     const snap = await getDashboardSnapshot(2024);

@@ -469,7 +469,7 @@ function handlePreguntasModelo(lowerQuery: string): string | null {
   if (
     (lowerQuery.includes("normaliza") || lowerQuery.includes("normalizan") || lowerQuery.includes("normalización") || lowerQuery.includes("normalizacion"))
   ) {
-    return `Los indicadores se **normalizan** a una escala 0-100 mediante la fórmula **Min-Max**:\n\n**Valor_Normalizado = ((Valor_Real - Valor_Mínimo) / (Valor_Máximo - Valor_Mínimo)) × 100**\n\nEl mínimo y máximo se obtienen del conjunto de referencia (todos los territorios/países disponibles para ese indicador en el período seleccionado). Así, el peor valor se acerca a 0 y el mejor a 100.\n\nLos indicadores se ponderan según su importancia estratégica:\n• **Alta**: peso 3\n• **Media**: peso 2\n• **Baja**: peso 1\n\nEl score por indicador se calcula como: Score_i = (Valor_i / Max_i) × 100. El detalle completo está en la sección **Metodología**.`;
+    return `Los indicadores se **normalizan** a una escala 0-100 mediante la fórmula **Min-Max**:\n\n**Valor_Normalizado = ((Valor_Real - Valor_Mínimo) / (Valor_Máximo - Valor_Mínimo)) × 100**\n\nEl mínimo y máximo se obtienen del conjunto de referencia (todos los territorios/países disponibles para ese indicador en el período seleccionado). Así, el peor valor se acerca a 0 y el mejor a 100.\n\nLos indicadores se ponderan según su importancia estratégica:\n• **Alta**: peso 3\n• **Media**: peso 2\n• **Baja**: peso 1\n\nUna vez normalizado cada indicador, la subdimensión es la media ponderada de sus indicadores; la dimensión, la media de sus subdimensiones; y el índice global, la media ponderada de las dimensiones. El detalle completo está en la sección **Metodología**.`;
   }
 
   // --- Referencia: media nacional o top europeo ---

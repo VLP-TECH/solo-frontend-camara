@@ -183,6 +183,8 @@ async function loadResultados(periodo: number): Promise<{
   porIdTerritorio: Map<number, Map<TerritorioKey, number>>;
   maxPorIndicadorNombre: Map<string, number>;
   maxPorIndicadorId: Map<number, number>;
+  minPorIndicadorNombre: Map<string, number>;
+  minPorIndicadorId: Map<number, number>;
 }> {
   const paisToTerritorio = buildPaisCanonicoMap();
   const SELECT = "nombre_indicador, id_indicador, pais, valor_calculado, periodo";
@@ -199,6 +201,8 @@ async function loadResultados(periodo: number): Promise<{
   const porIdTerritorio = new Map<number, Map<TerritorioKey, number>>();
   const maxPorIndicadorNombre = new Map<string, number>();
   const maxPorIndicadorId = new Map<number, number>();
+  const minPorIndicadorNombre = new Map<string, number>();
+  const minPorIndicadorId = new Map<number, number>();
 
   const rowsCombinadas: ResultadoRow[] = [];
   if (!resInt.error && Array.isArray(resInt.data)) {
@@ -226,10 +230,14 @@ async function loadResultados(periodo: number): Promise<{
     if (nombre) {
       const prevMax = maxPorIndicadorNombre.get(nombre);
       if (prevMax == null || valor > prevMax) maxPorIndicadorNombre.set(nombre, valor);
+      const prevMin = minPorIndicadorNombre.get(nombre);
+      if (prevMin == null || valor < prevMin) minPorIndicadorNombre.set(nombre, valor);
     }
     if (id != null) {
       const prevMax = maxPorIndicadorId.get(id);
       if (prevMax == null || valor > prevMax) maxPorIndicadorId.set(id, valor);
+      const prevMin = minPorIndicadorId.get(id);
+      if (prevMin == null || valor < prevMin) minPorIndicadorId.set(id, valor);
     }
 
     const territorio = paisToTerritorio.get(normalizeName(String(row.pais ?? "")));
@@ -255,7 +263,14 @@ async function loadResultados(periodo: number): Promise<{
     }
   }
 
-  return { porIndicadorTerritorio, porIdTerritorio, maxPorIndicadorNombre, maxPorIndicadorId };
+  return {
+    porIndicadorTerritorio,
+    porIdTerritorio,
+    maxPorIndicadorNombre,
+    maxPorIndicadorId,
+    minPorIndicadorNombre,
+    minPorIndicadorId,
+  };
 }
 
 function getValorIndicador(
@@ -289,13 +304,40 @@ function getMaxIndicador(
   return null;
 }
 
+function getMinIndicador(
+  ind: Indicador,
+  minPorNombre: Map<string, number>,
+  minPorId: Map<number, number>
+): number | null {
+  const v1 = minPorNombre.get(normalizeName(ind.nombre));
+  if (v1 != null && Number.isFinite(v1)) return v1;
+  if (ind.id != null) {
+    const v2 = minPorId.get(ind.id);
+    if (v2 != null && Number.isFinite(v2)) return v2;
+  }
+  return null;
+}
+
+/**
+ * Normalización Min-Max a 0-100 (metodología BRAINNOVA, doc 3.2.1):
+ *   Score_i = ((Valor − Mín)/(Máx − Mín)) × 100. "Más es mejor".
+ * Si Máx = Mín, devuelve 100 si hay valor, 0 si no.
+ */
+function scoreMinMax(valor: number, min: number, max: number): number {
+  if (!Number.isFinite(valor) || !Number.isFinite(min) || !Number.isFinite(max)) return 0;
+  if (max <= min) return valor > 0 ? 100 : 0;
+  return Math.max(0, Math.min(100, ((valor - min) / (max - min)) * 100));
+}
+
 function calcularScoreSubdimensionPorTerritorio(
   indicadores: Indicador[],
   territorio: TerritorioKey,
   porNombre: Map<string, Map<TerritorioKey, number>>,
   porId: Map<number, Map<TerritorioKey, number>>,
   maxPorNombre: Map<string, number>,
-  maxPorId: Map<number, number>
+  maxPorId: Map<number, number>,
+  minPorNombre: Map<string, number>,
+  minPorId: Map<number, number>
 ): ScoreDimensionTerritorio {
   let sumaPonderada = 0;
   let sumaPesos = 0;
@@ -305,7 +347,8 @@ function calcularScoreSubdimensionPorTerritorio(
     if (valor == null || !Number.isFinite(valor)) continue;
     const max = getMaxIndicador(ind, maxPorNombre, maxPorId) ?? (valor > 0 ? valor : 1);
     if (max <= 0) continue;
-    const scoreI = Math.min(100, (valor / max) * 100);
+    const min = getMinIndicador(ind, minPorNombre, minPorId) ?? 0;
+    const scoreI = scoreMinMax(valor, min, max);
     const peso = pesoImportancia(ind.importancia);
     sumaPonderada += scoreI * peso;
     sumaPesos += peso;
@@ -370,6 +413,8 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
     porIdTerritorio,
     maxPorIndicadorNombre,
     maxPorIndicadorId,
+    minPorIndicadorNombre,
+    minPorIndicadorId,
   } = resultados;
 
   const dimensionesRows: DashboardDimensionRow[] = dimensiones.map((dim: Dimension) => {
@@ -404,7 +449,9 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
           porIndicadorTerritorio,
           porIdTerritorio,
           maxPorIndicadorNombre,
-          maxPorIndicadorId
+          maxPorIndicadorId,
+          minPorIndicadorNombre,
+          minPorIndicadorId
         );
       });
       const ueScoresSub = TERRITORIOS_UE.map((k) => scoresPorTerritorio[k]).filter(

@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/select";
 import NavigationHeader from "@/components/NavigationHeader";
 import FooterSection from "@/components/FooterSection";
-import { BackendStatus } from "@/components/BackendStatus";
 import {
   Target,
   Loader2,
@@ -154,9 +153,6 @@ const BrainnovaScore = () => {
               Calcula el índice ponderado del ecosistema digital según tus criterios
             </p>
           </div>
-
-          {/* Estado del backend */}
-          <BackendStatus />
 
           {/* Formulario de filtros */}
           <Card className="p-6 mb-8 bg-gradient-card border-0">
@@ -362,36 +358,39 @@ const BrainnovaScore = () => {
               <div className="space-y-4">
                 <div className="bg-primary/10 p-6 rounded-lg">
                   <div className="text-sm text-muted-foreground mb-2">
-                    Brainnova score
+                    Brainnova score{resultadoScore.pais ? ` · ${resultadoScore.pais}` : ""}
                   </div>
                   <div className="text-4xl font-bold text-foreground">
-                    {resultadoScore.indice_ponderado?.toFixed(2) || "N/A"}
+                    {typeof resultadoScore.brainnova_global_score === "number"
+                      ? resultadoScore.brainnova_global_score.toFixed(2)
+                      : "N/A"}
                   </div>
                 </div>
 
-                {resultadoScore.desglose && (
+                {resultadoScore.desglose_por_dimension?.length > 0 && (
                   <div>
                     <h4 className="text-lg font-semibold text-foreground mb-4">
-                      Desglose por indicador
+                      Desglose por dimensión
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(resultadoScore.desglose).map(
-                        ([indicador, valor]) => (
-                          <div
-                            key={indicador}
-                            className="flex justify-between items-center p-3 bg-muted/50 rounded-lg"
-                          >
+                      {resultadoScore.desglose_por_dimension.map((d) => (
+                        <div
+                          key={d.dimension}
+                          className="p-3 bg-muted/50 rounded-lg"
+                        >
+                          <div className="flex justify-between items-center">
                             <span className="text-sm text-foreground">
-                              {indicador}
+                              {d.dimension}
                             </span>
                             <span className="text-sm font-semibold text-foreground">
-                              {typeof valor === "number"
-                                ? valor.toFixed(2)
-                                : valor}
+                              {d.score_valencia.toFixed(1)}
                             </span>
                           </div>
-                        )
-                      )}
+                          <div className="text-xs text-muted-foreground mt-1">
+                            Media UE {d.score_media_eu.toFixed(0)} · Top UE {d.score_top_eu.toFixed(0)}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -411,9 +410,6 @@ const BrainnovaScore = () => {
                     {errorCalculo instanceof Error
                       ? errorCalculo.message
                       : "Ocurrió un error al calcular el score"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Verifica que el backend esté corriendo en {import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'}
                   </p>
                 </div>
               </div>

@@ -6,6 +6,16 @@ import type {
   BrainnovaScoreResponse,
   DesgloseDimension,
 } from './brainnova-types';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  getDimensiones,
+  getSubdimensiones,
+  getIndicadores,
+  scoreIndicadorMinMax,
+  type Dimension,
+  type Subdimension,
+  type Indicador,
+} from '@/lib/kpis-data';
 
 /** Formato de una fila del radar para Recharts (cv = territorio, ue = Media UE, topEu = Top Europa). */
 export interface RadarDataRow {
@@ -67,7 +77,6 @@ export const getIndicadoresDisponibles = async (): Promise<string[]> => {
     
     // Fallback: obtener indicadores que tienen datos desde Supabase
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
       
       // Obtener indicadores únicos que tienen resultados
       const { data, error: supabaseError } = await supabase
@@ -97,9 +106,90 @@ export const getIndicadoresDisponibles = async (): Promise<string[]> => {
   }
 };
 
+// --- Cálculo en cliente (sin backend) -------------------------------------
+//
+// La calculadora BRAINNOVA y los filtros se resuelven directamente contra
+// `resultado_indicadores` en Supabase, aplicando la metodología del doc
+// (normalización Min-Max + agregación ponderada). No se usa el backend Python.
+
+const normNombre = (s: unknown): string => (s ?? '').toString().trim().toLowerCase();
+
+const periodoYear = (p: unknown): number => {
+  if (p == null) return 0;
+  if (typeof p === 'number' && !Number.isNaN(p)) return Math.floor(p);
+  const y = parseInt(String(p).slice(0, 4), 10);
+  return Number.isNaN(y) ? 0 : y;
+};
+
+const PESO_IMPORTANCIA: Record<string, number> = { alta: 3, media: 2, baja: 1 };
+const pesoImportancia = (importancia: string | null): number =>
+  importancia ? PESO_IMPORTANCIA[normNombre(importancia)] ?? 1 : 1;
+
+/** Valores de `pais` basura que no deben aparecer en filtros ni puntuar como referencia. */
+const PAISES_EXCLUIDOS = new Set(['desconocido']);
+const esPaisValido = (p: unknown): boolean => {
+  const n = normNombre(p);
+  return n !== '' && !PAISES_EXCLUIDOS.has(n);
+};
+
+interface ResultadoIndRow {
+  nombre_indicador: string | null;
+  id_indicador: number | null;
+  pais: string | null;
+  provincia: string | null;
+  sector: string | null;
+  tamano_empresa: string | null;
+  valor_calculado: unknown;
+  periodo: unknown;
+}
+
+const RI_SELECT =
+  'nombre_indicador, id_indicador, pais, provincia, sector, tamano_empresa, valor_calculado, periodo';
+
 /**
- * Obtiene filtros globales según parámetros
- * GET /api/v1/filtros-globales
+ * Trae TODAS las filas que cumplan el query, paginando para superar el límite
+ * por defecto de 1000 filas de PostgREST. `makeQuery` debe devolver una query
+ * nueva en cada llamada (porque `.range()` la consume).
+ */
+async function fetchAllRows<T>(makeQuery: () => any): Promise<T[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const out: T[] = [];
+  for (;;) {
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if (error || !Array.isArray(data) || data.length === 0) break;
+    out.push(...(data as T[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+
+/**
+ * Carga filas de `resultado_indicadores` para un periodo (la columna puede ser
+ * `integer` o `date`, por eso se consultan ambas variantes y se fusionan),
+ * con filtro opcional de sector / tamaño de empresa.
+ */
+async function fetchRowsParaPeriodo(
+  periodo: number,
+  opts?: { sector?: string; tamano?: string }
+): Promise<ResultadoIndRow[]> {
+  const make = (periodoVal: number | string) => () => {
+    let q = supabase.from('resultado_indicadores').select(RI_SELECT).eq('periodo', periodoVal);
+    if (opts?.sector) q = q.eq('sector', opts.sector);
+    if (opts?.tamano) q = q.eq('tamano_empresa', opts.tamano);
+    return q;
+  };
+  const [conInt, conDate] = await Promise.all([
+    fetchAllRows<ResultadoIndRow>(make(periodo)),
+    fetchAllRows<ResultadoIndRow>(make(`${periodo}-01-01`)),
+  ]);
+  return [...conInt, ...conDate].filter((r) => periodoYear(r.periodo) === periodo);
+}
+
+/**
+ * Obtiene filtros globales (país / provincia / sector / tamaño / años) directamente
+ * desde Supabase, según los parámetros ya seleccionados. Sustituye al backend.
  */
 export const getFiltrosGlobales = async (params?: {
   nombre_indicador?: string;
@@ -108,43 +198,61 @@ export const getFiltrosGlobales = async (params?: {
   sector?: string;
   tamano?: string;
 }): Promise<FiltrosGlobalesResponse> => {
+  const vacio: FiltrosGlobalesResponse = {
+    paises: [],
+    provincias: [],
+    sectores: [],
+    tamanos_empresa: [],
+    anios: [],
+  };
   try {
-    const queryParams = new URLSearchParams();
-    
-    if (params?.nombre_indicador) {
-      queryParams.append('nombre_indicador', params.nombre_indicador);
-    }
-    if (params?.pais) {
-      queryParams.append('pais', params.pais);
-    }
+    const SELECT = 'pais, provincia, sector, tamano_empresa, periodo';
+    const make = (periodoVal?: number | string) => () => {
+      let q = supabase.from('resultado_indicadores').select(SELECT);
+      if (params?.nombre_indicador) q = q.eq('nombre_indicador', params.nombre_indicador);
+      if (params?.pais) q = q.eq('pais', params.pais);
+      if (periodoVal != null) q = q.eq('periodo', periodoVal);
+      if (params?.sector) q = q.eq('sector', params.sector);
+      if (params?.tamano) q = q.eq('tamano_empresa', params.tamano);
+      return q;
+    };
+
+    type FilaFiltro = {
+      pais: string | null;
+      provincia: string | null;
+      sector: string | null;
+      tamano_empresa: string | null;
+      periodo: unknown;
+    };
+
+    let rows: FilaFiltro[];
     if (params?.periodo) {
-      queryParams.append('periodo', params.periodo.toString());
+      const [a, b] = await Promise.all([
+        fetchAllRows<FilaFiltro>(make(params.periodo)),
+        fetchAllRows<FilaFiltro>(make(`${params.periodo}-01-01`)),
+      ]);
+      rows = [...a, ...b].filter((r) => periodoYear(r.periodo) === params.periodo);
+    } else {
+      rows = await fetchAllRows<FilaFiltro>(make());
     }
-    if (params?.sector) {
-      queryParams.append('sector', params.sector);
-    }
-    if (params?.tamano) {
-      queryParams.append('tamano', params.tamano);
-    }
-    
-    const url = buildUrl(`/api/v1/filtros-globales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`);
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      await handleApiError(response);
-    }
-    
-    return response.json();
+
+    const uniqStr = (arr: (string | null)[]): string[] =>
+      Array.from(
+        new Set(arr.filter((v): v is string => v != null && String(v).trim() !== '').map(String))
+      ).sort((x, y) => x.localeCompare(y, 'es'));
+
+    return {
+      paises: uniqStr(rows.map((r) => r.pais)).filter(esPaisValido),
+      provincias: uniqStr(rows.map((r) => r.provincia)),
+      sectores: uniqStr(rows.map((r) => r.sector)),
+      tamanos_empresa: uniqStr(rows.map((r) => r.tamano_empresa)),
+      anios: Array.from(new Set(rows.map((r) => periodoYear(r.periodo)).filter((y) => y > 0))).sort(
+        (a, b) => b - a
+      ),
+    };
   } catch (error) {
     console.error('Error fetching filtros globales:', error);
-    // Retornar objeto vacío si hay error de conexión
-    return {
-      paises: [],
-      provincias: [],
-      sectores: [],
-      tamanos_empresa: [],
-      anios: []
-    };
+    return vacio;
   }
 };
 
@@ -194,7 +302,6 @@ export const getResultados = async (params: {
     
     // Fallback: obtener datos directamente desde Supabase
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
       
       let query = supabase
         .from('resultado_indicadores')
@@ -239,43 +346,218 @@ export const getResultados = async (params: {
   }
 };
 
-/**
- * Normaliza el body de brainnova-score: solo periodo es obligatorio; el resto como "" (no null).
- * El backend solo usa periodo; pais/provincia/sector/tamano_empresa se mantienen por compatibilidad.
- */
-function normalizeBrainnovaScoreBody(
-  request: BrainnovaScoreRequest
-): Record<string, string | number> {
-  return {
-    periodo: request.periodo,
-    pais: request.pais ?? '',
-    provincia: request.provincia ?? '',
-    sector: request.sector ?? '',
-    tamano_empresa: request.tamano_empresa ?? '',
-  };
+// Países de referencia UE (nombres canónicos tal y como se guardan en BD).
+const PAISES_UE_REF = ['España', 'Alemania', 'Francia', 'Italia', 'Países Bajos'];
+
+interface ScorePaisDim {
+  score: number;
+  hasData: boolean;
+}
+
+/** Índice rápido de filas por indicador (por id y por nombre normalizado). */
+function indexarFilasPorIndicador(rows: ResultadoIndRow[]): {
+  porId: Map<number, ResultadoIndRow[]>;
+  porNombre: Map<string, ResultadoIndRow[]>;
+} {
+  const porId = new Map<number, ResultadoIndRow[]>();
+  const porNombre = new Map<string, ResultadoIndRow[]>();
+  for (const r of rows) {
+    if (r.id_indicador != null) {
+      const arr = porId.get(r.id_indicador) ?? [];
+      arr.push(r);
+      porId.set(r.id_indicador, arr);
+    }
+    if (r.nombre_indicador) {
+      const k = normNombre(r.nombre_indicador);
+      const arr = porNombre.get(k) ?? [];
+      arr.push(r);
+      porNombre.set(k, arr);
+    }
+  }
+  return { porId, porNombre };
+}
+
+function filasDeIndicador(
+  ind: Indicador,
+  porId: Map<number, ResultadoIndRow[]>,
+  porNombre: Map<string, ResultadoIndRow[]>
+): ResultadoIndRow[] {
+  if (ind.id != null && porId.has(ind.id)) return porId.get(ind.id)!;
+  return porNombre.get(normNombre(ind.nombre)) ?? [];
 }
 
 /**
- * Calcula el Brainnova Score
- * POST /api/v1/brainnova-score
+ * Valor agregado del indicador para un país. Si se indica provincia, usa esas
+ * filas; si no, prioriza filas nacionales (provincia vacía). Cuando hay varias
+ * filas (p. ej. distintos sectores sin filtrar) se promedian.
+ */
+function valorAgregadoPais(
+  filasInd: ResultadoIndRow[],
+  pais: string,
+  provincia?: string
+): number | null {
+  let cand = filasInd.filter((r) => normNombre(r.pais) === normNombre(pais));
+  if (provincia) {
+    const conProv = cand.filter((r) => normNombre(r.provincia) === normNombre(provincia));
+    if (conProv.length) cand = conProv;
+  } else {
+    const nacional = cand.filter((r) => r.provincia == null || String(r.provincia).trim() === '');
+    if (nacional.length) cand = nacional;
+  }
+  const valores = cand.map((r) => Number(r.valor_calculado)).filter((v) => Number.isFinite(v));
+  if (!valores.length) return null;
+  return valores.reduce((a, b) => a + b, 0) / valores.length;
+}
+
+/** Mín/Máx de referencia del indicador: agregado nacional de cada país disponible. */
+function refMinMaxIndicador(filasInd: ResultadoIndRow[]): { min: number; max: number } | null {
+  const paises = Array.from(new Set(filasInd.map((r) => normNombre(r.pais)).filter(esPaisValido)));
+  const agregados: number[] = [];
+  for (const p of paises) {
+    const v = valorAgregadoPais(filasInd, p);
+    if (v != null) agregados.push(v);
+  }
+  if (!agregados.length) return null;
+  return { min: Math.min(...agregados), max: Math.max(...agregados) };
+}
+
+/** Score 0-100 de una subdimensión para un país (media ponderada por importancia). */
+function scoreSubdimensionPais(
+  indsSub: Indicador[],
+  pais: string,
+  provincia: string | undefined,
+  porId: Map<number, ResultadoIndRow[]>,
+  porNombre: Map<string, ResultadoIndRow[]>
+): ScorePaisDim {
+  let sumaPonderada = 0;
+  let sumaPesos = 0;
+  let usados = 0;
+  for (const ind of indsSub) {
+    const filasInd = filasDeIndicador(ind, porId, porNombre);
+    const valor = valorAgregadoPais(filasInd, pais, provincia);
+    if (valor == null) continue;
+    const mm = refMinMaxIndicador(filasInd);
+    const max = mm ? mm.max : valor > 0 ? valor : 1;
+    if (max <= 0) continue;
+    const min = mm ? mm.min : 0;
+    const scoreI = scoreIndicadorMinMax(valor, min, max);
+    const peso = pesoImportancia(ind.importancia);
+    sumaPonderada += scoreI * peso;
+    sumaPesos += peso;
+    usados++;
+  }
+  if (sumaPesos === 0 || usados === 0) return { score: 0, hasData: false };
+  return { score: Math.min(100, Math.max(0, Math.round(sumaPonderada / sumaPesos))), hasData: true };
+}
+
+/** Scores por dimensión (0-100) para un país: media de subdimensiones con dato. */
+function scoresDimensionesPais(
+  pais: string,
+  provincia: string | undefined,
+  dimensiones: Dimension[],
+  subdimensiones: Subdimension[],
+  indicadores: Indicador[],
+  porId: Map<number, ResultadoIndRow[]>,
+  porNombre: Map<string, ResultadoIndRow[]>
+): Map<string, ScorePaisDim> {
+  const out = new Map<string, ScorePaisDim>();
+  for (const dim of dimensiones) {
+    const subs = subdimensiones.filter(
+      (sub) =>
+        normNombre(sub.nombre_dimension) === normNombre(dim.nombre) ||
+        (dim.idDimension != null && sub.id_dimension != null && sub.id_dimension === dim.idDimension)
+    );
+    const vistos = new Set<string>();
+    const subScores: number[] = [];
+    for (const sub of subs) {
+      const k = normNombre(sub.nombre);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      const indsSub = indicadores.filter(
+        (ind) =>
+          (ind.id_subdimension != null && sub.id != null && ind.id_subdimension === sub.id) ||
+          normNombre(ind.nombre_subdimension) === normNombre(sub.nombre)
+      );
+      const s = scoreSubdimensionPais(indsSub, pais, provincia, porId, porNombre);
+      if (s.hasData && s.score > 0) subScores.push(s.score);
+    }
+    if (subScores.length === 0) out.set(dim.nombre, { score: 0, hasData: false });
+    else
+      out.set(dim.nombre, {
+        score: Math.round(subScores.reduce((a, b) => a + b, 0) / subScores.length),
+        hasData: true,
+      });
+  }
+  return out;
+}
+
+/**
+ * Calcula el Brainnova Score en cliente (sin backend), siguiendo la metodología
+ * del doc: Min-Max por indicador → media ponderada a subdimensión → media a
+ * dimensión → media ponderada por peso de dimensión al índice global.
  */
 export const calculateBrainnovaScore = async (
   data: BrainnovaScoreRequest
 ): Promise<BrainnovaScoreResponse> => {
-  const body = normalizeBrainnovaScoreBody(data);
-  const response = await fetch(buildUrl('/api/v1/brainnova-score'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
+  const periodo = Number(data.periodo);
+  const paisSel = (data.pais ?? '').trim();
+  const provinciaSel = (data.provincia ?? '').trim() || undefined;
+
+  const [dimensiones, subdimensiones, indicadores, rows] = await Promise.all([
+    getDimensiones(),
+    getSubdimensiones(),
+    getIndicadores(),
+    fetchRowsParaPeriodo(periodo, { sector: data.sector || undefined, tamano: data.tamano_empresa || undefined }),
+  ]);
+
+  const { porId, porNombre } = indexarFilasPorIndicador(rows);
+
+  // Scores por dimensión del país seleccionado (si no hay país, queda todo a 0).
+  const scoresSel = paisSel
+    ? scoresDimensionesPais(paisSel, provinciaSel, dimensiones, subdimensiones, indicadores, porId, porNombre)
+    : new Map<string, ScorePaisDim>();
+
+  // Scores por dimensión de cada país UE de referencia (para media y top).
+  const scoresUEPorPais = PAISES_UE_REF.map((p) =>
+    scoresDimensionesPais(p, undefined, dimensiones, subdimensiones, indicadores, porId, porNombre)
+  );
+
+  const desglose_por_dimension: DesgloseDimension[] = dimensiones.map((dim) => {
+    const sSel = scoresSel.get(dim.nombre)?.score ?? 0;
+    const ueScores = scoresUEPorPais
+      .map((m) => m.get(dim.nombre))
+      .filter((s): s is ScorePaisDim => !!s && s.hasData && s.score > 0)
+      .map((s) => s.score);
+    const media_eu = ueScores.length ? Math.round(ueScores.reduce((a, b) => a + b, 0) / ueScores.length) : 0;
+    const top_eu = ueScores.length ? Math.max(...ueScores) : 0;
+    return {
+      dimension: dim.nombre,
+      score_valencia: sSel,
+      score_media_eu: media_eu,
+      score_top_eu: top_eu,
+      peso_configurado: Number(dim.peso) || 0,
+    };
   });
 
-  if (!response.ok) {
-    await handleApiError(response);
+  // Índice global = media ponderada por peso de dimensión (solo dimensiones con dato).
+  let sumPond = 0;
+  let sumPesos = 0;
+  for (const dim of dimensiones) {
+    const s = scoresSel.get(dim.nombre);
+    const peso = Number(dim.peso) > 0 ? Number(dim.peso) : 1;
+    if (s?.hasData && s.score > 0) {
+      sumPond += s.score * peso;
+      sumPesos += peso;
+    }
   }
+  const brainnova_global_score = sumPesos > 0 ? Math.round((sumPond / sumPesos) * 10) / 10 : 0;
 
-  return response.json();
+  return {
+    brainnova_global_score,
+    pais: paisSel,
+    periodo,
+    desglose_por_dimension,
+  };
 };
 
 /**
