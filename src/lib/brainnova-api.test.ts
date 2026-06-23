@@ -97,6 +97,8 @@ function buildRows(periodo: number): Row[] {
 vi.mock("@/integrations/supabase/client", () => {
   return {
     supabase: {
+      // RPC no desplegada en el mock → fuerza el fallback paginado.
+      rpc: () => Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } }),
       from: () => {
         const filters: [string, unknown][] = [];
         const builder: any = {

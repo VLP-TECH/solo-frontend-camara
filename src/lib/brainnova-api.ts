@@ -187,17 +187,24 @@ async function fetchRowsParaPeriodo(
   return [...conInt, ...conDate].filter((r) => periodoYear(r.periodo) === periodo);
 }
 
-/**
- * Obtiene filtros globales (país / provincia / sector / tamaño / años) directamente
- * desde Supabase, según los parámetros ya seleccionados. Sustituye al backend.
- */
-export const getFiltrosGlobales = async (params?: {
+type FiltrosParams = {
   nombre_indicador?: string;
   pais?: string;
   periodo?: number;
   sector?: string;
   tamano?: string;
-}): Promise<FiltrosGlobalesResponse> => {
+};
+
+/**
+ * Obtiene filtros globales (país / provincia / sector / tamaño / años) desde Supabase.
+ *
+ * Intenta primero la RPC `get_filtros_globales` (DISTINCT en servidor, 1 sola
+ * consulta). Si la función aún no existe en la BD (migración no aplicada), cae a
+ * la paginación cliente. Así funciona en ambos casos y se acelera al desplegar.
+ */
+export const getFiltrosGlobales = async (
+  params?: FiltrosParams
+): Promise<FiltrosGlobalesResponse> => {
   const vacio: FiltrosGlobalesResponse = {
     paises: [],
     provincias: [],
@@ -206,6 +213,36 @@ export const getFiltrosGlobales = async (params?: {
     anios: [],
   };
   try {
+    const { data, error } = await supabase.rpc('get_filtros_globales', {
+      p_nombre_indicador: params?.nombre_indicador ?? null,
+      p_pais: params?.pais ?? null,
+      p_anio: params?.periodo ?? null,
+      p_sector: params?.sector ?? null,
+      p_tamano: params?.tamano ?? null,
+    });
+    if (!error && data && typeof data === 'object') {
+      const d = data as Partial<FiltrosGlobalesResponse>;
+      return {
+        paises: (d.paises ?? []).filter(esPaisValido),
+        provincias: d.provincias ?? [],
+        sectores: d.sectores ?? [],
+        tamanos_empresa: d.tamanos_empresa ?? [],
+        anios: d.anios ?? [],
+      };
+    }
+    // RPC no disponible (función no desplegada u otro error) → fallback paginado.
+    return await getFiltrosGlobalesPaginado(params);
+  } catch (error) {
+    console.error('Error fetching filtros globales:', error);
+    return vacio;
+  }
+};
+
+/** Fallback sin RPC: pagina `resultado_indicadores` y calcula los DISTINCT en cliente. */
+async function getFiltrosGlobalesPaginado(
+  params?: FiltrosParams
+): Promise<FiltrosGlobalesResponse> {
+  {
     const SELECT = 'pais, provincia, sector, tamano_empresa, periodo';
     const make = (periodoVal?: number | string) => () => {
       let q = supabase.from('resultado_indicadores').select(SELECT);
@@ -250,11 +287,8 @@ export const getFiltrosGlobales = async (params?: {
         (a, b) => b - a
       ),
     };
-  } catch (error) {
-    console.error('Error fetching filtros globales:', error);
-    return vacio;
   }
-};
+}
 
 /**
  * Obtiene resultados históricos para el gráfico
