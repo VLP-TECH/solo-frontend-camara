@@ -403,6 +403,24 @@ function aggSubdimensionesADimension(
 }
 
 /**
+ * Score de "Comunitat Valenciana" agregado a partir de sus provincias
+ * (Valencia / Alicante / Castellón). En los datos no hay filas con
+ * pais/provincia = "Comunitat Valenciana"; el territorio CV se reconstruye como
+ * la media de las provincias con dato (igual criterio que el índice global).
+ */
+function aggProvinciasACV(
+  scores: Record<TerritorioKey, ScoreDimensionTerritorio>
+): ScoreDimensionTerritorio {
+  const provincias: TerritorioKey[] = ["valencia", "alicante", "castellon"];
+  const conDato = provincias
+    .map((p) => scores[p])
+    .filter((s) => s?.hasData && s.score > 0);
+  if (conDato.length === 0) return { score: 0, hasData: false };
+  const promedio = conDato.reduce((a, b) => a + b.score, 0) / conDato.length;
+  return { score: Math.round(promedio), hasData: true };
+}
+
+/**
  * Calcula índice global ponderado por peso de dimensión.
  * Si para Comunitat Valenciana no hay datos directos, cae a la media de Valencia, Alicante, Castellón.
  */
@@ -483,6 +501,10 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
           minPorIndicadorId
         );
       });
+      // Comunitat Valenciana = media de sus provincias cuando no hay dato directo.
+      if (!scoresPorTerritorio.comunitatValenciana?.hasData) {
+        scoresPorTerritorio.comunitatValenciana = aggProvinciasACV(scoresPorTerritorio);
+      }
       const ueScoresSub = TERRITORIOS_UE.map((k) => scoresPorTerritorio[k]).filter(
         (s) => s.hasData && s.score > 0
       );
@@ -515,6 +537,10 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
         subRows.map((row) => row.scoresPorTerritorio[key])
       );
     });
+    // Comunitat Valenciana = media de sus provincias cuando no hay dato directo.
+    if (!scoresPorTerritorio.comunitatValenciana?.hasData) {
+      scoresPorTerritorio.comunitatValenciana = aggProvinciasACV(scoresPorTerritorio);
+    }
 
     const ueScores = TERRITORIOS_UE.map((k) => scoresPorTerritorio[k]).filter(
       (s) => s.hasData && s.score > 0
