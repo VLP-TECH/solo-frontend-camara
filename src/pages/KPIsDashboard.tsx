@@ -143,12 +143,6 @@ const KPIsDashboard = () => {
     }
   };
 
-  // Calcular valor normalizado (0-100)
-  const getNormalizedValue = (valor: number | undefined): number => {
-    if (!valor) return 0;
-    // Normalización simple (ajustar según lógica de negocio)
-    return Math.min(100, Math.max(0, (valor / 100) * 100));
-  };
 
   const menuItems = useAppMenuItems();
 
@@ -345,9 +339,13 @@ const KPIsDashboard = () => {
                     </thead>
                     <tbody>
                       {orderedIndicadores.map((indicador, index) => {
-                        const normalized = getNormalizedValue(indicador.ultimoValor);
-                        const historico = historicoData?.[indicador.nombre] || [];
                         const comparativa = comparativaIndicadores?.[indicador.nombre];
+                        // Columna "%": score Min-Max real (territorio seleccionado, o España si
+                        // el territorio no tiene dato). Antes usaba min(100, valor), que clampaba
+                        // a 100% cualquier indicador de valor absoluto.
+                        const normalized =
+                          comparativa?.scoreTerritorio ?? comparativa?.scoreEspana ?? 0;
+                        const historico = historicoData?.[indicador.nombre] || [];
                         const hasData = indicador.activo || indicador.ultimoValor !== undefined;
                         const hasTrend = indicador.ultimoValor !== undefined;
                         

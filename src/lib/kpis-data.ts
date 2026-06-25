@@ -689,6 +689,10 @@ export type IndicadorComparativaTerritorial = {
   territorio: number | null;
   espana: number | null;
   topUE: number | null;
+  /** Score Min-Max (0-100) del territorio y de España, normalizado contra el
+   * mínimo/máximo del indicador entre todos los países en el año de referencia. */
+  scoreTerritorio: number | null;
+  scoreEspana: number | null;
 };
 
 /** Territorios disponibles para la comparativa de KPIs: comunidad completa o cada provincia. */
@@ -740,23 +744,33 @@ export async function getComparativaIndicadoresKPIs(
   const territorioVarsNorm = territorioVars.map((v) => normalizeName(v));
   // Países UE (según seed/migraciones del proyecto; no usamos “Unión Europea” agregado).
   const paisesUE = ["Alemania", "Francia", "Italia", "Países Bajos"] as const;
-  const paisesObjetivo = [...territorioVars, "España", ...paisesUE];
 
   const esTerritorio = (pais: string) => territorioVarsNorm.includes(normalizeName(pais));
   const esEspana = (pais: string) => normalizeName(pais) === normalizeName("España");
 
+  // Carga TODOS los países (sin filtro) para poder calcular el benchmark Min-Max
+  // (mín/máx del indicador entre todos los países). Paginamos: PostgREST capa a 1000.
+  const fetchChunkTodos = async (namesChunk: string[]) => {
+    const PAGE = 1000;
+    const acc: { nombre_indicador: string | null; pais: string | null; periodo: unknown; valor_calculado: unknown }[] = [];
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from("resultado_indicadores")
+        .select("nombre_indicador, pais, periodo, valor_calculado")
+        .in("nombre_indicador", namesChunk)
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const batch = data ?? [];
+      acc.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+    return acc;
+  };
+
   try {
-    const rowsAll = await Promise.all(
-      chunks.map(async (namesChunk) => {
-        const { data, error } = await supabase
-          .from("resultado_indicadores")
-          .select("nombre_indicador, pais, periodo, valor_calculado")
-          .in("nombre_indicador", namesChunk)
-          .in("pais", paisesObjetivo);
-        if (error) throw error;
-        return data || [];
-      })
-    );
+    const rowsAll = await Promise.all(chunks.map(fetchChunkTodos));
 
     const byIndicador = new Map<
       string,
@@ -778,7 +792,7 @@ export async function getComparativaIndicadoresKPIs(
     for (const name of uniqueNames) {
       const rows = byIndicador.get(name) ?? [];
       if (!rows.length) {
-        out[name] = { territorio: null, espana: null, topUE: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
         continue;
       }
 
@@ -790,7 +804,7 @@ export async function getComparativaIndicadoresKPIs(
         .map((r) => r.year);
       const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
       if (chosenYear <= 0) {
-        out[name] = { territorio: null, espana: null, topUE: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
         continue;
       }
       const terrRow = rows.filter((r) => esTerritorio(r.pais) && r.year === chosenYear);
@@ -803,13 +817,21 @@ export async function getComparativaIndicadoresKPIs(
       const espana = espRow.length ? Math.max(...espRow.map((r) => r.value)) : null;
       const topUE = ueRows.length ? Math.max(...ueRows.map((r) => r.value)) : null;
 
-      out[name] = { territorio: territorioValor, espana, topUE };
+      // Benchmark Min-Max: mín/máx del indicador entre TODOS los países en el año de referencia.
+      const valoresAnio = rows.filter((r) => r.year === chosenYear).map((r) => r.value);
+      const minB = valoresAnio.length ? Math.min(...valoresAnio) : NaN;
+      const maxB = valoresAnio.length ? Math.max(...valoresAnio) : NaN;
+      const scoreTerritorio =
+        territorioValor != null ? scoreIndicadorMinMax(territorioValor, minB, maxB) : null;
+      const scoreEspana = espana != null ? scoreIndicadorMinMax(espana, minB, maxB) : null;
+
+      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana };
     }
     return out;
   } catch (error) {
     console.error("Error fetching comparativa indicadores KPIs:", error);
     for (const name of uniqueNames) {
-      out[name] = { territorio: null, espana: null, topUE: null };
+      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
     }
     return out;
   }
