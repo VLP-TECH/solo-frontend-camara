@@ -702,6 +702,8 @@ export type IndicadorComparativaTerritorial = {
    * mínimo/máximo del indicador entre todos los países en el año de referencia. */
   scoreTerritorio: number | null;
   scoreEspana: number | null;
+  /** Unidad del valor mostrado (ej. "EUR", "% Empresas", "Nº de Empresas"). */
+  unidad: string | null;
 };
 
 /** Territorios disponibles para la comparativa de KPIs: comunidad completa o cada provincia. */
@@ -761,16 +763,16 @@ export async function getComparativaIndicadoresKPIs(
   // (mín/máx del indicador entre todos los países). Paginamos: PostgREST capa a 1000.
   const fetchChunkTodos = async (namesChunk: string[]) => {
     const PAGE = 1000;
-    const acc: { nombre_indicador: string | null; pais: string | null; periodo: unknown; valor_calculado: unknown }[] = [];
+    const acc: { nombre_indicador: string | null; pais: string | null; periodo: unknown; valor_calculado: unknown; unidad_display: string | null }[] = [];
     let from = 0;
     for (;;) {
       const { data, error } = await supabase
         .from("resultado_indicadores")
-        .select("nombre_indicador, pais, periodo, valor_calculado")
+        .select("nombre_indicador, pais, periodo, valor_calculado, unidad_display")
         .in("nombre_indicador", namesChunk)
         .range(from, from + PAGE - 1);
       if (error) throw error;
-      const batch = data ?? [];
+      const batch = (data ?? []) as unknown as typeof acc;
       acc.push(...batch);
       if (batch.length < PAGE) break;
       from += PAGE;
@@ -783,7 +785,7 @@ export async function getComparativaIndicadoresKPIs(
 
     const byIndicador = new Map<
       string,
-      Array<{ pais: string; year: number; value: number }>
+      Array<{ pais: string; year: number; value: number; unidad: string }>
     >();
     for (const rows of rowsAll) {
       for (const row of rows) {
@@ -792,8 +794,9 @@ export async function getComparativaIndicadoresKPIs(
         const year = periodoToYear(row.periodo);
         const value = Number(row.valor_calculado);
         if (!indicador || !Number.isFinite(value) || year <= 0) continue;
+        const unidad = String(row.unidad_display || "").trim();
         const prev = byIndicador.get(indicador) ?? [];
-        prev.push({ pais, year, value });
+        prev.push({ pais, year, value, unidad });
         byIndicador.set(indicador, prev);
       }
     }
@@ -801,7 +804,7 @@ export async function getComparativaIndicadoresKPIs(
     for (const name of uniqueNames) {
       const rows = byIndicador.get(name) ?? [];
       if (!rows.length) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
         continue;
       }
 
@@ -813,7 +816,7 @@ export async function getComparativaIndicadoresKPIs(
         .map((r) => r.year);
       const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
       if (chosenYear <= 0) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
         continue;
       }
       const terrRow = rows.filter((r) => esTerritorio(r.pais) && r.year === chosenYear);
@@ -823,8 +826,16 @@ export async function getComparativaIndicadoresKPIs(
       );
 
       const territorioValor = terrRow.length ? Math.max(...terrRow.map((r) => r.value)) : null;
-      const espana = espRow.length ? Math.max(...espRow.map((r) => r.value)) : null;
+      const espRowMax = espRow.length ? espRow.reduce((a, b) => (b.value > a.value ? b : a)) : null;
+      const espana = espRowMax ? espRowMax.value : null;
       const topUE = ueRows.length ? Math.max(...ueRows.map((r) => r.value)) : null;
+      // Unidad del valor mostrado (la de España; si no hay, la del territorio o
+      // cualquier fila del año de referencia). Ej.: "EUR", "% Empresas", "Nº de Empresas".
+      const unidad =
+        espRowMax?.unidad ||
+        terrRow.find((r) => r.unidad)?.unidad ||
+        rows.find((r) => r.year === chosenYear && r.unidad)?.unidad ||
+        null;
 
       // Benchmark Min-Max: mín/máx del indicador entre TODOS los países en el año de referencia.
       const valoresAnio = rows.filter((r) => r.year === chosenYear).map((r) => r.value);
@@ -834,13 +845,13 @@ export async function getComparativaIndicadoresKPIs(
         territorioValor != null ? scoreIndicadorMinMax(territorioValor, minB, maxB) : null;
       const scoreEspana = espana != null ? scoreIndicadorMinMax(espana, minB, maxB) : null;
 
-      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana };
+      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana, unidad };
     }
     return out;
   } catch (error) {
     console.error("Error fetching comparativa indicadores KPIs:", error);
     for (const name of uniqueNames) {
-      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null };
+      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
     }
     return out;
   }

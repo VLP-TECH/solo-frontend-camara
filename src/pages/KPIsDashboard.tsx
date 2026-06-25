@@ -144,6 +144,15 @@ const KPIsDashboard = () => {
   };
 
 
+  // Formatea un valor con su unidad (ej. "493.921.730 EUR", "61,9 % Empresas").
+  // Enteros grandes sin decimales; el resto con 1 decimal.
+  const fmtValorUnidad = (valor: number, unidad: string | null | undefined): string => {
+    const num = valor.toLocaleString("es-ES", {
+      maximumFractionDigits: Math.abs(valor) >= 1000 ? 0 : 1,
+    });
+    return unidad ? `${num} ${unidad}` : num;
+  };
+
   const menuItems = useAppMenuItems();
 
   return (
@@ -402,7 +411,9 @@ const KPIsDashboard = () => {
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                {comparativa?.espana != null ? Number(comparativa.espana).toFixed(1) : "—"}
+                                {comparativa?.espana != null
+                                  ? fmtValorUnidad(Number(comparativa.espana), comparativa.unidad)
+                                  : "—"}
                               </span>
                             </td>
                             <td className="py-4 px-4 text-center">
