@@ -555,11 +555,20 @@ export async function getIndicadoresConDatos(
     const indicadoresConDatos = await Promise.all(
       indicadoresUnicos.map(async (ind) => {
         const nombresConsulta = (ind as { _nombresConsulta?: string[] })._nombresConsulta ?? [ind.nombre];
-        const resultadosRows = await fetchResultadoIndicador(
+        // El "Último Valor" se toma de España (referencia nacional) por defecto.
+        // Sin filtro de país cogía la 1ª fila del último año = un país arbitrario
+        // (p. ej. "Uso regular de Internet" mostraba 21.01 —máx UE— en vez de 11.37).
+        const valorFilters = { ...resultadoFilters, pais: resultadoFilters.pais ?? "España" };
+        let resultadosRows = await fetchResultadoIndicador(
           nombresConsulta,
           ind.id,
-          resultadoFilters
+          valorFilters
         );
+        // Fallback: si no hay dato de España, usar el último disponible (cualquier país)
+        // para no marcar como vacío un indicador que sí tiene datos en otros territorios.
+        if (resultadosRows.length === 0 && resultadoFilters.pais == null) {
+          resultadosRows = await fetchResultadoIndicador(nombresConsulta, ind.id, resultadoFilters);
+        }
         const resultados = resultadosRows.length > 0 ? [resultadosRows[0]] : null;
 
         let count: number | null = null;
