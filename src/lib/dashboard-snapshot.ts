@@ -189,12 +189,33 @@ async function loadResultados(periodo: number): Promise<{
   const paisToTerritorio = buildPaisCanonicoMap();
   const SELECT = "nombre_indicador, id_indicador, pais, valor_calculado, periodo";
 
+  // PostgREST limita cada respuesta a 1000 filas. Algunos periodos (p. ej. 2024)
+  // superan ese número, por lo que una única query truncaría datos silenciosamente
+  // y el cálculo de min/max e índices saldría mal. Paginamos hasta agotar el periodo.
+  const fetchAllByPeriodo = async (
+    periodoFilter: number | string
+  ): Promise<{ data: ResultadoRow[]; error: { message: string } | null }> => {
+    const PAGE = 1000;
+    const acc: ResultadoRow[] = [];
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from("resultado_indicadores")
+        .select(SELECT)
+        .eq("periodo", periodoFilter)
+        .range(from, from + PAGE - 1);
+      if (error) return { data: acc, error };
+      const batch = (data as ResultadoRow[]) ?? [];
+      acc.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+    return { data: acc, error: null };
+  };
+
   const [resInt, resDate] = await Promise.all([
-    supabase.from("resultado_indicadores").select(SELECT).eq("periodo", periodo),
-    supabase
-      .from("resultado_indicadores")
-      .select(SELECT)
-      .eq("periodo", `${periodo}-01-01`),
+    fetchAllByPeriodo(periodo),
+    fetchAllByPeriodo(`${periodo}-01-01`),
   ]);
 
   const porIndicadorTerritorio = new Map<string, Map<TerritorioKey, number>>();

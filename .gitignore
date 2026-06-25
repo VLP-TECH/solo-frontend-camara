@@ -85,4 +85,4 @@ temp/
 
 # Editor directories and files
 !.vscode/extensions.json
-.history/*
+.history/*backup-supabase-*/
