@@ -164,6 +164,7 @@ type ResultadoRow = {
   nombre_indicador: string | null;
   id_indicador: number | null;
   pais: string | null;
+  provincia: string | null;
   valor_calculado: unknown;
   periodo: unknown;
 };
@@ -187,7 +188,7 @@ async function loadResultados(periodo: number): Promise<{
   minPorIndicadorId: Map<number, number>;
 }> {
   const paisToTerritorio = buildPaisCanonicoMap();
-  const SELECT = "nombre_indicador, id_indicador, pais, valor_calculado, periodo";
+  const SELECT = "nombre_indicador, id_indicador, pais, provincia, valor_calculado, periodo";
 
   // PostgREST limita cada respuesta a 1000 filas. Algunos periodos (p. ej. 2024)
   // superan ese número, por lo que una única query truncaría datos silenciosamente
@@ -261,7 +262,14 @@ async function loadResultados(periodo: number): Promise<{
       if (prevMin == null || valor < prevMin) minPorIndicadorId.set(id, valor);
     }
 
-    const territorio = paisToTerritorio.get(normalizeName(String(row.pais ?? "")));
+    // Los datos provinciales valencianos se guardan con pais='España' y
+    // provincia='Valencia'/'Alicante'/'Castellón'. Si la provincia es uno de
+    // esos territorios, atribuimos el dato a la provincia; si no, usamos el país.
+    const provinciaTerr = paisToTerritorio.get(
+      normalizeName(String(row.provincia ?? ""))
+    );
+    const territorio =
+      provinciaTerr ?? paisToTerritorio.get(normalizeName(String(row.pais ?? "")));
     if (!territorio) continue;
 
     if (nombre) {
