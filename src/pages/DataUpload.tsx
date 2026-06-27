@@ -9,6 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
@@ -261,6 +269,8 @@ const DataUpload = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [errorDialogTitle, setErrorDialogTitle] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [rowsAffected, setRowsAffected] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -275,6 +285,7 @@ const DataUpload = () => {
   const resetMessages = () => {
     setError(null);
     setValidationErrors([]);
+    setErrorDialogOpen(false);
     setSuccessMessage(null);
     setRowsAffected(null);
   };
@@ -320,6 +331,12 @@ const DataUpload = () => {
     const payload: Record<string, unknown>[] = [];
     rows.forEach((cols, idx) => {
       const lineNo = idx + 2; // +1 cabecera, +1 base-1
+      // Codificación: el carácter de reemplazo U+FFFD indica que el CSV no está
+      // en UTF-8 (típico mojibake "Espa�a", "2M�"). Avisar para que se corrija.
+      if (cols.some((c) => c.includes("�"))) {
+        if (errs.length < 25)
+          errs.push(`Fila ${lineNo}: caracteres corruptos por codificación. Guarda el CSV en UTF-8 (la "ñ" o el "€" se han dañado).`);
+      }
       const obj: Record<string, unknown> = {};
       let empty = true;
       headers.forEach((h, i) => {
@@ -404,22 +421,32 @@ const DataUpload = () => {
           ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} bloque(s) con errores.`
           : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".`;
         setSuccessMessage(msg);
-        if (errors.length) setValidationErrors(errors);
+        if (errors.length) {
+          setValidationErrors(errors);
+          setErrorDialogTitle("Subida parcial: algunos bloques fallaron");
+          setErrorDialogOpen(true);
+        }
         toast({ title: errors.length ? "Subida parcial" : "Subida exitosa", description: msg });
         if (fileInputRef.current) fileInputRef.current.value = "";
         setFile(null);
       } else {
         setError("No se insertó ninguna fila.");
         setValidationErrors(errors);
+        setErrorDialogTitle("No se insertó ninguna fila");
+        setErrorDialogOpen(true);
       }
     } catch (err) {
       const list = (err as Error & { list?: string[] }).list;
       if (list?.length) {
         setError("El CSV no pasó la validación. Corrige estos puntos y vuelve a intentarlo:");
         setValidationErrors(list);
+        setErrorDialogTitle("El CSV tiene errores");
       } else {
         setError((err as Error).message || "Error al procesar el CSV.");
+        setValidationErrors([]);
+        setErrorDialogTitle("No se pudo procesar el CSV");
       }
+      setErrorDialogOpen(true);
     } finally {
       setUploading(false);
     }
@@ -465,6 +492,34 @@ const DataUpload = () => {
   return (
     <>
       <FloatingCamaraLogo />
+
+      {/* Aviso emergente cuando el CSV tiene problemas */}
+      <Dialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              {errorDialogTitle || "El CSV tiene errores"}
+            </DialogTitle>
+            <DialogDescription>
+              {error || "Se han detectado problemas en el archivo. Corrige estos puntos y vuelve a subirlo."}
+            </DialogDescription>
+          </DialogHeader>
+          {validationErrors.length > 0 && (
+            <ul className="list-disc pl-5 space-y-1 text-sm text-red-700 max-h-72 overflow-y-auto">
+              {validationErrors.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setErrorDialogOpen(false)}>
+              Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="min-h-screen bg-gray-100 flex">
         <aside className="hidden md:flex w-64 bg-[#0c6c8b] text-white flex-col">
           <div className="p-6">
