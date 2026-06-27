@@ -306,6 +306,7 @@ const DataUpload = () => {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorDialogTitle, setErrorDialogTitle] = useState<string>("");
+  const [avisoCatalogo, setAvisoCatalogo] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [rowsAffected, setRowsAffected] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -321,6 +322,7 @@ const DataUpload = () => {
     setError(null);
     setValidationErrors([]);
     setErrorDialogOpen(false);
+    setAvisoCatalogo(null);
     setSuccessMessage(null);
     setRowsAffected(null);
   };
@@ -460,6 +462,20 @@ const DataUpload = () => {
       // validar contra él (procesado, descripcion_dato, valores imposibles).
       const catalog =
         selectedTable === "datos_crudos" ? await fetchCatalogoDatosCrudos() : undefined;
+
+      // Si para datos_crudos no hay catálogo de componentes, avisamos EN PANTALLA
+      // de que los checks de 'procesado' y 'descripcion_dato' no se han podido ejecutar.
+      if (selectedTable === "datos_crudos") {
+        const sinComponentes =
+          !catalog ||
+          catalog.indById.size === 0 ||
+          [...catalog.componentesPorId.values()].every((s) => s.size === 0);
+        setAvisoCatalogo(
+          sinComponentes
+            ? "Aviso: no se ha podido validar 'procesado' ni 'descripcion_dato' contra el catálogo de componentes (no disponible en la base de datos). Revisa esos campos manualmente antes de subir."
+            : null,
+        );
+      }
 
       const { payload, hasId } = validate(headers, rows, spec, catalog);
 
@@ -704,6 +720,14 @@ const DataUpload = () => {
                       {uploading ? "Procesando..." : "Validar y subir"}
                     </Button>
                   </div>
+
+                  {avisoCatalogo && (
+                    <Alert className="border-amber-300 bg-amber-50">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <AlertTitle className="text-amber-800">Validación parcial</AlertTitle>
+                      <AlertDescription className="text-amber-800">{avisoCatalogo}</AlertDescription>
+                    </Alert>
+                  )}
 
                   {error && (
                     <Alert variant="destructive">
