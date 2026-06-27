@@ -410,11 +410,32 @@ const KPIsDashboard = () => {
                               </span>
                             </td>
                             <td className="py-4 px-4 text-center">
-                              <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                {comparativa?.espana != null
-                                  ? fmtValorUnidad(Number(comparativa.espana), comparativa.unidad)
-                                  : "—"}
-                              </span>
+                              {comparativa?.espana != null ? (
+                                <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
+                                  {fmtValorUnidad(Number(comparativa.espana), comparativa.unidad)}
+                                </span>
+                              ) : comparativa?.espanaSoloProvincial ? (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 text-sm font-semibold text-gray-400 underline decoration-dotted underline-offset-2 hover:text-[#0c6c8b] focus-visible:outline-none"
+                                      aria-label="Por qué no hay valor nacional de España"
+                                    >
+                                      — <CircleHelp className="h-3.5 w-3.5" aria-hidden />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="max-w-xs text-sm text-muted-foreground" align="center">
+                                    <p className="font-semibold text-foreground mb-1">Sin valor nacional</p>
+                                    <p className="leading-relaxed">
+                                      Este indicador solo tiene datos <b>provinciales</b> (Valencia, Madrid…); no existe un
+                                      valor agregado de España, por eso se muestra «—» en vez del máximo de una provincia.
+                                    </p>
+                                  </PopoverContent>
+                                </Popover>
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-400">—</span>
+                              )}
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>

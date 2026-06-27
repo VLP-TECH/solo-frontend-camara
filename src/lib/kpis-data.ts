@@ -704,6 +704,9 @@ export type IndicadorComparativaTerritorial = {
   scoreEspana: number | null;
   /** Unidad del valor mostrado (ej. "EUR", "% Empresas", "Nº de Empresas"). */
   unidad: string | null;
+  /** True si el indicador solo tiene dato provincial (no hay valor nacional de
+   * España). En ese caso España se muestra como "—" con explicación. */
+  espanaSoloProvincial: boolean;
 };
 
 /** Territorios disponibles para la comparativa de KPIs: comunidad completa o cada provincia. */
@@ -763,12 +766,12 @@ export async function getComparativaIndicadoresKPIs(
   // (mín/máx del indicador entre todos los países). Paginamos: PostgREST capa a 1000.
   const fetchChunkTodos = async (namesChunk: string[]) => {
     const PAGE = 1000;
-    const acc: { nombre_indicador: string | null; pais: string | null; periodo: unknown; valor_calculado: unknown; unidad_display: string | null }[] = [];
+    const acc: { nombre_indicador: string | null; pais: string | null; provincia: string | null; periodo: unknown; valor_calculado: unknown; unidad_display: string | null }[] = [];
     let from = 0;
     for (;;) {
       const { data, error } = await supabase
         .from("resultado_indicadores")
-        .select("nombre_indicador, pais, periodo, valor_calculado, unidad_display")
+        .select("nombre_indicador, pais, provincia, periodo, valor_calculado, unidad_display")
         .in("nombre_indicador", namesChunk)
         .range(from, from + PAGE - 1);
       if (error) throw error;
@@ -785,26 +788,32 @@ export async function getComparativaIndicadoresKPIs(
 
     const byIndicador = new Map<
       string,
-      Array<{ pais: string; year: number; value: number; unidad: string }>
+      Array<{ pais: string; provincia: string; year: number; value: number; unidad: string }>
     >();
     for (const rows of rowsAll) {
       for (const row of rows) {
         const indicador = String(row.nombre_indicador || "").trim();
         const pais = String(row.pais || "").trim();
+        const provincia = String(row.provincia || "").trim();
         const year = periodoToYear(row.periodo);
         const value = Number(row.valor_calculado);
         if (!indicador || !Number.isFinite(value) || year <= 0) continue;
         const unidad = String(row.unidad_display || "").trim();
         const prev = byIndicador.get(indicador) ?? [];
-        prev.push({ pais, year, value, unidad });
+        prev.push({ pais, provincia, year, value, unidad });
         byIndicador.set(indicador, prev);
       }
     }
+    // Una provincia "real" (no nacional) es la que tiene provincia y no es "Desconocido".
+    const esProvincial = (p: string) => {
+      const n = normalizeName(p);
+      return n !== "" && n !== "desconocido";
+    };
 
     for (const name of uniqueNames) {
       const rows = byIndicador.get(name) ?? [];
       if (!rows.length) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
         continue;
       }
 
@@ -816,7 +825,7 @@ export async function getComparativaIndicadoresKPIs(
         .map((r) => r.year);
       const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
       if (chosenYear <= 0) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
         continue;
       }
       const terrRow = rows.filter((r) => esTerritorio(r.pais) && r.year === chosenYear);
@@ -826,8 +835,16 @@ export async function getComparativaIndicadoresKPIs(
       );
 
       const territorioValor = terrRow.length ? Math.max(...terrRow.map((r) => r.value)) : null;
-      const espRowMax = espRow.length ? espRow.reduce((a, b) => (b.value > a.value ? b : a)) : null;
+      // "España" = valor NACIONAL (sin provincia o "Desconocido"). Si el indicador
+      // solo tiene desglose provincial (p. ej. banda ancha), NO usamos el máximo
+      // provincial (sería engañoso, p. ej. Madrid): dejamos España en null y marcamos
+      // que solo hay dato provincial, para mostrar "—" con explicación.
+      const espNacional = espRow.filter((r) => !esProvincial(r.provincia));
+      const espRowMax = espNacional.length
+        ? espNacional.reduce((a, b) => (b.value > a.value ? b : a))
+        : null;
       const espana = espRowMax ? espRowMax.value : null;
+      const espanaSoloProvincial = !espRowMax && espRow.some((r) => esProvincial(r.provincia));
       const topUE = ueRows.length ? Math.max(...ueRows.map((r) => r.value)) : null;
       // Unidad del valor mostrado (la de España; si no hay, la del territorio o
       // cualquier fila del año de referencia). Ej.: "EUR", "% Empresas", "Nº de Empresas".
@@ -845,13 +862,13 @@ export async function getComparativaIndicadoresKPIs(
         territorioValor != null ? scoreIndicadorMinMax(territorioValor, minB, maxB) : null;
       const scoreEspana = espana != null ? scoreIndicadorMinMax(espana, minB, maxB) : null;
 
-      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana, unidad };
+      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana, unidad, espanaSoloProvincial };
     }
     return out;
   } catch (error) {
     console.error("Error fetching comparativa indicadores KPIs:", error);
     for (const name of uniqueNames) {
-      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null };
+      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
     }
     return out;
   }
