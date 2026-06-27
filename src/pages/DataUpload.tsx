@@ -258,6 +258,41 @@ function coerce(value: string, type: ColType): { ok: boolean; value?: unknown; m
   }
 }
 
+// ── Catálogo (para validar datos_crudos contra las fórmulas/componentes) ───────
+type CatalogoDatosCrudos = {
+  /** id_indicador → { formula, nombre } */
+  indById: Map<number, { formula: string; nombre: string }>;
+  /** id_indicador → set de descripcion_dato (componentes) esperados por el catálogo */
+  componentesPorId: Map<number, Set<string>>;
+};
+
+async function fetchCatalogoDatosCrudos(): Promise<CatalogoDatosCrudos> {
+  const indById = new Map<number, { formula: string; nombre: string }>();
+  const componentesPorId = new Map<number, Set<string>>();
+  try {
+    // El cliente tipado no conoce estas tablas de referencia.
+    const sb = supabase as unknown as {
+      from: (t: string) => { select: (c: string) => Promise<{ data: Record<string, unknown>[] | null }> };
+    };
+    const defs = await sb.from("definicion_indicadores").select("id, nombre, formula");
+    (defs.data || []).forEach((d) => {
+      const id = Number(d.id);
+      if (Number.isFinite(id)) indById.set(id, { formula: String(d.formula ?? ""), nombre: String(d.nombre ?? "") });
+    });
+    const comps = await sb.from("componentes_indicadores").select("id_indicador, descripcion_dato");
+    (comps.data || []).forEach((c) => {
+      const id = Number(c.id_indicador);
+      if (!Number.isFinite(id)) return;
+      const set = componentesPorId.get(id) ?? new Set<string>();
+      if (c.descripcion_dato) set.add(String(c.descripcion_dato).trim());
+      componentesPorId.set(id, set);
+    });
+  } catch {
+    /* Catálogo no disponible → se omiten los checks de catálogo (no bloquea). */
+  }
+  return { indById, componentesPorId };
+}
+
 const DataUpload = () => {
   const navigate = useNavigate();
   const { roles, loading: permissionsLoading } = usePermissions();
@@ -305,6 +340,7 @@ const DataUpload = () => {
     headers: string[],
     rows: string[][],
     tableSpec: TableSpec,
+    catalog?: CatalogoDatosCrudos,
   ): { payload: Record<string, unknown>[]; hasId: boolean } => {
     const errs: string[] = [];
     const allowed = new Set(tableSpec.columns.map((c) => c.name));
@@ -357,6 +393,44 @@ const DataUpload = () => {
           if (errs.length < 25) errs.push(`Fila ${lineNo}: falta el valor obligatorio "${rc}"`);
         }
       }
+
+      // ── Checks de catálogo (solo datos_crudos, si el catálogo está disponible) ──
+      if (catalog && catalog.indById.size > 0) {
+        const idInd = typeof obj.id_indicador === "number" ? obj.id_indicador : null;
+        if (idInd != null) {
+          const meta = catalog.indById.get(idInd);
+          const comps = catalog.componentesPorId.get(idInd);
+          const tieneComponentes = !!comps && comps.size > 0;
+          const valor = typeof obj.valor === "number" ? obj.valor : null;
+          const desc = typeof obj.descripcion_dato === "string" ? obj.descripcion_dato.trim() : "";
+          const esProcesado = obj.procesado === true;
+          const nombre = meta?.nombre ?? "";
+          // Las unidades "por cada 100" (suscripciones/habitantes) pueden superar 100 legítimamente.
+          const permiteMas100 = /100\s*personas|100\s*habitantes|suscripciones/i.test(nombre);
+
+          // (3) Valor imposible para un PORCENTAJE
+          if (
+            meta?.formula === "PORCENTAJE" &&
+            valor != null &&
+            valor > 100 &&
+            !permiteMas100 &&
+            errs.length < 25
+          ) {
+            errs.push(`Fila ${lineNo}: el indicador ${idInd} ("${nombre}") es un PORCENTAJE y el valor ${valor} supera 100 (revisa la escala, ¿×10/×100?).`);
+          }
+
+          // (1) Debe enviarse por componentes (procesado=FALSE), no el valor ya calculado
+          if (tieneComponentes && esProcesado && errs.length < 25) {
+            errs.push(`Fila ${lineNo}: el indicador ${idInd} ("${nombre}") se calcula por componentes; envíalo con procesado=FALSE (no el valor ya calculado).`);
+          }
+
+          // (2) descripcion_dato no coincide con ningún componente del catálogo
+          if (tieneComponentes && desc && !comps!.has(desc) && errs.length < 25) {
+            errs.push(`Fila ${lineNo}: descripcion_dato "${desc}" no coincide con ningún componente del catálogo para el indicador ${idInd}. Esperado: ${[...comps!].map((c) => `"${c}"`).join(" / ")}.`);
+          }
+        }
+      }
+
       payload.push(obj);
     });
 
@@ -382,7 +456,12 @@ const DataUpload = () => {
       const text = await file.text();
       const { headers, rows } = parseCsv(text);
 
-      const { payload, hasId } = validate(headers, rows, spec);
+      // Para datos_crudos, cargamos el catálogo (fórmulas + componentes) para
+      // validar contra él (procesado, descripcion_dato, valores imposibles).
+      const catalog =
+        selectedTable === "datos_crudos" ? await fetchCatalogoDatosCrudos() : undefined;
+
+      const { payload, hasId } = validate(headers, rows, spec, catalog);
 
       // Estrategia: upsert si el PK viene en el CSV (o el PK no es autogenerado); si no, insert.
       const useUpsert = hasId || !spec.pkAuto;
