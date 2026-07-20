@@ -397,12 +397,20 @@ const KPIsDashboard = () => {
                                   {normalized.toFixed(1)}%
                                 </span>
                                 <div className="flex-1">
-                                  <Progress 
-                                    value={normalized} 
-                                    className={`h-2 ${hasData ? "" : "opacity-30"}`} 
+                                  <Progress
+                                    value={normalized}
+                                    className={`h-2 ${hasData ? "" : "opacity-30"}`}
                                   />
                                 </div>
                               </div>
+                              {comparativa?.paisesBenchmark === 1 && (
+                                <p
+                                  className="mt-1 text-[11px] leading-tight text-amber-700"
+                                  title="Solo un país tiene datos de este indicador en el año de referencia: el score Min-Max no se compara con nadie (máx=mín → 100%). Se corregirá al cargar datos de más países."
+                                >
+                                  Datos parciales: sin comparativa entre países
+                                </p>
+                              )}
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>

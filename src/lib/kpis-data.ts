@@ -707,6 +707,10 @@ export type IndicadorComparativaTerritorial = {
   /** True si el indicador solo tiene dato provincial (no hay valor nacional de
    * España). En ese caso España se muestra como "—" con explicación. */
   espanaSoloProvincial: boolean;
+  /** Nº de países distintos con dato en el año de referencia del benchmark.
+   * Si es 1, el Min-Max no tiene rango (máx=mín → 100%) y el score no es
+   * comparable: la UI lo señala sin alterar el cálculo. */
+  paisesBenchmark: number;
 };
 
 /** Territorios disponibles para la comparativa de KPIs: comunidad completa o cada provincia. */
@@ -813,7 +817,7 @@ export async function getComparativaIndicadoresKPIs(
     for (const name of uniqueNames) {
       const rows = byIndicador.get(name) ?? [];
       if (!rows.length) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false, paisesBenchmark: 0 };
         continue;
       }
 
@@ -825,7 +829,7 @@ export async function getComparativaIndicadoresKPIs(
         .map((r) => r.year);
       const chosenYear = yearsVE.length ? Math.max(...yearsVE) : 0;
       if (chosenYear <= 0) {
-        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
+        out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false, paisesBenchmark: 0 };
         continue;
       }
       const terrRow = rows.filter((r) => esTerritorio(r.pais) && r.year === chosenYear);
@@ -861,14 +865,17 @@ export async function getComparativaIndicadoresKPIs(
       const scoreTerritorio =
         territorioValor != null ? scoreIndicadorMinMax(territorioValor, minB, maxB) : null;
       const scoreEspana = espana != null ? scoreIndicadorMinMax(espana, minB, maxB) : null;
+      const paisesBenchmark = new Set(
+        rows.filter((r) => r.year === chosenYear && r.pais).map((r) => normalizeName(r.pais)),
+      ).size;
 
-      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana, unidad, espanaSoloProvincial };
+      out[name] = { territorio: territorioValor, espana, topUE, scoreTerritorio, scoreEspana, unidad, espanaSoloProvincial, paisesBenchmark };
     }
     return out;
   } catch (error) {
     console.error("Error fetching comparativa indicadores KPIs:", error);
     for (const name of uniqueNames) {
-      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false };
+      out[name] = { territorio: null, espana: null, topUE: null, scoreTerritorio: null, scoreEspana: null, unidad: null, espanaSoloProvincial: false, paisesBenchmark: 0 };
     }
     return out;
   }
