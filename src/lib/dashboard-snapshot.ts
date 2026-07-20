@@ -147,6 +147,12 @@ export interface DashboardSnapshot {
    */
   valoresPorIndicadorNombre: Map<string, Map<TerritorioKey, number>>;
   valoresPorIndicadorId: Map<number, Map<TerritorioKey, number>>;
+  /**
+   * Países distintos con al menos un dato en el periodo. Si solo hay uno, la
+   * normalización Min-Max no tiene rango real (máx=mín → 100%) y las páginas
+   * muestran un aviso de datos parciales. No afecta a ningún cálculo.
+   */
+  paisesConDatos: string[];
 }
 
 /** Mapa territorio→país-canónico (display) para usar como índice rápido */
@@ -186,6 +192,7 @@ async function loadResultados(periodo: number): Promise<{
   maxPorIndicadorId: Map<number, number>;
   minPorIndicadorNombre: Map<string, number>;
   minPorIndicadorId: Map<number, number>;
+  paisesConDatos: string[];
 }> {
   const paisToTerritorio = buildPaisCanonicoMap();
   const SELECT = "nombre_indicador, id_indicador, pais, provincia, valor_calculado, periodo";
@@ -239,10 +246,14 @@ async function loadResultados(periodo: number): Promise<{
     if (resDate.error) console.warn("[dashboard-snapshot] periodo date error:", resDate.error.message);
   }
 
+  const paisesSet = new Set<string>();
   for (const row of rowsCombinadas) {
     const valor = Number(row.valor_calculado);
     if (!Number.isFinite(valor)) continue;
     if (periodoToYear(row.periodo) !== periodo) continue;
+
+    const paisRow = String(row.pais ?? "").trim();
+    if (paisRow && paisRow.toLowerCase() !== "desconocido") paisesSet.add(paisRow);
 
     const nombre = row.nombre_indicador
       ? normalizeName(String(row.nombre_indicador))
@@ -299,6 +310,7 @@ async function loadResultados(periodo: number): Promise<{
     maxPorIndicadorId,
     minPorIndicadorNombre,
     minPorIndicadorId,
+    paisesConDatos: [...paisesSet].sort((a, b) => a.localeCompare(b, "es")),
   };
 }
 
@@ -462,6 +474,7 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
     maxPorIndicadorId,
     minPorIndicadorNombre,
     minPorIndicadorId,
+    paisesConDatos,
   } = resultados;
 
   const dimensionesRows: DashboardDimensionRow[] = dimensiones.map((dim: Dimension) => {
@@ -593,5 +606,6 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
     indiceGlobal,
     valoresPorIndicadorNombre: porIndicadorTerritorio,
     valoresPorIndicadorId: porIdTerritorio,
+    paisesConDatos,
   };
 }

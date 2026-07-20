@@ -68,6 +68,7 @@ import {
 } from "recharts";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
 import { buildAnioOptions } from "@/lib/anios";
+import AvisoDatosParciales from "@/components/AvisoDatosParciales";
 
 const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
 // Pesos de importancia según documentación técnica Brainnova Score (Alta=3, Media=2, Baja=1)
@@ -502,6 +503,8 @@ const DimensionDetail = () => {
                 {dimensionInfo.descripcion}
               </p>
             </div>
+
+            <AvisoDatosParciales anio={ano} paisesConDatos={snapshot?.paisesConDatos} />
 
             {/* KPI Cards (datos desde BD) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

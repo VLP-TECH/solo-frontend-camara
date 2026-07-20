@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import { buildAnioOptions } from "@/lib/anios";
+import AvisoDatosParciales from "@/components/AvisoDatosParciales";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 
 const ComparacionTerritorial = () => {
@@ -232,6 +233,8 @@ const ComparacionTerritorial = () => {
                 </Select>
               </div>
             </div>
+
+            <AvisoDatosParciales anio={selectedAno} paisesConDatos={snapshot?.paisesConDatos} />
 
             {loadingComparacion && (
               <div className="text-center py-8 text-gray-500">Cargando datos de comparación...</div>

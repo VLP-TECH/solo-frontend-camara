@@ -26,6 +26,7 @@ import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getAvailablePaisYPeriodo, getIndicadores, type Indicador } from "@/lib/kpis-data";
 import { getFiltrosGlobales } from "@/lib/brainnova-api";
 import { buildAnioOptions } from "@/lib/anios";
+import AvisoDatosParciales from "@/components/AvisoDatosParciales";
 import {
   getDashboardSnapshot,
   paisToTerritorioKey,
@@ -725,6 +726,8 @@ const Dashboard = () => {
                     </Button>
                   </div>
                 </div>
+
+                <AvisoDatosParciales anio={radarAno} paisesConDatos={snapshot?.paisesConDatos} />
 
                 <div className="h-96">
                   {snapshotLoading ? (

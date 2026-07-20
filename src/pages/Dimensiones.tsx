@@ -31,6 +31,7 @@ import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getDimensiones, getIndicadoresConDatos, getAvailablePaisYPeriodo, type IndicadorConDatos } from "@/lib/kpis-data";
 import { buildAnioOptions } from "@/lib/anios";
+import AvisoDatosParciales from "@/components/AvisoDatosParciales";
 import {
   getDashboardSnapshot,
   paisToTerritorioKey,
@@ -319,6 +320,10 @@ const Dimensiones = () => {
                   </Button>
                 </div>
               </div>
+            </div>
+
+            <div className="mb-6">
+              <AvisoDatosParciales anio={appliedAno} paisesConDatos={snapshot?.paisesConDatos} />
             </div>
 
             {/* Referencia de interpretación del score */}
