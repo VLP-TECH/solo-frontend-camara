@@ -25,6 +25,8 @@ import {
   getIndicadores,
   getDatosHistoricosIndicador,
   getDimensionesHistoricoEvolucion,
+  getNombresIndicadoresConResultados,
+  indicadorTieneResultados,
   type TerritorioEvolucionDimensiones,
 } from "@/lib/kpis-data";
 import { getIndiceGlobalHistorico } from "@/lib/dashboard-snapshot";
@@ -102,6 +104,18 @@ const EvolucionTemporal = () => {
     queryFn: getIndicadores,
   });
 
+  // Qué indicadores tienen alguna fila en resultado_indicadores: se usan para
+  // ordenar el selector (con datos primero) y elegir un indicador por defecto
+  // que pinte algo, en vez del primero alfabético (que puede estar vacío).
+  const { data: indicadoresConResultados } = useQuery({
+    queryKey: ["indicadores-con-resultados"],
+    queryFn: getNombresIndicadoresConResultados,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const tieneDatos = (nombre: string): boolean =>
+    !indicadoresConResultados || indicadorTieneResultados(nombre, indicadoresConResultados);
+
   const normalizeText = (s: string) =>
     (s || "")
       .toLowerCase()
@@ -111,11 +125,17 @@ const EvolucionTemporal = () => {
 
   const indicadoresFiltrados = useMemo(() => {
     const q = normalizeText(searchIndicador);
-    if (!q) return todosIndicadores || [];
-    return (todosIndicadores || []).filter((ind) =>
-      normalizeText(ind.nombre || "").includes(q)
+    const base = !q
+      ? todosIndicadores || []
+      : (todosIndicadores || []).filter((ind) => normalizeText(ind.nombre || "").includes(q));
+    if (!indicadoresConResultados) return base;
+    // Con datos primero (orden alfabético estable dentro de cada grupo): el
+    // primero de la lista es el indicador por defecto de la gráfica.
+    return [...base].sort(
+      (a, b) => Number(tieneDatos(b.nombre)) - Number(tieneDatos(a.nombre)),
     );
-  }, [todosIndicadores, searchIndicador]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todosIndicadores, searchIndicador, indicadoresConResultados]);
 
   const indicadorActual =
     selectedIndicador ||
@@ -181,7 +201,8 @@ const EvolucionTemporal = () => {
       toMap(historicoIndicadorSeries.paisesBajos),
     ];
     // Eje dinámico: los últimos años CON datos del indicador (máx. 6). Si el
-    // indicador aún no tiene nada, se muestra la ventana objetivo vacía.
+    // indicador no tiene ninguno, lista vacía → la página muestra el mensaje
+    // "No hay datos históricos para este indicador" en lugar de un eje en blanco.
     const aniosConDato = [
       ...new Set(
         [valMap, casMap, aliMap, ...topMaps].flatMap((m) => [...m.keys()]).filter((y) => y > 0),
@@ -189,8 +210,7 @@ const EvolucionTemporal = () => {
     ]
       .sort((a, b) => a - b)
       .slice(-6);
-    const ejeAnios = aniosConDato.length > 0 ? aniosConDato : [...YEARS_EVOLUCION];
-    return ejeAnios.map((year) => {
+    return aniosConDato.map((year) => {
       const topVals = topMaps
         .map((m) => m.get(year))
         .filter((v): v is number => v != null && Number.isFinite(v));
@@ -796,7 +816,10 @@ const EvolucionTemporal = () => {
                     <SelectContent className="max-h-72">
                       {(indicadoresFiltrados || []).map((ind) => (
                         <SelectItem key={ind.id ?? ind.nombre} value={ind.nombre}>
-                          {ind.nombre}
+                          <span className={tieneDatos(ind.nombre) ? "" : "text-gray-400"}>
+                            {ind.nombre}
+                            {!tieneDatos(ind.nombre) && " (sin datos)"}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

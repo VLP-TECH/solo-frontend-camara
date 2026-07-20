@@ -1647,3 +1647,33 @@ export async function getDistribucionPorSubdimension(
   }
 }
 
+
+// ── Indicadores con resultados ───────────────────────────────────────────────
+let _cacheNombresConResultados: Set<string> | undefined;
+
+/** Conjunto (nombres normalizados) de indicadores con al menos una fila en
+ * resultado_indicadores. Una sola carga paginada por sesión (cacheada). */
+export async function getNombresIndicadoresConResultados(): Promise<Set<string>> {
+  if (_cacheNombresConResultados) return _cacheNombresConResultados;
+  const PAGE = 1000;
+  const out = new Set<string>();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("resultado_indicadores")
+      .select("nombre_indicador")
+      .range(from, from + PAGE - 1);
+    if (error) break;
+    for (const r of (data || []) as { nombre_indicador: string | null }[]) {
+      const n = normalizeName(String(r.nombre_indicador ?? ""));
+      if (n) out.add(n);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  _cacheNombresConResultados = out;
+  return out;
+}
+
+/** True si el indicador (o alguno de sus alias) tiene filas en resultado_indicadores. */
+export function indicadorTieneResultados(nombre: string, conResultados: Set<string>): boolean {
+  return getIndicadorNombresParaConsulta(nombre).some((n) => conResultados.has(normalizeName(n)));
+}
