@@ -670,20 +670,25 @@ export async function getDatosHistoricosIndicador(
   try {
     const nombres = getIndicadorNombresParaConsulta(nombreIndicador);
     for (const paisVar of variacionesPaisConsulta(pais)) {
+      // Descendente + reverse: los `limit` registros MÁS RECIENTES en orden
+      // ascendente. Con ascending+limit, un indicador con histórico largo
+      // devolvía solo los años antiguos y las gráficas recientes salían vacías.
       const { data, error } = await supabase
         .from("resultado_indicadores")
         .select("periodo, valor_calculado")
         .in("nombre_indicador", nombres)
         .eq("pais", paisVar)
-        .order("periodo", { ascending: true })
+        .order("periodo", { ascending: false })
         .limit(limit);
 
       if (error) throw error;
       if (data && data.length > 0) {
-        return data.map((item) => ({
-          periodo: periodoToYear(item.periodo),
-          valor: Number(item.valor_calculado) || 0,
-        }));
+        return data
+          .map((item) => ({
+            periodo: periodoToYear(item.periodo),
+            valor: Number(item.valor_calculado) || 0,
+          }))
+          .reverse();
       }
     }
     return [];

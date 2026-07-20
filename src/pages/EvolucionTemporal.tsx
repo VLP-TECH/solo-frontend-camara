@@ -39,8 +39,13 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-/** Años del eje X compartidos por índice global, dimensiones e indicadores en esta vista. */
+/** Ventana objetivo del eje X (índice global). */
 const YEARS_EVOLUCION = [2023, 2024, 2025, 2026] as const;
+
+/** Rango consultado por dimensiones e indicadores: mientras 2025-2026 se van
+ * llenando, las gráficas muestran también los años anteriores con datos en vez
+ * de quedarse vacías. Los años sin ningún dato no se pintan. */
+const YEARS_CONSULTA = [2020, 2021, 2022, 2023, 2024, 2025, 2026] as const;
 
 const TERRITORIO_DIMENSIONES_OPCIONES: {
   value: TerritorioEvolucionDimensiones;
@@ -175,7 +180,17 @@ const EvolucionTemporal = () => {
       toMap(historicoIndicadorSeries.italia),
       toMap(historicoIndicadorSeries.paisesBajos),
     ];
-    return [...YEARS_EVOLUCION].map((year) => {
+    // Eje dinámico: los últimos años CON datos del indicador (máx. 6). Si el
+    // indicador aún no tiene nada, se muestra la ventana objetivo vacía.
+    const aniosConDato = [
+      ...new Set(
+        [valMap, casMap, aliMap, ...topMaps].flatMap((m) => [...m.keys()]).filter((y) => y > 0),
+      ),
+    ]
+      .sort((a, b) => a - b)
+      .slice(-6);
+    const ejeAnios = aniosConDato.length > 0 ? aniosConDato : [...YEARS_EVOLUCION];
+    return ejeAnios.map((year) => {
       const topVals = topMaps
         .map((m) => m.get(year))
         .filter((v): v is number => v != null && Number.isFinite(v));
@@ -320,14 +335,24 @@ const EvolucionTemporal = () => {
     isError: dimensionesEvolucionError,
     error: dimensionesEvolucionErrorDetail,
   } = useQuery({
-    queryKey: ["dimensiones-evolucion-brainnova", territorioDimensiones, [...YEARS_EVOLUCION]],
+    queryKey: ["dimensiones-evolucion-brainnova", territorioDimensiones, [...YEARS_CONSULTA]],
     queryFn: () =>
-      getDimensionesHistoricoEvolucion(territorioDimensiones, [...YEARS_EVOLUCION]),
+      getDimensionesHistoricoEvolucion(territorioDimensiones, [...YEARS_CONSULTA]),
     staleTime: 5 * 60 * 1000,
   });
 
-  const dimensionesChartRows = dimensionesEvolucion?.rows ?? [];
   const dimensionNombresChart = dimensionesEvolucion?.dimensionNombres ?? [];
+  // Solo años con algún score: mientras 2025-2026 no tengan datos, la gráfica
+  // enseña el histórico disponible en lugar de un eje vacío.
+  const dimensionesChartRows = useMemo(() => {
+    const rows = dimensionesEvolucion?.rows ?? [];
+    const conDatos = rows.filter((r) =>
+      dimensionNombresChart.some((n) => (r as Record<string, number | null>)[n] != null),
+    );
+    return conDatos.length > 0
+      ? conDatos
+      : rows.filter((r) => (YEARS_EVOLUCION as readonly number[]).includes(r.year));
+  }, [dimensionesEvolucion, dimensionNombresChart]);
 
   // Verificar si el usuario es admin o superadmin
   const menuItems = useAppMenuItems();
