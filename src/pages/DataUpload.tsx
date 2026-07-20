@@ -412,6 +412,10 @@ const DataUpload = () => {
           const nombre = meta?.nombre ?? "";
           // Las unidades "por cada 100" (suscripciones/habitantes) pueden superar 100 legítimamente.
           const permiteMas100 = /100\s*personas|100\s*habitantes|suscripciones/i.test(nombre);
+          // Las filas componente (procesado=FALSE o unidad sin "%") traen recuentos absolutos
+          // (numerador/denominador), no porcentajes: no se les aplica el límite de 100.
+          const unidadRow = typeof obj.unidad === "string" ? obj.unidad : "";
+          const esComponente = obj.procesado === false || (unidadRow !== "" && !unidadRow.includes("%"));
 
           // (3) Valor imposible para un PORCENTAJE
           if (
@@ -419,6 +423,7 @@ const DataUpload = () => {
             valor != null &&
             valor > 100 &&
             !permiteMas100 &&
+            !esComponente &&
             errs.length < 25
           ) {
             errs.push(`Fila ${lineNo}: el indicador ${idInd} ("${nombre}") es un PORCENTAJE y el valor ${valor} supera 100 (revisa la escala, ¿×10/×100?).`);
