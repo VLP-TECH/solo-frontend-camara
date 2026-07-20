@@ -67,6 +67,7 @@ import {
   Line
 } from "recharts";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
+import { buildAnioOptions } from "@/lib/anios";
 
 const COLORS = ['#0c6c8b', '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444'];
 // Pesos de importancia según documentación técnica Brainnova Score (Alta=3, Media=2, Baja=1)
@@ -480,11 +481,8 @@ const DimensionDetail = () => {
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(availablePaisPeriodo?.periodos?.length
-                        ? availablePaisPeriodo.periodos
-                        : [2024, 2023, 2022, 2021]
-                      ).map((y) => (
-                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      {buildAnioOptions(availablePaisPeriodo?.periodos).map((y) => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

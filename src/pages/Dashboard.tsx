@@ -25,6 +25,7 @@ import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getAvailablePaisYPeriodo, getIndicadores, type Indicador } from "@/lib/kpis-data";
 import { getFiltrosGlobales } from "@/lib/brainnova-api";
+import { buildAnioOptions } from "@/lib/anios";
 import {
   getDashboardSnapshot,
   paisToTerritorioKey,
@@ -266,15 +267,13 @@ const Dashboard = () => {
     queryFn: getIndicadores,
   });
 
-  const aniosOpciones = useMemo<string[]>(() => {
-    if (filtrosGlobales?.anios?.length) {
-      return [...filtrosGlobales.anios].sort((a, b) => b - a).map(String);
-    }
-    if (availablePaisPeriodo?.periodos?.length) {
-      return availablePaisPeriodo.periodos.map(String);
-    }
-    return ["2024", "2023", "2022", "2021", "2020"];
-  }, [filtrosGlobales?.anios, availablePaisPeriodo?.periodos]);
+  const aniosOpciones = useMemo<string[]>(
+    () =>
+      buildAnioOptions(
+        filtrosGlobales?.anios?.length ? filtrosGlobales.anios : availablePaisPeriodo?.periodos,
+      ),
+    [filtrosGlobales?.anios, availablePaisPeriodo?.periodos],
+  );
 
   const isRadarSpain = radarPaisSelect === "España" || radarPaisSelect === "Spain";
   const showRadarProvincia = isRadarSpain;

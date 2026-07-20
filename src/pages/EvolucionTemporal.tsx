@@ -40,7 +40,7 @@ import {
 } from "recharts";
 
 /** Años del eje X compartidos por índice global, dimensiones e indicadores en esta vista. */
-const YEARS_EVOLUCION = [2023, 2024, 2025] as const;
+const YEARS_EVOLUCION = [2023, 2024, 2025, 2026] as const;
 
 const TERRITORIO_DIMENSIONES_OPCIONES: {
   value: TerritorioEvolucionDimensiones;

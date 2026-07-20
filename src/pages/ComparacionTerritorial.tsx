@@ -20,6 +20,7 @@ import {
   LogOut
 } from "lucide-react";
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
+import { buildAnioOptions } from "@/lib/anios";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 
 const ComparacionTerritorial = () => {
@@ -224,9 +225,9 @@ const ComparacionTerritorial = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2022">2022</SelectItem>
-                    <SelectItem value="2023">2023</SelectItem>
-                    <SelectItem value="2024">2024</SelectItem>
+                    {buildAnioOptions().map((y) => (
+                      <SelectItem key={y} value={y}>{y}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

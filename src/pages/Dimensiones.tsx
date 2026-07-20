@@ -30,6 +30,7 @@ import {
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { getDimensiones, getIndicadoresConDatos, getAvailablePaisYPeriodo, type IndicadorConDatos } from "@/lib/kpis-data";
+import { buildAnioOptions } from "@/lib/anios";
 import {
   getDashboardSnapshot,
   paisToTerritorioKey,
@@ -294,11 +295,8 @@ const Dimensiones = () => {
                       <SelectValue placeholder="Año" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(availablePaisPeriodo?.periodos?.length
-                        ? availablePaisPeriodo.periodos
-                        : [2024, 2023, 2022, 2021]
-                      ).map((y) => (
-                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      {buildAnioOptions(availablePaisPeriodo?.periodos).map((y) => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
