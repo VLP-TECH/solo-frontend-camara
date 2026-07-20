@@ -267,11 +267,14 @@ type CatalogoDatosCrudos = {
   indById: Map<number, { formula: string; nombre: string }>;
   /** id_indicador → set de descripcion_dato (componentes) esperados por el catálogo */
   componentesPorId: Map<number, Set<string>>;
+  /** Descripciones con rol RESULTADO: filas de valor final, legítimas con procesado=TRUE. */
+  resultadosPorId: Map<number, Set<string>>;
 };
 
 async function fetchCatalogoDatosCrudos(): Promise<CatalogoDatosCrudos> {
   const indById = new Map<number, { formula: string; nombre: string }>();
   const componentesPorId = new Map<number, Set<string>>();
+  const resultadosPorId = new Map<number, Set<string>>();
   try {
     // El cliente tipado no conoce estas tablas de referencia.
     const sb = supabase as unknown as {
@@ -282,18 +285,20 @@ async function fetchCatalogoDatosCrudos(): Promise<CatalogoDatosCrudos> {
       const id = Number(d.id);
       if (Number.isFinite(id)) indById.set(id, { formula: String(d.formula ?? ""), nombre: String(d.nombre ?? "") });
     });
-    const comps = await sb.from("componentes_indicadores").select("id_indicador, descripcion_dato");
+    const comps = await sb.from("componentes_indicadores").select("id_indicador, descripcion_dato, rol");
     (comps.data || []).forEach((c) => {
       const id = Number(c.id_indicador);
-      if (!Number.isFinite(id)) return;
-      const set = componentesPorId.get(id) ?? new Set<string>();
-      if (c.descripcion_dato) set.add(String(c.descripcion_dato).trim());
-      componentesPorId.set(id, set);
+      if (!Number.isFinite(id) || !c.descripcion_dato) return;
+      const desc = String(c.descripcion_dato).trim();
+      const target = String(c.rol ?? "").toUpperCase() === "RESULTADO" ? resultadosPorId : componentesPorId;
+      const set = target.get(id) ?? new Set<string>();
+      set.add(desc);
+      target.set(id, set);
     });
   } catch {
     /* Catálogo no disponible → se omiten los checks de catálogo (no bloquea). */
   }
-  return { indById, componentesPorId };
+  return { indById, componentesPorId, resultadosPorId };
 }
 
 const DataUpload = () => {
@@ -413,6 +418,7 @@ const DataUpload = () => {
         if (idInd != null) {
           const meta = catalog.indById.get(idInd);
           const comps = catalog.componentesPorId.get(idInd);
+          const resultados = catalog.resultadosPorId.get(idInd);
           const tieneComponentes = !!comps && comps.size > 0;
           const valor = typeof obj.valor === "number" ? obj.valor : null;
           const desc = typeof obj.descripcion_dato === "string" ? obj.descripcion_dato.trim() : "";
@@ -437,13 +443,16 @@ const DataUpload = () => {
             warns.push(`Fila ${lineNo}: «${nombre}» es un porcentaje y esta fila trae ${valor}, que supera 100. Si la fila es un componente del cálculo (un recuento absoluto), márcala con procesado=FALSE y una unidad sin «%»; si de verdad es el porcentaje final, revisa la escala (¿está multiplicado ×10 o ×100?).`);
           }
 
-          // (1) El catálogo espera este indicador por componentes (procesado=FALSE)
-          if (tieneComponentes && esProcesado && warns.length < 25) {
+          // (1) El catálogo espera este indicador por componentes (procesado=FALSE).
+          // Si la descripción figura en el catálogo como RESULTADO, la fila es el
+          // valor final legítimo y no genera aviso.
+          const esResultadoConocido = !!resultados && desc !== "" && resultados.has(desc);
+          if (tieneComponentes && esProcesado && !esResultadoConocido && warns.length < 25) {
             warns.push(`Fila ${lineNo}: según el catálogo, «${nombre}» se calcula a partir de componentes; lo habitual es enviar los componentes con procesado=FALSE y dejar el cálculo a la plataforma. Si esta fila ya es el valor final calculado, puedes ignorar este aviso.`);
           }
 
           // (2) descripcion_dato no coincide con ningún componente del catálogo
-          if (tieneComponentes && desc && !comps!.has(desc) && warns.length < 25) {
+          if (tieneComponentes && desc && !comps!.has(desc) && !esResultadoConocido && warns.length < 25) {
             warns.push(`Fila ${lineNo}: descripcion_dato "${desc}" no figura entre los componentes que el catálogo espera para «${nombre}» (${[...comps!].map((c) => `"${c}"`).join(" / ")}). Comprueba que no sea una errata; si es un componente nuevo, este aviso es solo informativo.`);
           }
         }
