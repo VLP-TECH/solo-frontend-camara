@@ -24,10 +24,10 @@ import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import {
   getIndicadores,
   getDatosHistoricosIndicador,
-  getIndiceGlobalHistoricoComparativo,
   getDimensionesHistoricoEvolucion,
   type TerritorioEvolucionDimensiones,
 } from "@/lib/kpis-data";
+import { getIndiceGlobalHistorico } from "@/lib/dashboard-snapshot";
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -238,7 +238,7 @@ const EvolucionTemporal = () => {
     error: indiceGlobalErrorDetail,
   } = useQuery({
     queryKey: ["indice-global-historico-comparativo", yearsIndiceGlobal],
-    queryFn: () => getIndiceGlobalHistoricoComparativo(yearsIndiceGlobal),
+    queryFn: () => getIndiceGlobalHistorico(yearsIndiceGlobal),
     retry: 1,
     staleTime: 5 * 60 * 1000,
   });

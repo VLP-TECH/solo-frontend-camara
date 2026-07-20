@@ -1560,94 +1560,9 @@ export type IndiceGlobalHistoricoComparativoRow = {
   topUE: number | null;
 };
 
-async function getIndiceGlobalPromedioPorPais(
-  pais: string,
-  years: number[]
-): Promise<Map<number, number>> {
-  const targetYears = new Set(years);
-  const { data, error } = await supabase
-    .from("resultado_indicadores")
-    .select("periodo, valor_calculado")
-    .eq("pais", pais)
-    .not("nombre_indicador", "is", null)
-    .neq("nombre_indicador", "");
-
-  if (error) {
-    console.error(`Error fetching indice global promedio para ${pais}:`, error);
-    return new Map();
-  }
-
-  const agg = new Map<number, { sum: number; count: number }>();
-  for (const row of data || []) {
-    const y = periodoToYear(row.periodo);
-    if (!targetYears.has(y)) continue;
-    const v = Number(row.valor_calculado);
-    if (!Number.isFinite(v)) continue;
-    const prev = agg.get(y) ?? { sum: 0, count: 0 };
-    prev.sum += v;
-    prev.count += 1;
-    agg.set(y, prev);
-  }
-
-  const out = new Map<number, number>();
-  agg.forEach((v, y) => {
-    if (v.count > 0) out.set(y, Math.round((v.sum / v.count) * 10) / 10);
-  });
-  return out;
-}
-
-/**
- * Serie temporal del índice global BRAINNOVA para tres territorios (desde resultado_indicadores vía dimensiones).
- * @param years Años a consultar (ej. 2020–2025)
- */
-export async function getIndiceGlobalHistoricoComparativo(
-  years: number[]
-): Promise<IndiceGlobalHistoricoComparativoRow[]> {
-  const uniqueYears = [...new Set(years)].sort((a, b) => a - b);
-  if (uniqueYears.length === 0) return [];
-
-  const [
-    cvMap,
-    valenciaMap,
-    alicanteMap,
-    castellonMap,
-    espMap,
-    ueMap,
-    deMap,
-    frMap,
-    itMap,
-    nlMap,
-  ] = await Promise.all([
-    getIndiceGlobalPromedioPorPais("Comunitat Valenciana", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Valencia", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Alicante", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Castellón", uniqueYears),
-    getIndiceGlobalPromedioPorPais("España", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Unión Europea", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Alemania", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Francia", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Italia", uniqueYears),
-    getIndiceGlobalPromedioPorPais("Países Bajos", uniqueYears),
-  ]);
-
-  const topUeForYear = (year: number): number | null => {
-    const vals = [espMap, deMap, frMap, itMap, nlMap]
-      .map((m) => m.get(year))
-      .filter((v): v is number => v != null && Number.isFinite(v));
-    return vals.length > 0 ? Math.max(...vals) : null;
-  };
-
-  return uniqueYears.map((year) => ({
-    year,
-    comunitatValenciana: cvMap.get(year) ?? null,
-    valencia: valenciaMap.get(year) ?? null,
-    alicante: alicanteMap.get(year) ?? null,
-    castellon: castellonMap.get(year) ?? null,
-    espana: espMap.get(year) ?? null,
-    europa: ueMap.get(year) ?? deMap.get(year) ?? null,
-    topUE: topUeForYear(year),
-  }));
-}
+// getIndiceGlobalHistoricoComparativo vive ahora en dashboard-snapshot.ts:
+// la serie del índice global se calcula con getDashboardSnapshot por año
+// (Min-Max real), no con la media de valores brutos que mezclaba unidades.
 
 /**
  * Obtiene los indicadores de una subdimensión específica

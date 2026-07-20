@@ -15,6 +15,7 @@ import {
   type Dimension,
   type Subdimension,
   type Indicador,
+  type IndiceGlobalHistoricoComparativoRow,
 } from "@/lib/kpis-data";
 
 export type TerritorioKey =
@@ -608,4 +609,40 @@ export async function getDashboardSnapshot(periodo: number): Promise<DashboardSn
     valoresPorIndicadorId: porIdTerritorio,
     paisesConDatos,
   };
+}
+
+/**
+ * Serie temporal del índice global BRAINNOVA, un snapshot por año, con el
+ * MISMO cálculo que Dashboard/Dimensiones (Min-Max → subdimensión → dimensión
+ * → índice ponderado). Sustituye a la antigua media de valores brutos de
+ * kpis-data, que mezclaba unidades (EUR con %) y producía "índices" de miles
+ * de millones.
+ */
+export async function getIndiceGlobalHistorico(
+  years: number[]
+): Promise<IndiceGlobalHistoricoComparativoRow[]> {
+  const uniqueYears = [...new Set(years)].sort((a, b) => a - b);
+  if (uniqueYears.length === 0) return [];
+
+  const snapshots = await Promise.all(
+    uniqueYears.map((y) => getDashboardSnapshot(y).catch(() => null))
+  );
+
+  return uniqueYears.map((year, i) => {
+    const ig = snapshots[i]?.indiceGlobal;
+    const espana = ig?.espana ?? null;
+    const refUE = [espana, ig?.alemania, ig?.francia, ig?.italia, ig?.paisesBajos].filter(
+      (v): v is number => v != null && Number.isFinite(v)
+    );
+    return {
+      year,
+      comunitatValenciana: ig?.comunitatValenciana ?? null,
+      valencia: ig?.valencia ?? null,
+      alicante: ig?.alicante ?? null,
+      castellon: ig?.castellon ?? null,
+      espana,
+      europa: ig?.alemania ?? null,
+      topUE: refUE.length ? Math.max(...refUE) : null,
+    };
+  });
 }
