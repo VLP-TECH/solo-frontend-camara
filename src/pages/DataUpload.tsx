@@ -637,10 +637,24 @@ const DataUpload = () => {
       }
 
       if (rowsToWrite.length === 0) {
-        const msg = `Sin cambios: las ${skippedDuplicates} filas del CSV ya existen en "${selectedTable}".`;
+        // Aunque datos_crudos ya tenga estas filas, sus valores finales pueden
+        // faltar en resultado_indicadores (p. ej. subidas anteriores a la
+        // promoción automática): se intenta promocionar igualmente.
+        let promoNote = "";
+        if (selectedTable === "datos_crudos") {
+          try {
+            const promo = await promoteProcessedToResultados(payload);
+            if (promo.inserted > 0) {
+              promoNote = ` ${promo.inserted} valor(es) finales promocionados a resultado_indicadores (dashboards).`;
+            }
+          } catch (e) {
+            promoNote = ` Promoción a resultado_indicadores fallida: ${(e as Error).message || "error"}.`;
+          }
+        }
+        const msg = `Sin cambios en "${selectedTable}": las ${skippedDuplicates} filas del CSV ya existían.${promoNote}`;
         setSuccessMessage(msg);
         setRowsAffected(0);
-        toast({ title: "Sin filas nuevas", description: msg });
+        toast({ title: promoNote ? "Promoción completada" : "Sin filas nuevas", description: msg });
         if (fileInputRef.current) fileInputRef.current.value = "";
         setFile(null);
         return;
@@ -679,7 +693,9 @@ const DataUpload = () => {
       let promoNote = "";
       if (affected > 0 && selectedTable === "datos_crudos") {
         try {
-          const promo = await promoteProcessedToResultados(rowsToWrite);
+          // Sobre el payload completo (no solo las filas nuevas): valores finales
+          // de subidas antiguas que falten en resultado_indicadores también entran.
+          const promo = await promoteProcessedToResultados(payload);
           if (promo.errors.length) errors.push(...promo.errors.map((m) => `Promoción a resultado_indicadores: ${m}`));
           if (promo.inserted > 0) {
             promoNote = ` ${promo.inserted} valor(es) finales promocionados a resultado_indicadores (dashboards)${promo.skipped > 0 ? `; ${promo.skipped} ya estaban` : ""}.`;
