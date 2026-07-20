@@ -21,6 +21,7 @@ import { Upload, AlertCircle, CheckCircle2, Info, Download } from "lucide-react"
 import { useAppMenuItems } from "@/hooks/useAppMenuItems";
 import FloatingCamaraLogo from "@/components/FloatingCamaraLogo";
 import { downloadCSV, convertToCSV } from "@/lib/csv-export";
+import { filterDuplicateRows, type DedupeColumn } from "@/lib/csv-dedupe";
 import { useToast } from "@/hooks/use-toast";
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -32,6 +33,8 @@ interface ColSpec {
   name: string;
   type: ColType;
   required?: boolean;
+  /** Decimales con los que la BD almacena la columna (solo numeric); usado para detectar duplicados. */
+  scale?: number;
 }
 interface TableSpec {
   label: string;
@@ -53,7 +56,7 @@ const TABLE_SPECS = {
     pkAuto: true,
     columns: [
       { name: "nombre_indicador", type: "text", required: true },
-      { name: "valor_calculado", type: "numeric" },
+      { name: "valor_calculado", type: "numeric", scale: 6 },
       { name: "pais", type: "text" },
       { name: "provincia", type: "text" },
       { name: "periodo", type: "int", required: true },
@@ -128,7 +131,7 @@ const TABLE_SPECS = {
     pkAuto: true,
     columns: [
       { name: "nombre_indicador", type: "text" },
-      { name: "valor", type: "numeric" },
+      { name: "valor", type: "numeric", scale: 2 },
       { name: "unidad", type: "text" },
       { name: "pais", type: "text" },
       { name: "provincia", type: "text" },
@@ -162,7 +165,7 @@ const TABLE_SPECS = {
     pk: "id",
     pkAuto: true,
     columns: [
-      { name: "valor", type: "numeric" },
+      { name: "valor", type: "numeric", scale: 2 },
       { name: "unidad", type: "text" },
       { name: "pais", type: "text" },
       { name: "provincia", type: "text" },
@@ -446,6 +449,36 @@ const DataUpload = () => {
     return { payload, hasId: headers.includes("id") };
   };
 
+  // Lee las filas existentes de la tabla (paginado) para detectar duplicados en modo insert.
+  // Filtra por nombre_indicador o periodo cuando el CSV los trae, para no descargar la tabla entera.
+  const fetchExistingRows = async (
+    table: SupportedTable,
+    columns: DedupeColumn[],
+    payload: Record<string, unknown>[],
+  ): Promise<Record<string, unknown>[]> => {
+    const filterCol = ["nombre_indicador", "periodo"].find(
+      (c) => columns.some((k) => k.name === c) && payload.some((r) => r[c] != null),
+    );
+    const filterVals = filterCol
+      ? [...new Set(payload.map((r) => r[filterCol]).filter((v) => v != null))]
+      : [];
+
+    const pageSize = 1000;
+    const existing: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += pageSize) {
+      let query = supabase
+        .from(table as never)
+        .select(columns.map((c) => c.name).join(","))
+        .range(from, from + pageSize - 1);
+      if (filterCol && filterVals.length) query = query.in(filterCol, filterVals as never[]);
+      const { data, error } = await query;
+      if (error) throw new Error(`No se pudieron comprobar duplicados: ${error.message}`);
+      existing.push(...((data as unknown as Record<string, unknown>[]) || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return existing;
+  };
+
   const handleUpload = async () => {
     resetMessages();
     if (!isAdminLike) return setError("Solo los administradores pueden subir datos.");
@@ -482,12 +515,34 @@ const DataUpload = () => {
       // Estrategia: upsert si el PK viene en el CSV (o el PK no es autogenerado); si no, insert.
       const useUpsert = hasId || !spec.pkAuto;
 
+      // En modo insert no hay PK que evite duplicados: omitir filas idénticas a las
+      // ya existentes (numéricos comparados a la escala con la que los guarda la BD).
+      let rowsToWrite = payload;
+      let skippedDuplicates = 0;
+      if (!useUpsert) {
+        const dedupeCols = spec.columns as DedupeColumn[];
+        const existing = await fetchExistingRows(selectedTable, dedupeCols, payload);
+        const result = filterDuplicateRows(payload, existing, dedupeCols);
+        rowsToWrite = result.fresh;
+        skippedDuplicates = result.skipped;
+      }
+
+      if (rowsToWrite.length === 0) {
+        const msg = `Sin cambios: las ${skippedDuplicates} filas del CSV ya existen en "${selectedTable}".`;
+        setSuccessMessage(msg);
+        setRowsAffected(0);
+        toast({ title: "Sin filas nuevas", description: msg });
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setFile(null);
+        return;
+      }
+
       const chunkSize = 500;
       let affected = 0;
       const errors: string[] = [];
 
-      for (let i = 0; i < payload.length; i += chunkSize) {
-        const chunk = payload.slice(i, i + chunkSize);
+      for (let i = 0; i < rowsToWrite.length; i += chunkSize) {
+        const chunk = rowsToWrite.slice(i, i + chunkSize);
         const n = Math.floor(i / chunkSize) + 1;
         try {
           // El cliente tipado no conoce estas tablas administrativas:
@@ -512,9 +567,10 @@ const DataUpload = () => {
       if (affected > 0) {
         setRowsAffected(affected);
         const verb = useUpsert ? "insertadas/actualizadas" : "insertadas";
+        const dupNote = skippedDuplicates > 0 ? ` ${skippedDuplicates} duplicada(s) omitida(s).` : "";
         const msg = errors.length
-          ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} bloque(s) con errores.`
-          : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".`;
+          ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} bloque(s) con errores.${dupNote}`
+          : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".${dupNote}`;
         setSuccessMessage(msg);
         if (errors.length) {
           setValidationErrors(errors);
