@@ -126,7 +126,7 @@ const TABLE_SPECS = {
   datos_crudos: {
     label: "datos_crudos (datos fuente originales)",
     description:
-      "Datos sin procesar por indicador. 'id' se autogenera: súbelo solo para actualizar. 'periodo' (año) es obligatorio.",
+      "Datos sin procesar por indicador. 'id' se autogenera: súbelo solo para actualizar. 'periodo' (año) es obligatorio. Las filas con procesado=TRUE (valores finales) se promocionan automáticamente a resultado_indicadores para que aparezcan en los dashboards.",
     pk: "id",
     pkAuto: true,
     columns: [
@@ -560,6 +560,61 @@ const DataUpload = () => {
     }
   };
 
+  // Promociona a resultado_indicadores los valores finales (procesado=TRUE) de una
+  // subida a datos_crudos, para que los dashboards los muestren sin paso manual.
+  // Deduplica contra lo existente: re-subir el mismo CSV no duplica resultados.
+  const promoteProcessedToResultados = async (
+    rows: Record<string, unknown>[],
+  ): Promise<{ inserted: number; skipped: number; errors: string[] }> => {
+    const finales = rows.filter(
+      (r) => r.procesado === true && r.valor != null && typeof r.nombre_indicador === "string" && r.nombre_indicador,
+    );
+    if (finales.length === 0) return { inserted: 0, skipped: 0, errors: [] };
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const mapped = finales.map((r) => ({
+      nombre_indicador: r.nombre_indicador,
+      valor_calculado: r.valor,
+      pais: r.pais ?? null,
+      provincia: r.provincia ?? null,
+      periodo: r.periodo,
+      id_indicador: r.id_indicador ?? null,
+      fecha_calculo: hoy,
+      unidad_tipo: typeof r.unidad === "string" && r.unidad.includes("%") ? "PORCENTAJE" : null,
+      unidad_display: r.unidad ?? null,
+      sector: r.sector ?? null,
+      tamano_empresa: r.tamano_empresa ?? null,
+    }));
+
+    // Clave de deduplicación sin fecha_calculo ni unidades: idempotente entre re-subidas.
+    const keyCols: DedupeColumn[] = [
+      { name: "nombre_indicador", type: "text" },
+      { name: "valor_calculado", type: "numeric", scale: 6 },
+      { name: "pais", type: "text" },
+      { name: "provincia", type: "text" },
+      { name: "periodo", type: "int" },
+      { name: "id_indicador", type: "int" },
+      { name: "sector", type: "text" },
+      { name: "tamano_empresa", type: "text" },
+    ];
+    const existing = await fetchExistingRows("resultado_indicadores", keyCols, mapped);
+    const { fresh, skipped } = filterDuplicateRows(mapped, existing, keyCols);
+    if (fresh.length === 0) return { inserted: 0, skipped, errors: [] };
+
+    const errors: string[] = [];
+    let inserted = 0;
+    for (let i = 0; i < fresh.length; i += 500) {
+      const chunk = fresh.slice(i, i + 500);
+      const query = (supabase.from("resultado_indicadores" as never) as never) as {
+        insert: (rows: unknown[]) => { select: () => Promise<{ data: unknown[] | null; error: { message: string } | null }> };
+      };
+      const resp = await query.insert(chunk).select();
+      if (resp.error) errors.push(resp.error.message);
+      else inserted += resp.data?.length || chunk.length;
+    }
+    return { inserted, skipped, errors };
+  };
+
   // Sube el payload ya validado (deduplicación + insert/upsert por bloques).
   const performUpload = async (payload: Record<string, unknown>[], hasId: boolean) => {
     if (!selectedTable || !spec) return;
@@ -618,13 +673,31 @@ const DataUpload = () => {
         }
       }
 
+      // Promoción automática: los valores finales de datos_crudos pasan a
+      // resultado_indicadores para que los dashboards (radar, malla, filtros)
+      // ofrezcan también los nuevos periodos e indicadores.
+      let promoNote = "";
+      if (affected > 0 && selectedTable === "datos_crudos") {
+        try {
+          const promo = await promoteProcessedToResultados(rowsToWrite);
+          if (promo.errors.length) errors.push(...promo.errors.map((m) => `Promoción a resultado_indicadores: ${m}`));
+          if (promo.inserted > 0) {
+            promoNote = ` ${promo.inserted} valor(es) finales promocionados a resultado_indicadores (dashboards)${promo.skipped > 0 ? `; ${promo.skipped} ya estaban` : ""}.`;
+          } else if (promo.skipped > 0) {
+            promoNote = ` Los ${promo.skipped} valores finales ya estaban en resultado_indicadores.`;
+          }
+        } catch (e) {
+          errors.push(`Promoción a resultado_indicadores: ${(e as Error).message || "error"}`);
+        }
+      }
+
       if (affected > 0) {
         setRowsAffected(affected);
         const verb = useUpsert ? "insertadas/actualizadas" : "insertadas";
         const dupNote = skippedDuplicates > 0 ? ` ${skippedDuplicates} duplicada(s) omitida(s).` : "";
         const msg = errors.length
-          ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} bloque(s) con errores.${dupNote}`
-          : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".${dupNote}`;
+          ? `${affected} filas ${verb} en "${selectedTable}". ${errors.length} incidencia(s).${dupNote}${promoNote}`
+          : `✅ ${affected} filas ${verb} correctamente en "${selectedTable}".${dupNote}${promoNote}`;
         setSuccessMessage(msg);
         if (errors.length) {
           setValidationErrors(errors);
