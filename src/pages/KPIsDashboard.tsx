@@ -144,9 +144,15 @@ const KPIsDashboard = () => {
   };
 
 
-  // Formatea un valor con su unidad (ej. "493.921.730 EUR", "61,9 % Empresas").
-  // Enteros grandes sin decimales; el resto con 1 decimal.
+  // Formatea un valor con su unidad (ej. "61,9 % Empresas"). Enteros grandes
+  // sin decimales; el resto con 1 decimal. Los importes en EUR a partir del
+  // millón se muestran en millones: 1.518.520.400 EUR → 1.518,5 M€.
   const fmtValorUnidad = (valor: number, unidad: string | null | undefined): string => {
+    const esEuro = !!unidad && /^(eur|euros?|€)$/i.test(unidad.trim());
+    if (esEuro && Math.abs(valor) >= 1_000_000) {
+      const millones = (valor / 1_000_000).toLocaleString("es-ES", { maximumFractionDigits: 1 });
+      return `${millones} M€`;
+    }
     const num = valor.toLocaleString("es-ES", {
       maximumFractionDigits: Math.abs(valor) >= 1000 ? 0 : 1,
     });
@@ -414,7 +420,9 @@ const KPIsDashboard = () => {
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                {comparativa?.territorio != null ? Number(comparativa.territorio).toFixed(1) : "—"}
+                                {comparativa?.territorio != null
+                                  ? fmtValorUnidad(Number(comparativa.territorio), comparativa.unidad)
+                                  : "—"}
                               </span>
                             </td>
                             <td className="py-4 px-4 text-center">
@@ -447,7 +455,9 @@ const KPIsDashboard = () => {
                             </td>
                             <td className="py-4 px-4 text-center">
                               <span className={`text-sm font-semibold ${hasData ? "text-gray-700" : "text-gray-400"}`}>
-                                {comparativa?.topUE != null ? Number(comparativa.topUE).toFixed(1) : "—"}
+                                {comparativa?.topUE != null
+                                  ? fmtValorUnidad(Number(comparativa.topUE), comparativa.unidad)
+                                  : "—"}
                               </span>
                             </td>
                             <td className="py-4 px-4 text-center">
