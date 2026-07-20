@@ -310,6 +310,7 @@ const DataUpload = () => {
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorDialogTitle, setErrorDialogTitle] = useState<string>("");
   const [avisoCatalogo, setAvisoCatalogo] = useState<string | null>(null);
+  const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [rowsAffected, setRowsAffected] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -326,6 +327,7 @@ const DataUpload = () => {
     setValidationErrors([]);
     setErrorDialogOpen(false);
     setAvisoCatalogo(null);
+    setCatalogWarnings([]);
     setSuccessMessage(null);
     setRowsAffected(null);
   };
@@ -346,8 +348,10 @@ const DataUpload = () => {
     rows: string[][],
     tableSpec: TableSpec,
     catalog?: CatalogoDatosCrudos,
-  ): { payload: Record<string, unknown>[]; hasId: boolean } => {
+  ): { payload: Record<string, unknown>[]; hasId: boolean; warnings: string[] } => {
     const errs: string[] = [];
+    // Avisos de coherencia con el catálogo: se muestran pero NO bloquean la subida.
+    const warns: string[] = [];
     const allowed = new Set(tableSpec.columns.map((c) => c.name));
     if (tableSpec.pkAuto) allowed.add("id"); // 'id' opcional para actualizar
 
@@ -417,26 +421,26 @@ const DataUpload = () => {
           const unidadRow = typeof obj.unidad === "string" ? obj.unidad : "";
           const esComponente = obj.procesado === false || (unidadRow !== "" && !unidadRow.includes("%"));
 
-          // (3) Valor imposible para un PORCENTAJE
+          // (3) Valor sospechoso para un PORCENTAJE
           if (
             meta?.formula === "PORCENTAJE" &&
             valor != null &&
             valor > 100 &&
             !permiteMas100 &&
             !esComponente &&
-            errs.length < 25
+            warns.length < 25
           ) {
-            errs.push(`Fila ${lineNo}: el indicador ${idInd} ("${nombre}") es un PORCENTAJE y el valor ${valor} supera 100 (revisa la escala, ¿×10/×100?).`);
+            warns.push(`Fila ${lineNo}: «${nombre}» es un porcentaje y esta fila trae ${valor}, que supera 100. Si la fila es un componente del cálculo (un recuento absoluto), márcala con procesado=FALSE y una unidad sin «%»; si de verdad es el porcentaje final, revisa la escala (¿está multiplicado ×10 o ×100?).`);
           }
 
-          // (1) Debe enviarse por componentes (procesado=FALSE), no el valor ya calculado
-          if (tieneComponentes && esProcesado && errs.length < 25) {
-            errs.push(`Fila ${lineNo}: el indicador ${idInd} ("${nombre}") se calcula por componentes; envíalo con procesado=FALSE (no el valor ya calculado).`);
+          // (1) El catálogo espera este indicador por componentes (procesado=FALSE)
+          if (tieneComponentes && esProcesado && warns.length < 25) {
+            warns.push(`Fila ${lineNo}: según el catálogo, «${nombre}» se calcula a partir de componentes; lo habitual es enviar los componentes con procesado=FALSE y dejar el cálculo a la plataforma. Si esta fila ya es el valor final calculado, puedes ignorar este aviso.`);
           }
 
           // (2) descripcion_dato no coincide con ningún componente del catálogo
-          if (tieneComponentes && desc && !comps!.has(desc) && errs.length < 25) {
-            errs.push(`Fila ${lineNo}: descripcion_dato "${desc}" no coincide con ningún componente del catálogo para el indicador ${idInd}. Esperado: ${[...comps!].map((c) => `"${c}"`).join(" / ")}.`);
+          if (tieneComponentes && desc && !comps!.has(desc) && warns.length < 25) {
+            warns.push(`Fila ${lineNo}: descripcion_dato "${desc}" no figura entre los componentes que el catálogo espera para «${nombre}» (${[...comps!].map((c) => `"${c}"`).join(" / ")}). Comprueba que no sea una errata; si es un componente nuevo, este aviso es solo informativo.`);
           }
         }
       }
@@ -451,7 +455,7 @@ const DataUpload = () => {
     }
     if (payload.length === 0) throw new Error("No hay filas de datos válidas en el CSV.");
 
-    return { payload, hasId: headers.includes("id") };
+    return { payload, hasId: headers.includes("id"), warnings: warns };
   };
 
   // Lee las filas existentes de la tabla (paginado) para detectar duplicados en modo insert.
@@ -515,7 +519,8 @@ const DataUpload = () => {
         );
       }
 
-      const { payload, hasId } = validate(headers, rows, spec, catalog);
+      const { payload, hasId, warnings } = validate(headers, rows, spec, catalog);
+      setCatalogWarnings(warnings);
 
       // Estrategia: upsert si el PK viene en el CSV (o el PK no es autogenerado); si no, insert.
       const useUpsert = hasId || !spec.pkAuto;
@@ -787,6 +792,24 @@ const DataUpload = () => {
                       <AlertCircle className="h-4 w-4 text-amber-600" />
                       <AlertTitle className="text-amber-800">Validación parcial</AlertTitle>
                       <AlertDescription className="text-amber-800">{avisoCatalogo}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {catalogWarnings.length > 0 && (
+                    <Alert className="border-amber-300 bg-amber-50">
+                      <Info className="h-4 w-4 text-amber-600" />
+                      <AlertTitle className="text-amber-800">
+                        Avisos del catálogo ({catalogWarnings.length}) — no impiden la subida
+                      </AlertTitle>
+                      <AlertDescription className="text-amber-800">
+                        <p className="text-xs mb-2">
+                          Los datos se han subido igualmente. Estos avisos solo señalan filas que conviene
+                          revisar por si hubiera un error de escala o una errata:
+                        </p>
+                        <ul className="list-disc pl-4 space-y-1 text-xs max-h-48 overflow-y-auto">
+                          {catalogWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </AlertDescription>
                     </Alert>
                   )}
 
