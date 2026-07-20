@@ -311,6 +311,8 @@ const DataUpload = () => {
   const [errorDialogTitle, setErrorDialogTitle] = useState<string>("");
   const [avisoCatalogo, setAvisoCatalogo] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
+  const [warningsDialogOpen, setWarningsDialogOpen] = useState(false);
+  const pendingUploadRef = useRef<{ payload: Record<string, unknown>[]; hasId: boolean } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [rowsAffected, setRowsAffected] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -328,6 +330,8 @@ const DataUpload = () => {
     setErrorDialogOpen(false);
     setAvisoCatalogo(null);
     setCatalogWarnings([]);
+    setWarningsDialogOpen(false);
+    pendingUploadRef.current = null;
     setSuccessMessage(null);
     setRowsAffected(null);
   };
@@ -522,6 +526,37 @@ const DataUpload = () => {
       const { payload, hasId, warnings } = validate(headers, rows, spec, catalog);
       setCatalogWarnings(warnings);
 
+      // Con avisos de catálogo: pausar y pedir el OK del usuario antes de subir.
+      if (warnings.length > 0) {
+        pendingUploadRef.current = { payload, hasId };
+        setWarningsDialogOpen(true);
+        return;
+      }
+
+      await performUpload(payload, hasId);
+    } catch (err) {
+      const list = (err as Error & { list?: string[] }).list;
+      if (list?.length) {
+        setError("El CSV no pasó la validación. Corrige estos puntos y vuelve a intentarlo:");
+        setValidationErrors(list);
+        setErrorDialogTitle("El CSV tiene errores");
+      } else {
+        setError((err as Error).message || "Error al procesar el CSV.");
+        setValidationErrors([]);
+        setErrorDialogTitle("No se pudo procesar el CSV");
+      }
+      setErrorDialogOpen(true);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Sube el payload ya validado (deduplicación + insert/upsert por bloques).
+  const performUpload = async (payload: Record<string, unknown>[], hasId: boolean) => {
+    if (!selectedTable || !spec) return;
+    try {
+      setUploading(true);
+
       // Estrategia: upsert si el PK viene en el CSV (o el PK no es autogenerado); si no, insert.
       const useUpsert = hasId || !spec.pkAuto;
 
@@ -597,20 +632,30 @@ const DataUpload = () => {
         setErrorDialogOpen(true);
       }
     } catch (err) {
-      const list = (err as Error & { list?: string[] }).list;
-      if (list?.length) {
-        setError("El CSV no pasó la validación. Corrige estos puntos y vuelve a intentarlo:");
-        setValidationErrors(list);
-        setErrorDialogTitle("El CSV tiene errores");
-      } else {
-        setError((err as Error).message || "Error al procesar el CSV.");
-        setValidationErrors([]);
-        setErrorDialogTitle("No se pudo procesar el CSV");
-      }
+      setError((err as Error).message || "Error al subir los datos.");
+      setValidationErrors([]);
+      setErrorDialogTitle("No se pudo completar la subida");
       setErrorDialogOpen(true);
     } finally {
       setUploading(false);
     }
+  };
+
+  // El usuario acepta subir pese a los avisos del catálogo.
+  const confirmUploadWithWarnings = async () => {
+    setWarningsDialogOpen(false);
+    const pending = pendingUploadRef.current;
+    pendingUploadRef.current = null;
+    if (pending) await performUpload(pending.payload, pending.hasId);
+  };
+
+  const cancelUploadWithWarnings = () => {
+    setWarningsDialogOpen(false);
+    pendingUploadRef.current = null;
+    toast({
+      title: "Subida cancelada",
+      description: "No se ha subido ninguna fila. Puedes corregir el CSV y volver a intentarlo.",
+    });
   };
 
   if (isLoading) {
@@ -676,6 +721,35 @@ const DataUpload = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setErrorDialogOpen(false)}>
               Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación cuando hay avisos de catálogo: no son errores, se pide el OK antes de subir */}
+      <Dialog open={warningsDialogOpen} onOpenChange={(open) => { if (!open) cancelUploadWithWarnings(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <Info className="h-5 w-5" />
+              Revisa estos avisos antes de subir
+            </DialogTitle>
+            <DialogDescription>
+              No son errores: el CSV es válido y se puede subir. Solo hay filas que conviene revisar por si
+              hubiera un error de escala o una errata. Puedes subir igualmente o cancelar para corregirlas.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-amber-800 max-h-72 overflow-y-auto">
+            {catalogWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelUploadWithWarnings}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmUploadWithWarnings} className="bg-amber-600 hover:bg-amber-700 text-white">
+              Subir igualmente
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -799,12 +873,12 @@ const DataUpload = () => {
                     <Alert className="border-amber-300 bg-amber-50">
                       <Info className="h-4 w-4 text-amber-600" />
                       <AlertTitle className="text-amber-800">
-                        Avisos del catálogo ({catalogWarnings.length}) — no impiden la subida
+                        Avisos del catálogo ({catalogWarnings.length}) — no son errores
                       </AlertTitle>
                       <AlertDescription className="text-amber-800">
                         <p className="text-xs mb-2">
-                          Los datos se han subido igualmente. Estos avisos solo señalan filas que conviene
-                          revisar por si hubiera un error de escala o una errata:
+                          Estos avisos no invalidan el CSV; solo señalan filas que conviene revisar por si
+                          hubiera un error de escala o una errata:
                         </p>
                         <ul className="list-disc pl-4 space-y-1 text-xs max-h-48 overflow-y-auto">
                           {catalogWarnings.map((w, i) => <li key={i}>{w}</li>)}
