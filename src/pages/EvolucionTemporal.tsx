@@ -27,8 +27,10 @@ import {
   getDimensionesHistoricoEvolucion,
   getNombresIndicadoresConResultados,
   indicadorTieneResultados,
+  getUnidadIndicador,
   type TerritorioEvolucionDimensiones,
 } from "@/lib/kpis-data";
+import { fmtNumeroCompacto, fmtValorUnidad } from "@/lib/format-valor";
 import { getIndiceGlobalHistorico } from "@/lib/dashboard-snapshot";
 import {
   LineChart as RechartsLineChart,
@@ -161,6 +163,7 @@ const EvolucionTemporal = () => {
         francia,
         italia,
         paisesBajos,
+        unidad,
       ] = await Promise.all([
         getDatosHistoricosIndicador(indicadorActual, "Valencia", limit),
         getDatosHistoricosIndicador(indicadorActual, "Castellón", limit),
@@ -170,6 +173,7 @@ const EvolucionTemporal = () => {
         getDatosHistoricosIndicador(indicadorActual, "Francia", limit),
         getDatosHistoricosIndicador(indicadorActual, "Italia", limit),
         getDatosHistoricosIndicador(indicadorActual, "Países Bajos", limit),
+        getUnidadIndicador(indicadorActual),
       ]);
       return {
         valencia,
@@ -180,6 +184,7 @@ const EvolucionTemporal = () => {
         francia,
         italia,
         paisesBajos,
+        unidad,
       };
     },
     enabled: !!indicadorActual,
@@ -882,8 +887,17 @@ const EvolucionTemporal = () => {
                             stroke="#6b7280"
                             tick={{ fill: "#6b7280" }}
                           />
-                          <YAxis stroke="#6b7280" tick={{ fill: "#6b7280" }} />
-                          <Tooltip />
+                          <YAxis
+                            stroke="#6b7280"
+                            tick={{ fill: "#6b7280", fontSize: 12 }}
+                            width={75}
+                            tickFormatter={(v) => fmtNumeroCompacto(Number(v))}
+                          />
+                          <Tooltip
+                            formatter={(value: number | string) =>
+                              fmtValorUnidad(Number(value), historicoIndicadorSeries?.unidad)
+                            }
+                          />
                           <Legend />
                           {EVOLUCION_INDICADOR_SERIES.map(({ dataKey, name, stroke }) => (
                             <Line

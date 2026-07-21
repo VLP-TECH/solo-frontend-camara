@@ -45,6 +45,7 @@ import {
   type IndicadorConDatos,
 } from "@/lib/kpis-data";
 import { exportIndicadoresToCSV } from "@/lib/csv-export";
+import { fmtValorUnidad } from "@/lib/format-valor";
 
 const NORMALIZADO_COLUMNA_AYUDA =
   "El valor indicado (0-100) muestra la distancia del territorio seleccionado con respecto al valor máximo existente en el indicador consultado. Este valor se calcula mediante una metodología min-max.";
@@ -143,25 +144,6 @@ const KPIsDashboard = () => {
     }
   };
 
-
-  // Formatea un valor con su unidad (ej. "61,9 % Empresas"). Enteros grandes
-  // sin decimales; el resto con 1 decimal. Los importes en EUR se abrevian:
-  // ≥1M → M€ (1.518.520.400 EUR → 1518,5 M€); ≥1.000 → K€ (950.000 EUR → 950 K€).
-  const fmtValorUnidad = (valor: number, unidad: string | null | undefined): string => {
-    const esEuro = !!unidad && /^(eur|euros?|€)$/i.test(unidad.trim());
-    if (esEuro && Math.abs(valor) >= 1_000_000) {
-      const millones = (valor / 1_000_000).toLocaleString("es-ES", { maximumFractionDigits: 1 });
-      return `${millones} M€`;
-    }
-    if (esEuro && Math.abs(valor) >= 1_000) {
-      const miles = (valor / 1_000).toLocaleString("es-ES", { maximumFractionDigits: 1 });
-      return `${miles} K€`;
-    }
-    const num = valor.toLocaleString("es-ES", {
-      maximumFractionDigits: Math.abs(valor) >= 1000 ? 0 : 1,
-    });
-    return unidad ? `${num} ${unidad}` : num;
-  };
 
   const menuItems = useAppMenuItems();
 

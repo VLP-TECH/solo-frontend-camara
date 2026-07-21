@@ -1677,3 +1677,20 @@ export async function getNombresIndicadoresConResultados(): Promise<Set<string>>
 export function indicadorTieneResultados(nombre: string, conResultados: Set<string>): boolean {
   return getIndicadorNombresParaConsulta(nombre).some((n) => conResultados.has(normalizeName(n)));
 }
+
+/** Unidad de display de un indicador (primera no vacía en resultado_indicadores). */
+export async function getUnidadIndicador(nombreIndicador: string): Promise<string | null> {
+  try {
+    const nombres = getIndicadorNombresParaConsulta(nombreIndicador);
+    const { data } = await supabase
+      .from("resultado_indicadores")
+      .select("unidad_display")
+      .in("nombre_indicador", nombres)
+      .not("unidad_display", "is", null)
+      .neq("unidad_display", "")
+      .limit(1);
+    return (data?.[0] as { unidad_display?: string } | undefined)?.unidad_display ?? null;
+  } catch {
+    return null;
+  }
+}
