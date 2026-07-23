@@ -50,6 +50,15 @@ import { fmtValorUnidad } from "@/lib/format-valor";
 const NORMALIZADO_COLUMNA_AYUDA =
   "El valor indicado (0-100) muestra la distancia del territorio seleccionado con respecto al valor máximo existente en el indicador consultado. Este valor se calcula mediante una metodología min-max.";
 
+const PERIODO_COLUMNA_AYUDA =
+  "Último año con datos disponibles para el indicador. Varía según lo actualizada que esté cada fuente (Eurostat, INE…): todos los valores de la fila (territorio, España, TOP UE y normalizado) corresponden a ese año. Los años con desfase de más de dos años se destacan en ámbar.";
+
+/** Un período con más de este desfase (años) respecto al actual se marca en ámbar. */
+const PERIODO_DESFASE_AVISO = 2;
+
+const periodoDesfasado = (periodo: number) =>
+  new Date().getFullYear() - periodo > PERIODO_DESFASE_AVISO;
+
 const KPIsDashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
@@ -229,6 +238,9 @@ const KPIsDashboard = () => {
               <p className="text-gray-600">
                 Repositorio completo de todos los indicadores del Sistema BRAINNOVA. Filtra por dimensión o busca por nombre para encontrar métricas específicas.
               </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Cada indicador muestra el último año con datos disponibles (columna Período); la comparativa entre territorios se calcula sobre ese mismo año.
+              </p>
               {import.meta.env.DEV && (
                 <p className="text-xs text-gray-500 mt-2">
                   http://localhost:8080/kpis
@@ -311,6 +323,29 @@ const KPIsDashboard = () => {
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Dimensión</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
                           <div className="flex items-center justify-center gap-1.5">
+                            <span>Período</span>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#0c6c8b] hover:bg-[#0c6c8b]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c6c8b]/30"
+                                  aria-label="¿Qué significa la columna Período?"
+                                >
+                                  <CircleHelp className="h-4 w-4" aria-hidden />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="max-w-sm w-[min(100vw-2rem,22rem)] text-sm text-muted-foreground"
+                                align="center"
+                              >
+                                <p className="font-semibold text-foreground mb-2">Columna Período</p>
+                                <p className="leading-relaxed">{PERIODO_COLUMNA_AYUDA}</p>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
+                          <div className="flex items-center justify-center gap-1.5">
                             <span>Normalizado</span>
                             <Popover>
                               <PopoverTrigger asChild>
@@ -382,6 +417,28 @@ const KPIsDashboard = () => {
                               <span className={`text-sm ${hasData ? "text-gray-700" : "text-gray-400"}`}>
                                 {indicador.dimension || "—"}
                               </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              {comparativa?.periodo != null ? (
+                                <span
+                                  className={`text-sm font-medium ${
+                                    periodoDesfasado(comparativa.periodo)
+                                      ? "text-amber-700"
+                                      : hasData
+                                      ? "text-gray-700"
+                                      : "text-gray-400"
+                                  }`}
+                                  title={
+                                    periodoDesfasado(comparativa.periodo)
+                                      ? "La fuente de este indicador va con desfase: es el último año con datos disponibles."
+                                      : undefined
+                                  }
+                                >
+                                  {comparativa.periodo}
+                                </span>
+                              ) : (
+                                <span className="text-sm font-medium text-gray-400">—</span>
+                              )}
                             </td>
                             <td className="py-4 px-4">
                               <div className="flex items-center space-x-2">
