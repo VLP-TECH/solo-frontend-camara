@@ -507,32 +507,90 @@ const Dashboard = () => {
           <main className="flex-1 p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto">
               <div className="mb-8">
-                <div className="flex flex-wrap items-start gap-2 mb-2">
-                  <h1 className="text-3xl font-bold text-[#0c6c8b]">
-                    Índice Global de Economía Digital BRAINNOVA
-                  </h1>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="mt-0 inline-flex h-9 w-9 shrink-0 -translate-y-0.5 items-center justify-center rounded-full text-[#0c6c8b] hover:bg-[#0c6c8b]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c6c8b]/30"
-                        aria-label="¿Qué es el Índice Brainnova? Abre una ventana con la descripción."
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-start gap-2 mb-2">
+                      <h1 className="text-3xl font-bold text-[#0c6c8b]">
+                        Índice Global de Economía Digital BRAINNOVA
+                      </h1>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="mt-0 inline-flex h-9 w-9 shrink-0 -translate-y-0.5 items-center justify-center rounded-full text-[#0c6c8b] hover:bg-[#0c6c8b]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c6c8b]/30"
+                            aria-label="¿Qué es el Índice Brainnova? Abre una ventana con la descripción."
+                          >
+                            <CircleHelp className="h-7 w-7" aria-hidden />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="max-w-md w-[min(100vw-2rem,28rem)] text-sm text-muted-foreground"
+                          align="start"
+                        >
+                          <p className="font-semibold text-foreground mb-2">Índice Brainnova</p>
+                          <p className="leading-relaxed">{BRAINNOVA_INDICE_DESCRIPCION}</p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <p className="text-lg text-gray-600 max-w-4xl">
+                      Análisis integral del desarrollo de la economía digital.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-start gap-1 sm:items-end">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Select value={radarAnoSelect} onValueChange={setRadarAnoSelect}>
+                        <SelectTrigger className="w-28 bg-white">
+                          <SelectValue placeholder="Año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {aniosOpciones.map((y) => (
+                            <SelectItem key={y} value={y}>
+                              {y}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={radarPaisSelect} onValueChange={handleRadarPaisChange}>
+                        <SelectTrigger className="w-44 bg-white">
+                          <SelectValue placeholder="País" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAISES_OPCIONES.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {showRadarProvincia && (
+                        <Select
+                          value={radarProvinciaSelect || "_"}
+                          onValueChange={(v) => setRadarProvinciaSelect(v === "_" ? "" : v)}
+                        >
+                          <SelectTrigger className="w-44 bg-white">
+                            <SelectValue placeholder="Provincia (Castellón, Valencia, Alicante)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_">— Provincia —</SelectItem>
+                            {(["Valencia", "Alicante", "Castellón"] as const).map((p) => (
+                              <SelectItem key={p} value={p}>
+                                {p}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button
+                        onClick={handleMostrarRadar}
+                        disabled={snapshotFetching}
+                        className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
                       >
-                        <CircleHelp className="h-7 w-7" aria-hidden />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="max-w-md w-[min(100vw-2rem,28rem)] text-sm text-muted-foreground"
-                      align="start"
-                    >
-                      <p className="font-semibold text-foreground mb-2">Índice Brainnova</p>
-                      <p className="leading-relaxed">{BRAINNOVA_INDICE_DESCRIPCION}</p>
-                    </PopoverContent>
-                  </Popover>
+                        {snapshotFetching ? "CALCULANDO..." : "MOSTRAR"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">Filtros aplicados a todo el módulo</p>
+                  </div>
                 </div>
-                <p className="text-lg text-gray-600 max-w-4xl">
-                  Análisis integral del desarrollo de la economía digital.
-                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -654,77 +712,24 @@ const Dashboard = () => {
               </div>
 
               <Card className="p-6 bg-white mb-8">
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-1">Análisis por Dimensión</h2>
-                    <p className="text-sm text-gray-600">
-                      Índice BRAINNOVA por las 7 dimensiones
-                      {isSpainWithProvince ? (
-                        <>
-                          {" "}
-                          para <strong>Top UE</strong> (mejor país entre referencia UE por
-                          dimensión), <strong>España</strong> y <strong>{radarProvincia}</strong>
-                        </>
-                      ) : (
-                        <>
-                          {" "}
-                          para <strong>{radarProvincia}</strong>
-                        </>
-                      )}{" "}
-                      ({radarAno}).
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Select value={radarAnoSelect} onValueChange={setRadarAnoSelect}>
-                      <SelectTrigger className="w-28 bg-white">
-                        <SelectValue placeholder="Año" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {aniosOpciones.map((y) => (
-                          <SelectItem key={y} value={y}>
-                            {y}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={radarPaisSelect} onValueChange={handleRadarPaisChange}>
-                      <SelectTrigger className="w-44 bg-white">
-                        <SelectValue placeholder="País" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PAISES_OPCIONES.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {showRadarProvincia && (
-                      <Select
-                        value={radarProvinciaSelect || "_"}
-                        onValueChange={(v) => setRadarProvinciaSelect(v === "_" ? "" : v)}
-                      >
-                        <SelectTrigger className="w-44 bg-white">
-                          <SelectValue placeholder="Provincia (Castellón, Valencia, Alicante)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">— Provincia —</SelectItem>
-                          {(["Valencia", "Alicante", "Castellón"] as const).map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <Button
-                      onClick={handleMostrarRadar}
-                      disabled={snapshotFetching}
-                      className="bg-[#0c6c8b] hover:bg-[#0c6c8b]/90 text-white disabled:opacity-70"
-                    >
-                      {snapshotFetching ? "CALCULANDO..." : "MOSTRAR"}
-                    </Button>
-                  </div>
+                <div className="mb-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">Análisis por Dimensión</h2>
+                  <p className="text-sm text-gray-600">
+                    Índice BRAINNOVA por las 7 dimensiones
+                    {isSpainWithProvince ? (
+                      <>
+                        {" "}
+                        para <strong>Top UE</strong> (mejor país entre referencia UE por
+                        dimensión), <strong>España</strong> y <strong>{radarProvincia}</strong>
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        para <strong>{radarProvincia}</strong>
+                      </>
+                    )}{" "}
+                    ({radarAno}).
+                  </p>
                 </div>
 
                 <AvisoDatosParciales anio={radarAno} paisesConDatos={snapshot?.paisesConDatos} />

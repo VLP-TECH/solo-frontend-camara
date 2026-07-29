@@ -35,6 +35,7 @@ const SubdimensionDashboard = () => {
   const dimensionNombre = searchParams.get("dimension") || "";
   const territorioAplicado = searchParams.get("territorio") || "España";
   const anoAplicado = Number(searchParams.get("ano") || "2024");
+  const esEspana = territorioAplicado === "España" || territorioAplicado === "Spain";
 
   const handleSignOut = async () => {
     await signOut();
@@ -238,7 +239,9 @@ const SubdimensionDashboard = () => {
                         <tr className="border-b border-gray-200">
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Indicador</th>
                           <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">{territorioAplicado}</th>
-                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
+                          {!esEspana && (
+                            <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">España</th>
+                          )}
                           <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Media UE</th>
                           <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Top UE</th>
                         </tr>
@@ -250,7 +253,9 @@ const SubdimensionDashboard = () => {
                             <tr key={indicador.nombre} className="border-b border-gray-100 hover:bg-gray-50">
                               <td className="py-3 px-4 text-sm text-gray-900">{indicador.nombre}</td>
                               <td className="py-3 px-4 text-sm text-center font-medium text-gray-800">{fmt(comp?.territorio)}</td>
-                              <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.espana)}</td>
+                              {!esEspana && (
+                                <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.espana)}</td>
+                              )}
                               <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.mediaUE)}</td>
                               <td className="py-3 px-4 text-sm text-center text-gray-700">{fmt(comp?.topUE)}</td>
                             </tr>

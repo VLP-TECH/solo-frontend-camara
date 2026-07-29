@@ -351,13 +351,14 @@ const Dimensiones = () => {
                             <Icon className="h-6 w-6 text-[#0c6c8b]" />
                           </div>
                         </div>
-                        {dimension.score > 0 && (
-                          <div className="text-right">
-                            <div className="text-3xl font-bold text-gray-900">
-                              {Math.round(dimension.score)}
-                            </div>
+                        <div className="text-right">
+                          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                            Score
                           </div>
-                        )}
+                          <div className="text-3xl font-bold text-gray-900">
+                            {dimension.score > 0 ? Math.round(dimension.score) : "—"}
+                          </div>
+                        </div>
                       </div>
                       
                       <h3 className="text-lg font-bold text-gray-900 mb-2">
